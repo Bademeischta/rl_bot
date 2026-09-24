@@ -1,0 +1,23 @@
+# Lucy-nahe Reward-Startwerte (Bauplan v2, §6).
+# Phasenwechsel NUR bei TrueSkill-Plateau (Gate), nie nach festem Step-Schedule.
+
+phase_a:  # früh, ~0–2 Mrd. Steps
+  goal: 10.0
+  touch_ball_to_goal_accel: 1.0
+  offensive_potential_krc: 1.0   # KRC(align, player_to_ball_vel, dist)
+  dist_weighted_align_krc: 0.5
+  velocity_player_to_ball: 0.1
+  save_boost: 0.3                # sqrt(boost)
+  in_air: 0.02
+
+phase_b:  # mittel, ab TrueSkill-Plateau
+  goal: 10.0
+  touch_ball_to_goal_accel: 1.0
+  offensive_potential_krc: 1.0
+  velocity_player_to_ball: 0.03
+  save_boost: 0.15
+
+phase_c:  # spät, ab nächstem Plateau; dichte Shaping-Terme -> ~0, Team-Spirit tau hoch
+  goal: 10.0
+  touch_ball_to_goal_accel: 0.7
+  offensive_potential_krc: 0.8

@@ -1,0 +1,14 @@
+# torch zuerst separat aus dem cu128-Index installieren (RTX 5070 = sm_120):
+#   pip install torch --index-url https://download.pytorch.org/whl/cu128
+torch
+numpy
+rlgym[rl-sim]
+rlgym-ppo
+rlgym-tools
+wandb
+psutil
+nvidia-ml-py
+trueskill
+pyyaml
+py-cpuinfo
+pytest

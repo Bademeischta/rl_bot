@@ -1,0 +1,23 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+runs/
+checkpoints/
+build/
+wandb/
+collision_meshes/
+*.pt
+*.lt
+
+# gepinnte Fremd-Repos und libtorch: nur PINNED.md + patches/ versionieren
+third_party/*/
+!third_party/patches/
+
+docs/pip_*.log
+build_*.log
+
+# heruntergeladener Visualizer, siehe deploy/watch.py
+rlviser.exe
+settings.txt

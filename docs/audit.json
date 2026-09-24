@@ -1,0 +1,45 @@
+{
+  "os": "Windows 10 (10.0.26200)",
+  "python": "3.11.8",
+  "cpu": {
+    "brand": "AMD Ryzen 7 8700F 8-Core Processor",
+    "cores": 8,
+    "threads": 16,
+    "avx2": true,
+    "avx512f": true
+  },
+  "ram_gb": 31.7,
+  "disk_free_gb": 111.7,
+  "repo_in_onedrive": false,
+  "gpu": {
+    "torch": "2.11.0+cu128",
+    "cuda_build": "12.8",
+    "cuda_available": true,
+    "name": "NVIDIA GeForce RTX 5070",
+    "capability": [
+      12,
+      0
+    ],
+    "arch_list": [
+      "sm_75",
+      "sm_80",
+      "sm_86",
+      "sm_90",
+      "sm_100",
+      "sm_120"
+    ],
+    "cudnn": 91900,
+    "vram_gb": 11.9,
+    "matmul_ok": true,
+    "matmul_tflops_fp32": 22.8
+  },
+  "checks": {
+    "cuda_available": true,
+    "sm_120": true,
+    "sm_120_in_torch_build": true,
+    "gpu_matmul": true,
+    "avx2": true,
+    "ram_ge_16gb": true,
+    "not_onedrive": true
+  }
+}

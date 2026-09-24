@@ -1,0 +1,5 @@
+flavor,device,threads,games,iterations,collected_sps,overall_sps,collect_time_s,consume_time_s,cpu_pct,ram_used_gb,gpu_util_pct,timestamp
+cpu,cpu,16,24,46,153410,46086,0.68,1.57,79.9,14.0,3.3,2026-09-22 13:09
+cpu,cpu,16,32,46,115818,36555,0.95,1.99,87.7,20.5,9.7,2026-09-22 13:12
+cpu,cpu,8,48,47,92259,33900,1.11,1.9,84.8,20.5,17.4,2026-09-22 13:16
+cpu,cpu,12,32,47,135233,43236,0.75,1.6,79.6,15.6,2.3,2026-09-23 13:21

@@ -1,0 +1,5 @@
+n_proc,net,device,iterations,collected_sps,overall_sps,collect_time_s,consume_time_s,cpu_pct,rss_per_proc_mb,ram_used_gb,gpu_util_pct,wall_s,timestamp
+8,small,auto,57,10169.3,9048.0,9.8,1.2,31.0,520.5,17.0,9.1,681.9,2026-09-22 12:46
+16,small,auto,57,15013.5,12671.2,6.7,1.2,34.7,520.7,19.8,7.7,493.3,2026-09-22 12:55
+24,small,auto,57,20085.8,16253.0,5.0,1.2,35.9,520.5,22.5,6.8,382.8,2026-09-22 13:01
+32,small,auto,57,24051.2,18754.4,4.2,1.2,36.9,520.6,25.4,8.1,332.6,2026-09-22 13:07

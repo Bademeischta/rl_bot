@@ -1,0 +1,5 @@
+variante,iterationen,steps_pro_iteration,iter_s,infer_s,sim_s,lernen_s,sps_report,sps_wall,wall_s
+baseline,17,102197,1.639,0.507,0.32,0.632,62358,31000,64.5
+skill_intervall_16,17,102671,1.551,0.507,0.326,0.639,66198,31791,62.9
+skill_intervall_32,17,102536,1.518,0.508,0.321,0.643,67558,32170,62.2
+ohne_skilltracker,17,102882,1.515,0.508,0.323,0.637,67924,32392,61.7

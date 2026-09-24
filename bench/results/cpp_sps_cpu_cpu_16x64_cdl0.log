@@ -1,0 +1,1142 @@
+Initializing RocketSim version 2.1.1, created by ZealanL...
+Loading arena meshes for soccar...
+   > Loaded 483 verts and 880 tris, hash: 0xa160baf9
+   > Loaded 483 verts and 880 tris, hash: 0x2811eee8
+   > Loaded 80 verts and 126 tris, hash: 0xb81ac8b9
+   > Loaded 80 verts and 126 tris, hash: 0x760358d3
+   > Loaded 80 verts and 126 tris, hash: 0x73ae4940
+   > Loaded 80 verts and 126 tris, hash: 0x918f4a4e
+   > Loaded 18 verts and 16 tris, hash: 0x1f8ee550
+   > Loaded 18 verts and 16 tris, hash: 0x255ba8c1
+   > Loaded 483 verts and 880 tris, hash: 0x14b84668
+   > Loaded 483 verts and 880 tris, hash: 0xec759ebf
+   > Loaded 536 verts and 983 tris, hash: 0x94fb0d5c
+   > Loaded 536 verts and 983 tris, hash: 0xdea07102
+   > Loaded 536 verts and 983 tris, hash: 0xbd4fbea8
+   > Loaded 536 verts and 983 tris, hash: 0x39a47f63
+   > Loaded 18 verts and 16 tris, hash: 0x3d79d25d
+   > Loaded 18 verts and 16 tris, hash: 0xd84c7a68
+RocketSim::Init(): Finished loading arena collision meshes:
+ > Soccar: 16
+ > Hoops: 0
+Finished initializing RocketSim in 0.012s!
+Learner::Learner():
+	Checkpoint Load Dir: ""
+	Checkpoint Save Dir: ""
+	Using CPU device...
+	Initializing RocketSim...
+	Creating test environment to determine OBS size and action amount...
+DiscreteAction(): Lookup table built, action count: 90
+		OBS size: 89
+		Action amount: 90
+	Creating experience buffer...
+	Creating PPO Learner...
+	Creating agent manager...
+	Creating 16 agents...
+Learner::Learn():
+	Starting agents...
+	Beginning learning loop:
+Collecting timesteps...
+Concatenating timesteps...
+Adding experience...
+Learning...
+Calling iteration callback...
+
+
+============================================
+ITERATION COMPLETED:
+
+Average Episode Reward: nan
+Average Step Reward: 2.357219e-05
+Policy Entropy: 4.4988
+Value Function Loss: 3.089268e-06
+
+Mean KL Divergence: 0
+SB3 Clip Fraction: 0
+Policy Update Magnitude: 0.0520
+Value Function Update Magnitude: 0.0651
+
+Collected Steps/Second: 25,872
+Overall Steps/Second: 21,432
+
+Collection Time: 4.1409
+ - Policy Infer Time: 0.5711
+ - Env Step Time: 3.5231
+Consumption Time: 0.8578
+ - PPO Learn Time: 0.4820
+Collect-Consume Overlap Time: 0
+Total Iteration Time: 4.9987
+
+Cumulative Model Updates: 1
+Cumulative Timesteps: 107,136
+
+Timesteps Collected: 107,136
+============================================
+
+
+Collecting timesteps...
+Concatenating timesteps...
+Adding experience...
+Learning...
+Calling iteration callback...
+
+
+============================================
+ITERATION COMPLETED:
+
+Average Episode Reward: 0.0500
+Average Step Reward: 4.524612e-05
+Policy Entropy: 4.4990
+Value Function Loss: 0.0010
+
+Mean KL Divergence: 1.147697e-05
+SB3 Clip Fraction: 0
+Policy Update Magnitude: 0.0823
+Value Function Update Magnitude: 0.0756
+
+Collected Steps/Second: 154,550
+Overall Steps/Second: 54,786
+
+Collection Time: 0.6750
+ - Policy Infer Time: 0.4226
+ - Env Step Time: 0.2181
+Consumption Time: 1.2291
+ - PPO Learn Time: 0.8208
+Collect-Consume Overlap Time: 0
+Total Iteration Time: 1.9041
+
+Cumulative Model Updates: 3
+Cumulative Timesteps: 211,456
+
+Timesteps Collected: 104,320
+============================================
+
+
+Collecting timesteps...
+Concatenating timesteps...
+Adding experience...
+Learning...
+Calling iteration callback...
+
+
+============================================
+ITERATION COMPLETED:
+
+Average Episode Reward: 0.0500
+Average Step Reward: 2.137749e-05
+Policy Entropy: 4.4991
+Value Function Loss: 0.0013
+
+Mean KL Divergence: 2.731013e-05
+SB3 Clip Fraction: 0
+Policy Update Magnitude: 0.1087
+Value Function Update Magnitude: 0.0926
+
+Collected Steps/Second: 157,266
+Overall Steps/Second: 47,904
+
+Collection Time: 0.6552
+ - Policy Infer Time: 0.4038
+ - Env Step Time: 0.2194
+Consumption Time: 1.4958
+ - PPO Learn Time: 1.1775
+Collect-Consume Overlap Time: 0
+Total Iteration Time: 2.1509
+
+Cumulative Model Updates: 6
+Cumulative Timesteps: 314,496
+
+Timesteps Collected: 103,040
+============================================
+
+
+Collecting timesteps...
+Concatenating timesteps...
+Adding experience...
+Learning...
+Calling iteration callback...
+
+
+============================================
+ITERATION COMPLETED:
+
+Average Episode Reward: 0.0500
+Average Step Reward: 1.850842e-05
+Policy Entropy: 4.4991
+Value Function Loss: 0.0025
+
+Mean KL Divergence: 3.627824e-05
+SB3 Clip Fraction: 0
+Policy Update Magnitude: 0.1051
+Value Function Update Magnitude: 0.0920
+
+Collected Steps/Second: 156,273
+Overall Steps/Second: 46,724
+
+Collection Time: 0.6602
+ - Policy Infer Time: 0.3995
+ - Env Step Time: 0.2316
+Consumption Time: 1.5478
+ - PPO Learn Time: 1.2286
+Collect-Consume Overlap Time: 0
+Total Iteration Time: 2.2080
+
+Cumulative Model Updates: 9
+Cumulative Timesteps: 417,664
+
+Timesteps Collected: 103,168
+============================================
+
+
+Collecting timesteps...
+Concatenating timesteps...
+Adding experience...
+Learning...
+Calling iteration callback...
+
+
+============================================
+ITERATION COMPLETED:
+
+Average Episode Reward: 0.0500
+Average Step Reward: 1.174812e-05
+Policy Entropy: 4.4990
+Value Function Loss: 0.0022
+
+Mean KL Divergence: 4.095769e-05
+SB3 Clip Fraction: 0
+Policy Update Magnitude: 0.0990
+Value Function Update Magnitude: 0.0966
+
+Collected Steps/Second: 154,414
+Overall Steps/Second: 46,892
+
+Collection Time: 0.6623
+ - Policy Infer Time: 0.4012
+ - Env Step Time: 0.2333
+Consumption Time: 1.5187
+ - PPO Learn Time: 1.1995
+Collect-Consume Overlap Time: 0
+Total Iteration Time: 2.1810
+
+Cumulative Model Updates: 12
+Cumulative Timesteps: 519,936
+
+Timesteps Collected: 102,272
+============================================
+
+
+Collecting timesteps...
+Concatenating timesteps...
+Adding experience...
+Learning...
+Calling iteration callback...
+
+
+============================================
+ITERATION COMPLETED:
+
+Average Episode Reward: 0.0667
+Average Step Reward: 1.348644e-05
+Policy Entropy: 4.4990
+Value Function Loss: 0.0018
+
+Mean KL Divergence: 4.346408e-05
+SB3 Clip Fraction: 0
+Policy Update Magnitude: 0.0916
+Value Function Update Magnitude: 0.0924
+
+Collected Steps/Second: 147,303
+Overall Steps/Second: 46,099
+
+Collection Time: 0.7004
+ - Policy Infer Time: 0.4205
+ - Env Step Time: 0.2510
+Consumption Time: 1.5376
+ - PPO Learn Time: 1.2294
+Collect-Consume Overlap Time: 0
+Total Iteration Time: 2.2379
+
+Cumulative Model Updates: 15
+Cumulative Timesteps: 623,104
+
+Timesteps Collected: 103,168
+============================================
+
+
+Collecting timesteps...
+Concatenating timesteps...
+Adding experience...
+Learning...
+Calling iteration callback...
+
+
+============================================
+ITERATION COMPLETED:
+
+Average Episode Reward: 0.1000
+Average Step Reward: 1.781963e-05
+Policy Entropy: 4.4989
+Value Function Loss: 0.0020
+
+Mean KL Divergence: 4.620201e-05
+SB3 Clip Fraction: 0
+Policy Update Magnitude: 0.0866
+Value Function Update Magnitude: 0.0901
+
+Collected Steps/Second: 146,662
+Overall Steps/Second: 47,715
+
+Collection Time: 0.7183
+ - Policy Infer Time: 0.4246
+ - Env Step Time: 0.2540
+Consumption Time: 1.4895
+ - PPO Learn Time: 1.1836
+Collect-Consume Overlap Time: 0
+Total Iteration Time: 2.2077
+
+Cumulative Model Updates: 18
+Cumulative Timesteps: 728,448
+
+Timesteps Collected: 105,344
+============================================
+
+
+Collecting timesteps...
+Concatenating timesteps...
+Adding experience...
+Learning...
+Calling iteration callback...
+
+
+============================================
+ITERATION COMPLETED:
+
+Average Episode Reward: 0.0500
+Average Step Reward: 6.844492e-06
+Policy Entropy: 4.4988
+Value Function Loss: 0.0013
+
+Mean KL Divergence: 5.240630e-05
+SB3 Clip Fraction: 0
+Policy Update Magnitude: 0.0811
+Value Function Update Magnitude: 0.0866
+
+Collected Steps/Second: 152,985
+Overall Steps/Second: 47,970
+
+Collection Time: 0.6719
+ - Policy Infer Time: 0.3969
+ - Env Step Time: 0.2424
+Consumption Time: 1.4708
+ - PPO Learn Time: 1.1710
+Collect-Consume Overlap Time: 0
+Total Iteration Time: 2.1427
+
+Cumulative Model Updates: 21
+Cumulative Timesteps: 831,232
+
+Timesteps Collected: 102,784
+============================================
+
+
+Collecting timesteps...
+Concatenating timesteps...
+Adding experience...
+Learning...
+Calling iteration callback...
+
+
+============================================
+ITERATION COMPLETED:
+
+Average Episode Reward: 1.801802e-04
+Average Step Reward: 4.840458e-06
+Policy Entropy: 4.4987
+Value Function Loss: 0.0011
+
+Mean KL Divergence: 5.099571e-05
+SB3 Clip Fraction: 0
+Policy Update Magnitude: 0.0754
+Value Function Update Magnitude: 0.0804
+
+Collected Steps/Second: 157,689
+Overall Steps/Second: 48,093
+
+Collection Time: 0.6607
+ - Policy Infer Time: 0.3976
+ - Env Step Time: 0.2250
+Consumption Time: 1.5057
+ - PPO Learn Time: 1.2002
+Collect-Consume Overlap Time: 0
+Total Iteration Time: 2.1664
+
+Cumulative Model Updates: 24
+Cumulative Timesteps: 935,424
+
+Timesteps Collected: 104,192
+============================================
+
+
+Collecting timesteps...
+Concatenating timesteps...
+Adding experience...
+Learning...
+Calling iteration callback...
+
+
+============================================
+ITERATION COMPLETED:
+
+Average Episode Reward: 0.0028
+Average Step Reward: 3.048780e-05
+Policy Entropy: 4.4985
+Value Function Loss: 5.239554e-04
+
+Mean KL Divergence: 4.652779e-05
+SB3 Clip Fraction: 0
+Policy Update Magnitude: 0.0662
+Value Function Update Magnitude: 0.0681
+
+Collected Steps/Second: 154,825
+Overall Steps/Second: 47,725
+
+Collection Time: 0.6647
+ - Policy Infer Time: 0.4187
+ - Env Step Time: 0.2113
+Consumption Time: 1.4916
+ - PPO Learn Time: 1.1821
+Collect-Consume Overlap Time: 0
+Total Iteration Time: 2.1563
+
+Cumulative Model Updates: 27
+Cumulative Timesteps: 1,038,336
+
+Timesteps Collected: 102,912
+============================================
+
+
+Collecting timesteps...
+Concatenating timesteps...
+Adding experience...
+Learning...
+Calling iteration callback...
+
+
+============================================
+ITERATION COMPLETED:
+
+Average Episode Reward: 0.0500
+Average Step Reward: 2.643327e-05
+Policy Entropy: 4.4985
+Value Function Loss: 9.948681e-04
+
+Mean KL Divergence: 3.616373e-05
+SB3 Clip Fraction: 0
+Policy Update Magnitude: 0.0584
+Value Function Update Magnitude: 0.0607
+
+Collected Steps/Second: 161,481
+Overall Steps/Second: 48,623
+
+Collection Time: 0.6389
+ - Policy Infer Time: 0.3922
+ - Env Step Time: 0.2094
+Consumption Time: 1.4829
+ - PPO Learn Time: 1.1839
+Collect-Consume Overlap Time: 0
+Total Iteration Time: 2.1218
+
+Cumulative Model Updates: 30
+Cumulative Timesteps: 1,141,504
+
+Timesteps Collected: 103,168
+============================================
+
+
+Collecting timesteps...
+Concatenating timesteps...
+Adding experience...
+Learning...
+Calling iteration callback...
+
+
+============================================
+ITERATION COMPLETED:
+
+Average Episode Reward: 0.0500
+Average Step Reward: 2.035515e-05
+Policy Entropy: 4.4984
+Value Function Loss: 0.0012
+
+Mean KL Divergence: 2.589260e-05
+SB3 Clip Fraction: 0
+Policy Update Magnitude: 0.0632
+Value Function Update Magnitude: 0.0647
+
+Collected Steps/Second: 156,157
+Overall Steps/Second: 46,804
+
+Collection Time: 0.6648
+ - Policy Infer Time: 0.4060
+ - Env Step Time: 0.2241
+Consumption Time: 1.5531
+ - PPO Learn Time: 1.2385
+Collect-Consume Overlap Time: 0
+Total Iteration Time: 2.2179
+
+Cumulative Model Updates: 33
+Cumulative Timesteps: 1,245,312
+
+Timesteps Collected: 103,808
+============================================
+
+
+Collecting timesteps...
+Concatenating timesteps...
+Adding experience...
+Learning...
+Calling iteration callback...
+
+
+============================================
+ITERATION COMPLETED:
+
+Average Episode Reward: 0.0471
+Average Step Reward: 1.672702e-05
+Policy Entropy: 4.4984
+Value Function Loss: 0.0012
+
+Mean KL Divergence: 2.549587e-05
+SB3 Clip Fraction: 0
+Policy Update Magnitude: 0.0680
+Value Function Update Magnitude: 0.0673
+
+Collected Steps/Second: 155,554
+Overall Steps/Second: 48,082
+
+Collection Time: 0.6575
+ - Policy Infer Time: 0.3924
+ - Env Step Time: 0.2308
+Consumption Time: 1.4696
+ - PPO Learn Time: 1.1738
+Collect-Consume Overlap Time: 0
+Total Iteration Time: 2.1270
+
+Cumulative Model Updates: 36
+Cumulative Timesteps: 1,347,584
+
+Timesteps Collected: 102,272
+============================================
+
+
+Collecting timesteps...
+Concatenating timesteps...
+Adding experience...
+Learning...
+Calling iteration callback...
+
+
+============================================
+ITERATION COMPLETED:
+
+Average Episode Reward: 0.0464
+Average Step Reward: 1.057042e-05
+Policy Entropy: 4.4984
+Value Function Loss: 7.561185e-04
+
+Mean KL Divergence: 2.813676e-05
+SB3 Clip Fraction: 0
+Policy Update Magnitude: 0.0658
+Value Function Update Magnitude: 0.0627
+
+Collected Steps/Second: 151,905
+Overall Steps/Second: 47,536
+
+Collection Time: 0.6817
+ - Policy Infer Time: 0.4115
+ - Env Step Time: 0.2410
+Consumption Time: 1.4967
+ - PPO Learn Time: 1.1923
+Collect-Consume Overlap Time: 0
+Total Iteration Time: 2.1783
+
+Cumulative Model Updates: 39
+Cumulative Timesteps: 1,451,136
+
+Timesteps Collected: 103,552
+============================================
+
+
+Collecting timesteps...
+Concatenating timesteps...
+Adding experience...
+Learning...
+Calling iteration callback...
+
+
+============================================
+ITERATION COMPLETED:
+
+Average Episode Reward: 0.0417
+Average Step Reward: 7.802746e-06
+Policy Entropy: 4.4984
+Value Function Loss: 5.936099e-04
+
+Mean KL Divergence: 3.037959e-05
+SB3 Clip Fraction: 0
+Policy Update Magnitude: 0.0611
+Value Function Update Magnitude: 0.0577
+
+Collected Steps/Second: 148,486
+Overall Steps/Second: 46,725
+
+Collection Time: 0.6905
+ - Policy Infer Time: 0.4085
+ - Env Step Time: 0.2400
+Consumption Time: 1.5038
+ - PPO Learn Time: 1.2006
+Collect-Consume Overlap Time: 0
+Total Iteration Time: 2.1943
+
+Cumulative Model Updates: 42
+Cumulative Timesteps: 1,553,664
+
+Timesteps Collected: 102,528
+============================================
+
+
+Collecting timesteps...
+Concatenating timesteps...
+Adding experience...
+Learning...
+Calling iteration callback...
+
+
+============================================
+ITERATION COMPLETED:
+
+Average Episode Reward: 0.0500
+Average Step Reward: 9.680917e-06
+Policy Entropy: 4.4984
+Value Function Loss: 6.262230e-04
+
+Mean KL Divergence: 3.042299e-05
+SB3 Clip Fraction: 0
+Policy Update Magnitude: 0.0581
+Value Function Update Magnitude: 0.0577
+
+Collected Steps/Second: 156,573
+Overall Steps/Second: 48,447
+
+Collection Time: 0.6614
+ - Policy Infer Time: 0.3973
+ - Env Step Time: 0.2360
+Consumption Time: 1.4760
+ - PPO Learn Time: 1.1740
+Collect-Consume Overlap Time: 0
+Total Iteration Time: 2.1374
+
+Cumulative Model Updates: 45
+Cumulative Timesteps: 1,657,216
+
+Timesteps Collected: 103,552
+============================================
+
+
+Collecting timesteps...
+Concatenating timesteps...
+Adding experience...
+Learning...
+Calling iteration callback...
+
+
+============================================
+ITERATION COMPLETED:
+
+Average Episode Reward: 0.0042
+Average Step Reward: 1.020635e-05
+Policy Entropy: 4.4984
+Value Function Loss: 0.0010
+
+Mean KL Divergence: 2.901419e-05
+SB3 Clip Fraction: 0
+Policy Update Magnitude: 0.0552
+Value Function Update Magnitude: 0.0559
+
+Collected Steps/Second: 139,331
+Overall Steps/Second: 46,321
+
+Collection Time: 0.7496
+ - Policy Infer Time: 0.4418
+ - Env Step Time: 0.2669
+Consumption Time: 1.5052
+ - PPO Learn Time: 1.1940
+Collect-Consume Overlap Time: 0
+Total Iteration Time: 2.2549
+
+Cumulative Model Updates: 48
+Cumulative Timesteps: 1,761,664
+
+Timesteps Collected: 104,448
+============================================
+
+
+Collecting timesteps...
+Concatenating timesteps...
+Adding experience...
+Learning...
+Calling iteration callback...
+
+
+============================================
+ITERATION COMPLETED:
+
+Average Episode Reward: 0.0022
+Average Step Reward: 1.985388e-05
+Policy Entropy: 4.4984
+Value Function Loss: 0.0016
+
+Mean KL Divergence: 2.354532e-05
+SB3 Clip Fraction: 0
+Policy Update Magnitude: 0.0605
+Value Function Update Magnitude: 0.0616
+
+Collected Steps/Second: 161,340
+Overall Steps/Second: 48,224
+
+Collection Time: 0.6410
+ - Policy Infer Time: 0.3943
+ - Env Step Time: 0.2218
+Consumption Time: 1.5036
+ - PPO Learn Time: 1.1958
+Collect-Consume Overlap Time: 0
+Total Iteration Time: 2.1446
+
+Cumulative Model Updates: 51
+Cumulative Timesteps: 1,865,088
+
+Timesteps Collected: 103,424
+============================================
+
+
+Collecting timesteps...
+Concatenating timesteps...
+Adding experience...
+Learning...
+Calling iteration callback...
+
+
+============================================
+ITERATION COMPLETED:
+
+Average Episode Reward: 0.0079
+Average Step Reward: 3.533770e-05
+Policy Entropy: 4.4985
+Value Function Loss: 0.0017
+
+Mean KL Divergence: 2.043737e-05
+SB3 Clip Fraction: 0
+Policy Update Magnitude: 0.0728
+Value Function Update Magnitude: 0.0786
+
+Collected Steps/Second: 155,487
+Overall Steps/Second: 48,296
+
+Collection Time: 0.6643
+ - Policy Infer Time: 0.4066
+ - Env Step Time: 0.2199
+Consumption Time: 1.4745
+ - PPO Learn Time: 1.1739
+Collect-Consume Overlap Time: 0
+Total Iteration Time: 2.1388
+
+Cumulative Model Updates: 54
+Cumulative Timesteps: 1,968,384
+
+Timesteps Collected: 103,296
+============================================
+
+
+Collecting timesteps...
+Concatenating timesteps...
+Adding experience...
+Learning...
+Calling iteration callback...
+
+
+============================================
+ITERATION COMPLETED:
+
+Average Episode Reward: 0.0073
+Average Step Reward: 1.869490e-05
+Policy Entropy: 4.4986
+Value Function Loss: 0.0016
+
+Mean KL Divergence: 2.872124e-05
+SB3 Clip Fraction: 0
+Policy Update Magnitude: 0.0792
+Value Function Update Magnitude: 0.0890
+
+Collected Steps/Second: 160,453
+Overall Steps/Second: 47,884
+
+Collection Time: 0.6414
+ - Policy Infer Time: 0.3913
+ - Env Step Time: 0.2122
+Consumption Time: 1.5078
+ - PPO Learn Time: 1.2081
+Collect-Consume Overlap Time: 0
+Total Iteration Time: 2.1492
+
+Cumulative Model Updates: 57
+Cumulative Timesteps: 2,071,296
+
+Timesteps Collected: 102,912
+============================================
+
+
+Collecting timesteps...
+Concatenating timesteps...
+Adding experience...
+Learning...
+Calling iteration callback...
+
+
+============================================
+ITERATION COMPLETED:
+
+Average Episode Reward: 0.0303
+Average Step Reward: 2.343750e-05
+Policy Entropy: 4.4987
+Value Function Loss: 0.0012
+
+Mean KL Divergence: 3.742402e-05
+SB3 Clip Fraction: 0
+Policy Update Magnitude: 0.0781
+Value Function Update Magnitude: 0.0804
+
+Collected Steps/Second: 153,167
+Overall Steps/Second: 47,120
+
+Collection Time: 0.6769
+ - Policy Infer Time: 0.4082
+ - Env Step Time: 0.2300
+Consumption Time: 1.5234
+ - PPO Learn Time: 1.2198
+Collect-Consume Overlap Time: 0
+Total Iteration Time: 2.2003
+
+Cumulative Model Updates: 60
+Cumulative Timesteps: 2,174,976
+
+Timesteps Collected: 103,680
+============================================
+
+
+Collecting timesteps...
+Concatenating timesteps...
+Adding experience...
+Learning...
+Calling iteration callback...
+
+
+============================================
+ITERATION COMPLETED:
+
+Average Episode Reward: 0.0250
+Average Step Reward: 1.320954e-05
+Policy Entropy: 4.4987
+Value Function Loss: 0.0012
+
+Mean KL Divergence: 3.998154e-05
+SB3 Clip Fraction: 0
+Policy Update Magnitude: 0.0738
+Value Function Update Magnitude: 0.0718
+
+Collected Steps/Second: 152,467
+Overall Steps/Second: 48,270
+
+Collection Time: 0.6859
+ - Policy Infer Time: 0.4105
+ - Env Step Time: 0.2343
+Consumption Time: 1.4806
+ - PPO Learn Time: 1.1730
+Collect-Consume Overlap Time: 0
+Total Iteration Time: 2.1665
+
+Cumulative Model Updates: 63
+Cumulative Timesteps: 2,279,552
+
+Timesteps Collected: 104,576
+============================================
+
+
+Collecting timesteps...
+Concatenating timesteps...
+Adding experience...
+Learning...
+Calling iteration callback...
+
+
+============================================
+ITERATION COMPLETED:
+
+Average Episode Reward: 0.0375
+Average Step Reward: 1.094745e-05
+Policy Entropy: 4.4986
+Value Function Loss: 0.0015
+
+Mean KL Divergence: 3.851212e-05
+SB3 Clip Fraction: 0
+Policy Update Magnitude: 0.0742
+Value Function Update Magnitude: 0.0738
+
+Collected Steps/Second: 153,721
+Overall Steps/Second: 45,818
+
+Collection Time: 0.6653
+ - Policy Infer Time: 0.3933
+ - Env Step Time: 0.2342
+Consumption Time: 1.5668
+ - PPO Learn Time: 1.2598
+Collect-Consume Overlap Time: 0
+Total Iteration Time: 2.2321
+
+Cumulative Model Updates: 66
+Cumulative Timesteps: 2,381,824
+
+Timesteps Collected: 102,272
+============================================
+
+
+Collecting timesteps...
+Concatenating timesteps...
+Adding experience...
+Learning...
+Calling iteration callback...
+
+
+============================================
+ITERATION COMPLETED:
+
+Average Episode Reward: 0.0119
+Average Step Reward: 1.627604e-05
+Policy Entropy: 4.4986
+Value Function Loss: 0.0013
+
+Mean KL Divergence: 4.343176e-05
+SB3 Clip Fraction: 0
+Policy Update Magnitude: 0.0741
+Value Function Update Magnitude: 0.0786
+
+Collected Steps/Second: 142,270
+Overall Steps/Second: 46,453
+
+Collection Time: 0.7297
+ - Policy Infer Time: 0.4324
+ - Env Step Time: 0.2592
+Consumption Time: 1.5050
+ - PPO Learn Time: 1.1926
+Collect-Consume Overlap Time: 0
+Total Iteration Time: 2.2347
+
+Cumulative Model Updates: 69
+Cumulative Timesteps: 2,485,632
+
+Timesteps Collected: 103,808
+============================================
+
+
+Collecting timesteps...
+Concatenating timesteps...
+Adding experience...
+Learning...
+Calling iteration callback...
+
+
+============================================
+ITERATION COMPLETED:
+
+Average Episode Reward: 0.0353
+Average Step Reward: 7.861635e-06
+Policy Entropy: 4.4986
+Value Function Loss: 8.987476e-04
+
+Mean KL Divergence: 4.590912e-05
+SB3 Clip Fraction: 0
+Policy Update Magnitude: 0.0729
+Value Function Update Magnitude: 0.0786
+
+Collected Steps/Second: 144,404
+Overall Steps/Second: 43,870
+
+Collection Time: 0.7065
+ - Policy Infer Time: 0.4218
+ - Env Step Time: 0.2537
+Consumption Time: 1.6189
+ - PPO Learn Time: 1.3187
+Collect-Consume Overlap Time: 0
+Total Iteration Time: 2.3254
+
+Cumulative Model Updates: 72
+Cumulative Timesteps: 2,587,648
+
+Timesteps Collected: 102,016
+============================================
+
+
+Collecting timesteps...
+Concatenating timesteps...
+Adding experience...
+Learning...
+Calling iteration callback...
+
+
+============================================
+ITERATION COMPLETED:
+
+Average Episode Reward: 0.0028
+Average Step Reward: 1.464844e-05
+Policy Entropy: 4.4986
+Value Function Loss: 0.0017
+
+Mean KL Divergence: 3.865939e-05
+SB3 Clip Fraction: 0
+Policy Update Magnitude: 0.0688
+Value Function Update Magnitude: 0.0809
+
+Collected Steps/Second: 153,811
+Overall Steps/Second: 46,119
+
+Collection Time: 0.6699
+ - Policy Infer Time: 0.3949
+ - Env Step Time: 0.2376
+Consumption Time: 1.5643
+ - PPO Learn Time: 1.2566
+Collect-Consume Overlap Time: 0
+Total Iteration Time: 2.2342
+
+Cumulative Model Updates: 75
+Cumulative Timesteps: 2,690,688
+
+Timesteps Collected: 103,040
+============================================
+
+
+Collecting timesteps...
+Concatenating timesteps...
+Adding experience...
+Learning...
+Calling iteration callback...
+
+
+============================================
+ITERATION COMPLETED:
+
+Average Episode Reward: 0.0061
+Average Step Reward: 1.725460e-05
+Policy Entropy: 4.4986
+Value Function Loss: 0.0021
+
+Mean KL Divergence: 3.033996e-05
+SB3 Clip Fraction: 0
+Policy Update Magnitude: 0.0734
+Value Function Update Magnitude: 0.0931
+
+Collected Steps/Second: 150,026
+Overall Steps/Second: 47,227
+
+Collection Time: 0.6894
+ - Policy Infer Time: 0.4265
+ - Env Step Time: 0.2259
+Consumption Time: 1.5005
+ - PPO Learn Time: 1.1949
+Collect-Consume Overlap Time: 0
+Total Iteration Time: 2.1899
+
+Cumulative Model Updates: 78
+Cumulative Timesteps: 2,794,112
+
+Timesteps Collected: 103,424
+============================================
+
+
+Collecting timesteps...
+Concatenating timesteps...
+Adding experience...
+Learning...
+Calling iteration callback...
+
+
+============================================
+ITERATION COMPLETED:
+
+Average Episode Reward: 0.0129
+Average Step Reward: 2.907412e-05
+Policy Entropy: 4.4986
+Value Function Loss: 0.0023
+
+Mean KL Divergence: 2.839269e-05
+SB3 Clip Fraction: 0
+Policy Update Magnitude: 0.0817
+Value Function Update Magnitude: 0.1080
+
+Collected Steps/Second: 156,238
+Overall Steps/Second: 46,023
+
+Collection Time: 0.6743
+ - Policy Infer Time: 0.4167
+ - Env Step Time: 0.2256
+Consumption Time: 1.6147
+ - PPO Learn Time: 1.2852
+Collect-Consume Overlap Time: 0
+Total Iteration Time: 2.2889
+
+Cumulative Model Updates: 81
+Cumulative Timesteps: 2,899,456
+
+Timesteps Collected: 105,344
+============================================
+
+
+Collecting timesteps...
+Concatenating timesteps...
+Adding experience...
+Learning...
+Calling iteration callback...
+
+
+============================================
+ITERATION COMPLETED:
+
+Average Episode Reward: 0.0035
+Average Step Reward: 1.191233e-05
+Policy Entropy: 4.4986
+Value Function Loss: 0.0019
+
+Mean KL Divergence: 3.669134e-05
+SB3 Clip Fraction: 0
+Policy Update Magnitude: 0.0852
+Value Function Update Magnitude: 0.0842
+
+Collected Steps/Second: 154,649
+Overall Steps/Second: 46,911
+
+Collection Time: 0.6597
+ - Policy Infer Time: 0.3970
+ - Env Step Time: 0.2276
+Consumption Time: 1.5150
+ - PPO Learn Time: 1.2174
+Collect-Consume Overlap Time: 0
+Total Iteration Time: 2.1747
+
+Cumulative Model Updates: 84
+Cumulative Timesteps: 3,001,472
+
+Timesteps Collected: 102,016
+============================================
+
+
+Learner: Timestep limit of 3000000 reached, stopping
+	Stopping agents...

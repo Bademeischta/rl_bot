@@ -1,0 +1,57 @@
+{
+  "_comment": "Phase 4: gemeinsames Padding-Modell für 1v1/2v2/3v3. Der Mix wird nach Eval-Metrik angepasst, nicht nach festem Step-Plan (Bauplan §9). team_spirit ab Plateau schrittweise anheben.",
+  "env": {
+    "tick_skip": 8,
+    "max_players": 3,
+    "action_stack_size": 5,
+    "no_touch_timeout_secs": 30.0,
+    "game_timeout_secs": 300.0,
+    "mode_mix": [2.0, 1.0, 1.0]
+  },
+  "rewards": {
+    "goal": 10.0,
+    "concede": 10.0,
+    "touch_ball_to_goal_accel": 1.0,
+    "offensive_potential_krc": 1.0,
+    "dist_weighted_align_krc": 0.5,
+    "velocity_player_to_ball": 0.1,
+    "save_boost": 0.3,
+    "in_air": 0.02,
+    "team_spirit": 0.2
+  },
+  "state_setters": {
+    "kickoff": 2.0,
+    "random": 2.0,
+    "aerial": 0.5,
+    "dribble": 0.5,
+    "wall_play": 0.5,
+    "recovery": 0.5,
+    "defense": 1.0
+  },
+  "learner": {
+    "num_threads": 16,
+    "num_games_per_thread": 64,
+    "device": "cuda",
+    "timestep_limit": 0,
+    "timesteps_per_iteration": 100000,
+    "timesteps_per_save": 25000000,
+    "checkpoints_to_keep": 10,
+    "checkpoint_folder": "runs/lucy_multimode/checkpoints",
+    "policy_layer_sizes": [1024, 1024, 512, 512],
+    "critic_layer_sizes": [1024, 1024, 512, 512],
+    "ppo_epochs": 2,
+    "ppo_batch_size": 100000,
+    "ppo_mini_batch_size": 50000,
+    "ent_coef": 0.01,
+    "policy_lr": 0.0002,
+    "critic_lr": 0.0002,
+    "gae_gamma": 0.9954
+  },
+  "metrics": {
+    "send_metrics": false,
+    "run": "lucy_multimode",
+    "skill_tracker": true,
+    "skill_timesteps_per_version": 500000000,
+    "skill_max_versions": 20
+  }
+}

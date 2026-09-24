@@ -1,0 +1,13 @@
+[settings]
+name = "Lucy (RLbot)"
+agent_id = "rlbot/lucy"
+run_command = "..\\..\\.venv\\Scripts\\python.exe bot.py"
+run_command_linux = "../../.venv/bin/python bot.py"
+# Selbst trainierte Policy, Inferenz auf der CPU
+hivemind = false
+
+[details]
+developer = "silas"
+description = "Selbst trainierter RL-Bot (RLGymPPO_CPP, Lucy-nahe Rewards)"
+language = "python"
+tags = ["ml", "1v1", "2v2", "3v3"]

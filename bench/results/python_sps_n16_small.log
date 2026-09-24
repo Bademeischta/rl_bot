@@ -1,0 +1,987 @@
+Using device cuda:0
+Initializing processes...
+Initializing PPO...
+Trainable Parameters:
+Component  Count     
+--------------------
+Policy     199002    
+Critic     176129    
+--------------------
+Total      375131    
+Current Policy Learning Rate: 0.0003
+Current Critic Learning Rate: 0.0003
+Learner successfully initialized!
+Press (p) to pause (c) to checkpoint, (q) to checkpoint and quit (after next iteration)
+
+--------BEGIN ITERATION REPORT--------
+Policy Reward: 0,00388
+Policy Entropy: 4,49899
+Value Function Loss: nan
+
+Mean KL Divergence: 0,00000
+SB3 Clip Fraction: 0,00000
+Policy Update Magnitude: 0,10267
+Value Function Update Magnitude: 0,10897
+
+Collected Steps per Second: 11.768,74069
+Overall Steps per Second: 4.661,14340
+
+Timestep Collection Time: 8,49811
+Timestep Consumption Time: 12,95843
+PPO Batch Consumption Time: 11,78353
+Total Iteration Time: 21,45654
+
+Cumulative Model Updates: 1
+Cumulative Timesteps: 100.012
+
+Timesteps Collected: 100.012
+--------END ITERATION REPORT--------
+
+
+--------BEGIN ITERATION REPORT--------
+Policy Reward: 0,01043
+Policy Entropy: 4,49899
+Value Function Loss: 0,02102
+
+Mean KL Divergence: 0,00001
+SB3 Clip Fraction: 0,00000
+Policy Update Magnitude: 0,15678
+Value Function Update Magnitude: 0,10489
+
+Collected Steps per Second: 15.087,11313
+Overall Steps per Second: 12.734,17579
+
+Timestep Collection Time: 6,62844
+Timestep Consumption Time: 1,22476
+PPO Batch Consumption Time: 0,04113
+Total Iteration Time: 7,85320
+
+Cumulative Model Updates: 3
+Cumulative Timesteps: 200.016
+
+Timesteps Collected: 100.004
+--------END ITERATION REPORT--------
+
+
+--------BEGIN ITERATION REPORT--------
+Policy Reward: 0,03110
+Policy Entropy: 4,49897
+Value Function Loss: 0,01610
+
+Mean KL Divergence: 0,00002
+SB3 Clip Fraction: 0,00000
+Policy Update Magnitude: 0,13154
+Value Function Update Magnitude: 0,09889
+
+Collected Steps per Second: 15.119,86601
+Overall Steps per Second: 12.734,86019
+
+Timestep Collection Time: 6,61395
+Timestep Consumption Time: 1,23867
+PPO Batch Consumption Time: 0,04269
+Total Iteration Time: 7,85262
+
+Cumulative Model Updates: 5
+Cumulative Timesteps: 300.018
+
+Timesteps Collected: 100.002
+--------END ITERATION REPORT--------
+
+
+--------BEGIN ITERATION REPORT--------
+Policy Reward: 0,00533
+Policy Entropy: 4,49892
+Value Function Loss: 0,01103
+
+Mean KL Divergence: 0,00003
+SB3 Clip Fraction: 0,00000
+Policy Update Magnitude: 0,15476
+Value Function Update Magnitude: 0,13216
+
+Collected Steps per Second: 14.930,05134
+Overall Steps per Second: 12.578,64103
+
+Timestep Collection Time: 6,69857
+Timestep Consumption Time: 1,25221
+PPO Batch Consumption Time: 0,04116
+Total Iteration Time: 7,95078
+
+Cumulative Model Updates: 8
+Cumulative Timesteps: 400.028
+
+Timesteps Collected: 100.010
+--------END ITERATION REPORT--------
+
+
+--------BEGIN ITERATION REPORT--------
+Policy Reward: 0,01710
+Policy Entropy: 4,49886
+Value Function Loss: 0,01068
+
+Mean KL Divergence: 0,00003
+SB3 Clip Fraction: 0,00000
+Policy Update Magnitude: 0,13429
+Value Function Update Magnitude: 0,11081
+
+Collected Steps per Second: 15.113,63357
+Overall Steps per Second: 12.877,25753
+
+Timestep Collection Time: 6,61707
+Timestep Consumption Time: 1,14918
+PPO Batch Consumption Time: 0,04144
+Total Iteration Time: 7,76625
+
+Cumulative Model Updates: 11
+Cumulative Timesteps: 500.036
+
+Timesteps Collected: 100.008
+--------END ITERATION REPORT--------
+
+
+--------BEGIN ITERATION REPORT--------
+Policy Reward: -0,00245
+Policy Entropy: 4,49880
+Value Function Loss: 0,01237
+
+Mean KL Divergence: 0,00003
+SB3 Clip Fraction: 0,00000
+Policy Update Magnitude: 0,12585
+Value Function Update Magnitude: 0,12139
+
+Collected Steps per Second: 14.961,33542
+Overall Steps per Second: 12.605,60608
+
+Timestep Collection Time: 6,68470
+Timestep Consumption Time: 1,24923
+PPO Batch Consumption Time: 0,04171
+Total Iteration Time: 7,93393
+
+Cumulative Model Updates: 14
+Cumulative Timesteps: 600.048
+
+Timesteps Collected: 100.012
+--------END ITERATION REPORT--------
+
+
+--------BEGIN ITERATION REPORT--------
+Policy Reward: 0,00202
+Policy Entropy: 4,49876
+Value Function Loss: 0,00628
+
+Mean KL Divergence: 0,00002
+SB3 Clip Fraction: 0,00000
+Policy Update Magnitude: 0,11451
+Value Function Update Magnitude: 0,12545
+
+Collected Steps per Second: 15.030,77187
+Overall Steps per Second: 12.658,83192
+
+Timestep Collection Time: 6,65328
+Timestep Consumption Time: 1,24665
+PPO Batch Consumption Time: 0,04042
+Total Iteration Time: 7,89994
+
+Cumulative Model Updates: 17
+Cumulative Timesteps: 700.052
+
+Timesteps Collected: 100.004
+--------END ITERATION REPORT--------
+
+
+--------BEGIN ITERATION REPORT--------
+Policy Reward: 0,01057
+Policy Entropy: 4,49874
+Value Function Loss: 0,00660
+
+Mean KL Divergence: 0,00002
+SB3 Clip Fraction: 0,00000
+Policy Update Magnitude: 0,10580
+Value Function Update Magnitude: 0,11297
+
+Collected Steps per Second: 15.004,66675
+Overall Steps per Second: 12.623,54442
+
+Timestep Collection Time: 6,66459
+Timestep Consumption Time: 1,25711
+PPO Batch Consumption Time: 0,04252
+Total Iteration Time: 7,92171
+
+Cumulative Model Updates: 20
+Cumulative Timesteps: 800.052
+
+Timesteps Collected: 100.000
+--------END ITERATION REPORT--------
+
+
+--------BEGIN ITERATION REPORT--------
+Policy Reward: 0,04980
+Policy Entropy: 4,49873
+Value Function Loss: 0,00644
+
+Mean KL Divergence: 0,00001
+SB3 Clip Fraction: 0,00000
+Policy Update Magnitude: 0,09309
+Value Function Update Magnitude: 0,10799
+
+Collected Steps per Second: 15.062,54971
+Overall Steps per Second: 12.683,00704
+
+Timestep Collection Time: 6,63925
+Timestep Consumption Time: 1,24563
+PPO Batch Consumption Time: 0,04153
+Total Iteration Time: 7,88488
+
+Cumulative Model Updates: 23
+Cumulative Timesteps: 900.056
+
+Timesteps Collected: 100.004
+--------END ITERATION REPORT--------
+
+
+--------BEGIN ITERATION REPORT--------
+Policy Reward: 0,00130
+Policy Entropy: 4,49875
+Value Function Loss: 0,01393
+
+Mean KL Divergence: 0,00001
+SB3 Clip Fraction: 0,00000
+Policy Update Magnitude: 0,09360
+Value Function Update Magnitude: 0,12567
+
+Collected Steps per Second: 15.076,41259
+Overall Steps per Second: 12.707,51061
+
+Timestep Collection Time: 6,63301
+Timestep Consumption Time: 1,23651
+PPO Batch Consumption Time: 0,04184
+Total Iteration Time: 7,86952
+
+Cumulative Model Updates: 26
+Cumulative Timesteps: 1.000.058
+
+Timesteps Collected: 100.002
+--------END ITERATION REPORT--------
+
+
+--------BEGIN ITERATION REPORT--------
+Policy Reward: 0,01457
+Policy Entropy: 4,49877
+Value Function Loss: 0,01816
+
+Mean KL Divergence: 0,00001
+SB3 Clip Fraction: 0,00000
+Policy Update Magnitude: 0,10692
+Value Function Update Magnitude: 0,15627
+
+Collected Steps per Second: 15.065,43289
+Overall Steps per Second: 12.699,56763
+
+Timestep Collection Time: 6,63798
+Timestep Consumption Time: 1,23662
+PPO Batch Consumption Time: 0,04085
+Total Iteration Time: 7,87460
+
+Cumulative Model Updates: 29
+Cumulative Timesteps: 1.100.062
+
+Timesteps Collected: 100.004
+--------END ITERATION REPORT--------
+
+
+--------BEGIN ITERATION REPORT--------
+Policy Reward: 0,00224
+Policy Entropy: 4,49878
+Value Function Loss: 0,01951
+
+Mean KL Divergence: 0,00002
+SB3 Clip Fraction: 0,00000
+Policy Update Magnitude: 0,12016
+Value Function Update Magnitude: 0,18139
+
+Collected Steps per Second: 14.969,77373
+Overall Steps per Second: 12.648,51281
+
+Timestep Collection Time: 6,68066
+Timestep Consumption Time: 1,22604
+PPO Batch Consumption Time: 0,04156
+Total Iteration Time: 7,90670
+
+Cumulative Model Updates: 32
+Cumulative Timesteps: 1.200.070
+
+Timesteps Collected: 100.008
+--------END ITERATION REPORT--------
+
+
+--------BEGIN ITERATION REPORT--------
+Policy Reward: -0,00095
+Policy Entropy: 4,49875
+Value Function Loss: 0,01959
+
+Mean KL Divergence: 0,00002
+SB3 Clip Fraction: 0,00000
+Policy Update Magnitude: 0,12691
+Value Function Update Magnitude: 0,20490
+
+Collected Steps per Second: 14.856,57284
+Overall Steps per Second: 12.548,91230
+
+Timestep Collection Time: 6,73184
+Timestep Consumption Time: 1,23794
+PPO Batch Consumption Time: 0,04071
+Total Iteration Time: 7,96977
+
+Cumulative Model Updates: 35
+Cumulative Timesteps: 1.300.082
+
+Timesteps Collected: 100.012
+--------END ITERATION REPORT--------
+
+
+--------BEGIN ITERATION REPORT--------
+Policy Reward: 0,01474
+Policy Entropy: 4,49869
+Value Function Loss: 0,01751
+
+Mean KL Divergence: 0,00003
+SB3 Clip Fraction: 0,00000
+Policy Update Magnitude: 0,12649
+Value Function Update Magnitude: 0,21908
+
+Collected Steps per Second: 14.890,58069
+Overall Steps per Second: 12.585,94508
+
+Timestep Collection Time: 6,71646
+Timestep Consumption Time: 1,22986
+PPO Batch Consumption Time: 0,04185
+Total Iteration Time: 7,94632
+
+Cumulative Model Updates: 38
+Cumulative Timesteps: 1.400.094
+
+Timesteps Collected: 100.012
+--------END ITERATION REPORT--------
+
+
+--------BEGIN ITERATION REPORT--------
+Policy Reward: 0,02941
+Policy Entropy: 4,49863
+Value Function Loss: 0,01320
+
+Mean KL Divergence: 0,00003
+SB3 Clip Fraction: 0,00000
+Policy Update Magnitude: 0,12479
+Value Function Update Magnitude: 0,21461
+
+Collected Steps per Second: 14.716,50443
+Overall Steps per Second: 12.432,98398
+
+Timestep Collection Time: 6,79523
+Timestep Consumption Time: 1,24805
+PPO Batch Consumption Time: 0,04208
+Total Iteration Time: 8,04328
+
+Cumulative Model Updates: 41
+Cumulative Timesteps: 1.500.096
+
+Timesteps Collected: 100.002
+--------END ITERATION REPORT--------
+
+
+--------BEGIN ITERATION REPORT--------
+Policy Reward: 0,03490
+Policy Entropy: 4,49859
+Value Function Loss: 0,00880
+
+Mean KL Divergence: 0,00002
+SB3 Clip Fraction: 0,00000
+Policy Update Magnitude: 0,11533
+Value Function Update Magnitude: 0,16753
+
+Collected Steps per Second: 14.859,86346
+Overall Steps per Second: 12.506,06824
+
+Timestep Collection Time: 6,73008
+Timestep Consumption Time: 1,26668
+PPO Batch Consumption Time: 0,04164
+Total Iteration Time: 7,99676
+
+Cumulative Model Updates: 44
+Cumulative Timesteps: 1.600.104
+
+Timesteps Collected: 100.008
+--------END ITERATION REPORT--------
+
+
+--------BEGIN ITERATION REPORT--------
+Policy Reward: 0,00176
+Policy Entropy: 4,49857
+Value Function Loss: 0,00583
+
+Mean KL Divergence: 0,00002
+SB3 Clip Fraction: 0,00000
+Policy Update Magnitude: 0,10180
+Value Function Update Magnitude: 0,11195
+
+Collected Steps per Second: 14.735,32433
+Overall Steps per Second: 12.450,42261
+
+Timestep Collection Time: 6,78723
+Timestep Consumption Time: 1,24559
+PPO Batch Consumption Time: 0,04087
+Total Iteration Time: 8,03282
+
+Cumulative Model Updates: 47
+Cumulative Timesteps: 1.700.116
+
+Timesteps Collected: 100.012
+--------END ITERATION REPORT--------
+
+
+--------BEGIN ITERATION REPORT--------
+Policy Reward: 0,00403
+Policy Entropy: 4,49856
+Value Function Loss: 0,00903
+
+Mean KL Divergence: 0,00002
+SB3 Clip Fraction: 0,00000
+Policy Update Magnitude: 0,09269
+Value Function Update Magnitude: 0,10058
+
+Collected Steps per Second: 15.233,87867
+Overall Steps per Second: 12.804,31453
+
+Timestep Collection Time: 6,56458
+Timestep Consumption Time: 1,24560
+PPO Batch Consumption Time: 0,04206
+Total Iteration Time: 7,81018
+
+Cumulative Model Updates: 50
+Cumulative Timesteps: 1.800.120
+
+Timesteps Collected: 100.004
+--------END ITERATION REPORT--------
+
+
+--------BEGIN ITERATION REPORT--------
+Policy Reward: -0,03381
+Policy Entropy: 4,49859
+Value Function Loss: 0,01121
+
+Mean KL Divergence: 0,00001
+SB3 Clip Fraction: 0,00000
+Policy Update Magnitude: 0,09409
+Value Function Update Magnitude: 0,10082
+
+Collected Steps per Second: 14.901,36717
+Overall Steps per Second: 12.584,05714
+
+Timestep Collection Time: 6,71133
+Timestep Consumption Time: 1,23587
+PPO Batch Consumption Time: 0,04112
+Total Iteration Time: 7,94720
+
+Cumulative Model Updates: 53
+Cumulative Timesteps: 1.900.128
+
+Timesteps Collected: 100.008
+--------END ITERATION REPORT--------
+
+
+--------BEGIN ITERATION REPORT--------
+Policy Reward: 0,00316
+Policy Entropy: 4,49862
+Value Function Loss: 0,01173
+
+Mean KL Divergence: 0,00001
+SB3 Clip Fraction: 0,00000
+Policy Update Magnitude: 0,10277
+Value Function Update Magnitude: 0,11554
+
+Collected Steps per Second: 15.001,01518
+Overall Steps per Second: 12.664,89493
+
+Timestep Collection Time: 6,66728
+Timestep Consumption Time: 1,22982
+PPO Batch Consumption Time: 0,04089
+Total Iteration Time: 7,89710
+
+Cumulative Model Updates: 56
+Cumulative Timesteps: 2.000.144
+
+Timesteps Collected: 100.016
+--------END ITERATION REPORT--------
+
+
+--------BEGIN ITERATION REPORT--------
+Policy Reward: 0,01112
+Policy Entropy: 4,49864
+Value Function Loss: 0,01009
+
+Mean KL Divergence: 0,00002
+SB3 Clip Fraction: 0,00000
+Policy Update Magnitude: 0,10359
+Value Function Update Magnitude: 0,11954
+
+Collected Steps per Second: 15.075,09972
+Overall Steps per Second: 12.730,27057
+
+Timestep Collection Time: 6,63385
+Timestep Consumption Time: 1,22191
+PPO Batch Consumption Time: 0,04147
+Total Iteration Time: 7,85576
+
+Cumulative Model Updates: 59
+Cumulative Timesteps: 2.100.150
+
+Timesteps Collected: 100.006
+--------END ITERATION REPORT--------
+
+
+--------BEGIN ITERATION REPORT--------
+Policy Reward: 0,00282
+Policy Entropy: 4,49862
+Value Function Loss: 0,00619
+
+Mean KL Divergence: 0,00002
+SB3 Clip Fraction: 0,00000
+Policy Update Magnitude: 0,09793
+Value Function Update Magnitude: 0,10569
+
+Collected Steps per Second: 15.145,25834
+Overall Steps per Second: 12.808,97387
+
+Timestep Collection Time: 6,60299
+Timestep Consumption Time: 1,20435
+PPO Batch Consumption Time: 0,04127
+Total Iteration Time: 7,80734
+
+Cumulative Model Updates: 62
+Cumulative Timesteps: 2.200.154
+
+Timesteps Collected: 100.004
+--------END ITERATION REPORT--------
+
+
+--------BEGIN ITERATION REPORT--------
+Policy Reward: 0,08701
+Policy Entropy: 4,49859
+Value Function Loss: 0,00650
+
+Mean KL Divergence: 0,00002
+SB3 Clip Fraction: 0,00000
+Policy Update Magnitude: 0,09327
+Value Function Update Magnitude: 0,09684
+
+Collected Steps per Second: 14.925,96145
+Overall Steps per Second: 12.614,17779
+
+Timestep Collection Time: 6,70014
+Timestep Consumption Time: 1,22793
+PPO Batch Consumption Time: 0,04124
+Total Iteration Time: 7,92806
+
+Cumulative Model Updates: 65
+Cumulative Timesteps: 2.300.160
+
+Timesteps Collected: 100.006
+--------END ITERATION REPORT--------
+
+
+--------BEGIN ITERATION REPORT--------
+Policy Reward: 0,00835
+Policy Entropy: 4,49855
+Value Function Loss: 0,00417
+
+Mean KL Divergence: 0,00002
+SB3 Clip Fraction: 0,00000
+Policy Update Magnitude: 0,08754
+Value Function Update Magnitude: 0,09178
+
+Collected Steps per Second: 14.940,04004
+Overall Steps per Second: 12.569,14573
+
+Timestep Collection Time: 6,69423
+Timestep Consumption Time: 1,26272
+PPO Batch Consumption Time: 0,04131
+Total Iteration Time: 7,95694
+
+Cumulative Model Updates: 68
+Cumulative Timesteps: 2.400.172
+
+Timesteps Collected: 100.012
+--------END ITERATION REPORT--------
+
+
+--------BEGIN ITERATION REPORT--------
+Policy Reward: -0,04907
+Policy Entropy: 4,49852
+Value Function Loss: 0,00452
+
+Mean KL Divergence: 0,00001
+SB3 Clip Fraction: 0,00000
+Policy Update Magnitude: 0,08144
+Value Function Update Magnitude: 0,08498
+
+Collected Steps per Second: 14.939,88252
+Overall Steps per Second: 12.583,53751
+
+Timestep Collection Time: 6,69376
+Timestep Consumption Time: 1,25345
+PPO Batch Consumption Time: 0,04151
+Total Iteration Time: 7,94721
+
+Cumulative Model Updates: 71
+Cumulative Timesteps: 2.500.176
+
+Timesteps Collected: 100.004
+--------END ITERATION REPORT--------
+
+
+--------BEGIN ITERATION REPORT--------
+Policy Reward: 0,01562
+Policy Entropy: 4,49849
+Value Function Loss: 0,00603
+
+Mean KL Divergence: 0,00001
+SB3 Clip Fraction: 0,00000
+Policy Update Magnitude: 0,07866
+Value Function Update Magnitude: 0,08284
+
+Collected Steps per Second: 15.065,57688
+Overall Steps per Second: 12.694,34672
+
+Timestep Collection Time: 6,63778
+Timestep Consumption Time: 1,23990
+PPO Batch Consumption Time: 0,04121
+Total Iteration Time: 7,87768
+
+Cumulative Model Updates: 74
+Cumulative Timesteps: 2.600.178
+
+Timesteps Collected: 100.002
+--------END ITERATION REPORT--------
+
+
+--------BEGIN ITERATION REPORT--------
+Policy Reward: 0,01823
+Policy Entropy: 4,49848
+Value Function Loss: 0,00610
+
+Mean KL Divergence: 0,00001
+SB3 Clip Fraction: 0,00000
+Policy Update Magnitude: 0,08116
+Value Function Update Magnitude: 0,08567
+
+Collected Steps per Second: 14.994,78884
+Overall Steps per Second: 12.661,95411
+
+Timestep Collection Time: 6,66992
+Timestep Consumption Time: 1,22886
+PPO Batch Consumption Time: 0,04212
+Total Iteration Time: 7,89878
+
+Cumulative Model Updates: 77
+Cumulative Timesteps: 2.700.192
+
+Timesteps Collected: 100.014
+--------END ITERATION REPORT--------
+
+
+--------BEGIN ITERATION REPORT--------
+Policy Reward: -0,02491
+Policy Entropy: 4,49851
+Value Function Loss: 0,00682
+
+Mean KL Divergence: 0,00001
+SB3 Clip Fraction: 0,00000
+Policy Update Magnitude: 0,09171
+Value Function Update Magnitude: 0,09362
+
+Collected Steps per Second: 15.061,97545
+Overall Steps per Second: 12.685,90017
+
+Timestep Collection Time: 6,63977
+Timestep Consumption Time: 1,24363
+PPO Batch Consumption Time: 0,04129
+Total Iteration Time: 7,88340
+
+Cumulative Model Updates: 80
+Cumulative Timesteps: 2.800.200
+
+Timesteps Collected: 100.008
+--------END ITERATION REPORT--------
+
+
+--------BEGIN ITERATION REPORT--------
+Policy Reward: 0,00207
+Policy Entropy: 4,49854
+Value Function Loss: 0,00605
+
+Mean KL Divergence: 0,00001
+SB3 Clip Fraction: 0,00000
+Policy Update Magnitude: 0,08863
+Value Function Update Magnitude: 0,09641
+
+Collected Steps per Second: 15.102,03547
+Overall Steps per Second: 12.721,47939
+
+Timestep Collection Time: 6,62176
+Timestep Consumption Time: 1,23912
+PPO Batch Consumption Time: 0,04145
+Total Iteration Time: 7,86088
+
+Cumulative Model Updates: 83
+Cumulative Timesteps: 2.900.202
+
+Timesteps Collected: 100.002
+--------END ITERATION REPORT--------
+
+
+--------BEGIN ITERATION REPORT--------
+Policy Reward: 0,00510
+Policy Entropy: 4,49857
+Value Function Loss: 0,00652
+
+Mean KL Divergence: 0,00001
+SB3 Clip Fraction: 0,00000
+Policy Update Magnitude: 0,09141
+Value Function Update Magnitude: 0,10139
+
+Collected Steps per Second: 15.037,52525
+Overall Steps per Second: 12.713,59761
+
+Timestep Collection Time: 6,65083
+Timestep Consumption Time: 1,21571
+PPO Batch Consumption Time: 0,04194
+Total Iteration Time: 7,86654
+
+Cumulative Model Updates: 86
+Cumulative Timesteps: 3.000.214
+
+Timesteps Collected: 100.012
+--------END ITERATION REPORT--------
+
+
+--------BEGIN ITERATION REPORT--------
+Policy Reward: 0,00637
+Policy Entropy: 4,49860
+Value Function Loss: 0,00529
+
+Mean KL Divergence: 0,00001
+SB3 Clip Fraction: 0,00000
+Policy Update Magnitude: 0,09460
+Value Function Update Magnitude: 0,09531
+
+Collected Steps per Second: 15.067,29190
+Overall Steps per Second: 12.677,58093
+
+Timestep Collection Time: 6,63716
+Timestep Consumption Time: 1,25110
+PPO Batch Consumption Time: 0,04173
+Total Iteration Time: 7,88826
+
+Cumulative Model Updates: 89
+Cumulative Timesteps: 3.100.218
+
+Timesteps Collected: 100.004
+--------END ITERATION REPORT--------
+
+
+--------BEGIN ITERATION REPORT--------
+Policy Reward: 0,00827
+Policy Entropy: 4,49863
+Value Function Loss: 0,00232
+
+Mean KL Divergence: 0,00001
+SB3 Clip Fraction: 0,00000
+Policy Update Magnitude: 0,08519
+Value Function Update Magnitude: 0,09450
+
+Collected Steps per Second: 14.786,33603
+Overall Steps per Second: 12.482,73097
+
+Timestep Collection Time: 6,76381
+Timestep Consumption Time: 1,24822
+PPO Batch Consumption Time: 0,04076
+Total Iteration Time: 8,01203
+
+Cumulative Model Updates: 92
+Cumulative Timesteps: 3.200.230
+
+Timesteps Collected: 100.012
+--------END ITERATION REPORT--------
+
+
+--------BEGIN ITERATION REPORT--------
+Policy Reward: 0,00176
+Policy Entropy: 4,49865
+Value Function Loss: 0,00370
+
+Mean KL Divergence: 0,00001
+SB3 Clip Fraction: 0,00000
+Policy Update Magnitude: 0,07346
+Value Function Update Magnitude: 0,09486
+
+Collected Steps per Second: 15.184,18888
+Overall Steps per Second: 12.967,74139
+
+Timestep Collection Time: 6,58619
+Timestep Consumption Time: 1,12571
+PPO Batch Consumption Time: 0,04088
+Total Iteration Time: 7,71191
+
+Cumulative Model Updates: 95
+Cumulative Timesteps: 3.300.236
+
+Timesteps Collected: 100.006
+--------END ITERATION REPORT--------
+
+
+--------BEGIN ITERATION REPORT--------
+Policy Reward: 0,02042
+Policy Entropy: 4,49865
+Value Function Loss: 0,00380
+
+Mean KL Divergence: 0,00001
+SB3 Clip Fraction: 0,00000
+Policy Update Magnitude: 0,06946
+Value Function Update Magnitude: 0,08605
+
+Collected Steps per Second: 14.865,53102
+Overall Steps per Second: 12.562,53886
+
+Timestep Collection Time: 6,72778
+Timestep Consumption Time: 1,23335
+PPO Batch Consumption Time: 0,04161
+Total Iteration Time: 7,96113
+
+Cumulative Model Updates: 98
+Cumulative Timesteps: 3.400.248
+
+Timesteps Collected: 100.012
+--------END ITERATION REPORT--------
+
+
+--------BEGIN ITERATION REPORT--------
+Policy Reward: 0,00904
+Policy Entropy: 4,49866
+Value Function Loss: 0,00871
+
+Mean KL Divergence: 0,00001
+SB3 Clip Fraction: 0,00000
+Policy Update Magnitude: 0,08027
+Value Function Update Magnitude: 0,08154
+
+Collected Steps per Second: 14.909,26848
+Overall Steps per Second: 12.538,62217
+
+Timestep Collection Time: 6,70818
+Timestep Consumption Time: 1,26830
+PPO Batch Consumption Time: 0,04114
+Total Iteration Time: 7,97647
+
+Cumulative Model Updates: 101
+Cumulative Timesteps: 3.500.262
+
+Timesteps Collected: 100.014
+--------END ITERATION REPORT--------
+
+
+--------BEGIN ITERATION REPORT--------
+Policy Reward: -0,03183
+Policy Entropy: 4,49867
+Value Function Loss: 0,00878
+
+Mean KL Divergence: 0,00001
+SB3 Clip Fraction: 0,00000
+Policy Update Magnitude: 0,08735
+Value Function Update Magnitude: 0,09796
+
+Collected Steps per Second: 15.115,38377
+Overall Steps per Second: 12.777,48085
+
+Timestep Collection Time: 6,61617
+Timestep Consumption Time: 1,21056
+PPO Batch Consumption Time: 0,04122
+Total Iteration Time: 7,82674
+
+Cumulative Model Updates: 104
+Cumulative Timesteps: 3.600.268
+
+Timesteps Collected: 100.006
+--------END ITERATION REPORT--------
+
+
+--------BEGIN ITERATION REPORT--------
+Policy Reward: 0,00108
+Policy Entropy: 4,49869
+Value Function Loss: 0,00921
+
+Mean KL Divergence: 0,00001
+SB3 Clip Fraction: 0,00000
+Policy Update Magnitude: 0,09766
+Value Function Update Magnitude: 0,11350
+
+Collected Steps per Second: 14.933,64605
+Overall Steps per Second: 12.589,63246
+
+Timestep Collection Time: 6,69709
+Timestep Consumption Time: 1,24690
+PPO Batch Consumption Time: 0,04094
+Total Iteration Time: 7,94400
+
+Cumulative Model Updates: 107
+Cumulative Timesteps: 3.700.280
+
+Timesteps Collected: 100.012
+--------END ITERATION REPORT--------
+
+
+--------BEGIN ITERATION REPORT--------
+Policy Reward: 0,01519
+Policy Entropy: 4,49871
+Value Function Loss: 0,00659
+
+Mean KL Divergence: 0,00001
+SB3 Clip Fraction: 0,00000
+Policy Update Magnitude: 0,09570
+Value Function Update Magnitude: 0,10821
+
+Collected Steps per Second: 14.959,21064
+Overall Steps per Second: 12.632,26858
+
+Timestep Collection Time: 6,68498
+Timestep Consumption Time: 1,23141
+PPO Batch Consumption Time: 0,04135
+Total Iteration Time: 7,91639
+
+Cumulative Model Updates: 110
+Cumulative Timesteps: 3.800.282
+
+Timesteps Collected: 100.002
+--------END ITERATION REPORT--------
+
+
+--------BEGIN ITERATION REPORT--------
+WARNING: CALLING ENV.RESET() ONE EXTRA TIME TO DETERMINE STATE AND ACTION SPACES
+Received request for env shapes, returning:
+- Observations shape: (172,)
+- Number of actions: 90.0
+- Action space type: 0.0 (Discrete)
+--------------------
+WARNING: CALLING ENV.RESET() ONE EXTRA TIME TO DETERMINE STATE AND ACTION SPACES
+WARNING: CALLING ENV.RESET() ONE EXTRA TIME TO DETERMINE STATE AND ACTION SPACES
+WARNING: CALLING ENV.RESET() ONE EXTRA TIME TO DETERMINE STATE AND ACTION SPACES
+WARNING: CALLING ENV.RESET() ONE EXTRA TIME TO DETERMINE STATE AND ACTION SPACES
+WARNING: CALLING ENV.RESET() ONE EXTRA TIME TO DETERMINE STATE AND ACTION SPACES
+WARNING: CALLING ENV.RESET() ONE EXTRA TIME TO DETERMINE STATE AND ACTION SPACES
+WARNING: CALLING ENV.RESET() ONE EXTRA TIME TO DETERMINE STATE AND ACTION SPACES
+WARNING: CALLING ENV.RESET() ONE EXTRA TIME TO DETERMINE STATE AND ACTION SPACES
+WARNING: CALLING ENV.RESET() ONE EXTRA TIME TO DETERMINE STATE AND ACTION SPACES
+WARNING: CALLING ENV.RESET() ONE EXTRA TIME TO DETERMINE STATE AND ACTION SPACES
+WARNING: CALLING ENV.RESET() ONE EXTRA TIME TO DETERMINE STATE AND ACTION SPACES
+WARNING: CALLING ENV.RESET() ONE EXTRA TIME TO DETERMINE STATE AND ACTION SPACES
+WARNING: CALLING ENV.RESET() ONE EXTRA TIME TO DETERMINE STATE AND ACTION SPACES
+WARNING: CALLING ENV.RESET() ONE EXTRA TIME TO DETERMINE STATE AND ACTION SPACES
+WARNING: CALLING ENV.RESET() ONE EXTRA TIME TO DETERMINE STATE AND ACTION SPACES
