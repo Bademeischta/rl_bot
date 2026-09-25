@@ -311,7 +311,7 @@ import subprocess  # noqa: E402
 
 BUILD = Path(os.environ.get("RLBOT_BUILD_DIR", str(ROOT / "build" / "cpp_cu128")))
 WRITER = BUILD / ("write_metrics_csv.exe" if os.name == "nt" else "write_metrics_csv")
-needs_writer = pytest.mark.skipif(not WRITER.exists(), reason=f"{WRITER} fehlt (bench\cpp\build.ps1)")
+needs_writer = pytest.mark.skipif(not WRITER.exists(), reason=f"{WRITER} fehlt (bench/cpp/build.ps1)")
 
 
 def _cpp_csv(path: Path, iterations: int, *extra: str) -> None:
@@ -385,3 +385,26 @@ def test_compare_marks_k3_as_a_bundle_of_seven_values(tmp_path, capsys):
     assert "Bündel: 3 Werte" in zs_row
     assert "**Bündel aus 7 Änderungen**" in md and "rewards.in_air" in md
     assert "`learner.ent_coef` 0.01 → 0.004" in md
+
+
+# --- R17: compare.py löst Glob-Muster selbst auf ------------------------------------------
+
+def test_compare_expands_the_glob_pattern_itself_like_under_powershell(tmp_path):
+    """PowerShell übergibt results/exp_* wörtlich an python.exe; subprocess mit Argumentliste
+    macht genau das (keine Shell-Expansion). Zip-Dateien mit gleichem Präfix fallen heraus."""
+    import subprocess
+    make_result(tmp_path / "exp_baseline_x", "baseline", 0.30, 3.58)
+    make_result(tmp_path / "exp_h2_x", "h2_ent_coef_0004", 0.33, 3.40)
+    (tmp_path / "exp_baseline_x.zip").write_bytes(b"PK")
+    (tmp_path / "exp_halb").mkdir()                      # abgebrochener Ordner ohne summary.json
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+    r = subprocess.run([sys.executable, str(ROOT / "tools" / "experiments" / "compare.py"),
+                        str(tmp_path / "exp_*"), "--ladder-games", "0"],
+                       capture_output=True, text=True, encoding="utf-8", env=env)
+    assert r.returncode == 0, r.stderr
+    assert "| baseline (Baseline)" in r.stdout and "| h2_ent_coef_0004" in r.stdout
+    assert "exp_baseline_x.zip" in r.stderr and "exp_halb" in r.stderr   # übersprungen, gemeldet
+
+    r = subprocess.run([sys.executable, str(ROOT / "tools" / "experiments" / "compare.py"),
+                        str(tmp_path / "gibtsnicht_*")], capture_output=True, text=True, encoding="utf-8", env=env)
+    assert r.returncode != 0 and "trifft keinen" in r.stderr

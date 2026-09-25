@@ -133,6 +133,10 @@ Abbruch (Exit 3) ist ein Ergebnis, kein Fehler: `summary.md` nennt den Grund.
 .\.venv\Scripts\python tools\experiments\compare.py results\exp_* --out results\compare.md
 ```
 
+`results\exp_*` löst `compare.py` selbst auf (Windows PowerShell reicht das Muster an
+`python.exe` wörtlich weiter); `results\exp_*.zip` und Ordner ohne `summary.json` werden
+übersprungen und gemeldet (Review R17).
+
 `compare.py` spielt dabei die **gemeinsame Ladder** (alle Experiment-Enden + Baseline-Start +
 Baseline-Ende, jeder gegen jeden, 50 Spiele je Paarung; bei 4 Experimenten 15 Paarungen, einige
 Minuten). `results\compare.md` und `results\joint_ladder.json` zurückgeben. Hauptkriterium ist

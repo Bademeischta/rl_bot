@@ -33,6 +33,10 @@ powershell -ExecutionPolicy Bypass -File tools\experiments\run_experiment.ps1 `
 .\.venv\Scripts\python tools\experiments\compare.py results\exp_* --out results\compare.md
 ```
 
+`results\exp_*` löst `compare.py` selbst auf (Windows PowerShell reicht das Muster an
+`python.exe` wörtlich weiter); `results\exp_*.zip` und Ordner ohne `summary.json` werden
+übersprungen und gemeldet (Review R17).
+
 Dauer pro Lauf: 100 Mio. Steps ÷ lokale SPS. Bei den im Audit gelesenen ~68.000 SPS wären das
 rund 25 Minuten plus Ladder/Duelle (wenige Minuten); die echte Dauer steht in `summary.json`
 (`wall_seconds`) — **lokal nachmessen**, siehe AUDIT.md §0.

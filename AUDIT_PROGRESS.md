@@ -32,7 +32,7 @@ Befundliste aus dem Auftrag.
 | R14 | `run_experiment.ps1`: Start-Checkpoint liegt in der Checkpoint-Rotation | offen | |
 | R15 | `run_experiment.ps1`: Trainer wird hart beendet (`Stop-Process -Force`) | offen | |
 | R16 | `run_experiment.ps1`: End-Checkpoint ohne Vollständigkeitsprüfung | offen | |
-| R17 | Runbook-Vergleichsbefehl verlässt sich auf Glob-Expansion der Shell | offen | |
+| R17 | Runbook-Vergleichsbefehl verlässt sich auf Glob-Expansion der Shell | behoben: `compare.py` löst Muster selbst auf (`glob`), nimmt nur Ordner mit `summary.json`, meldet übersprungene (`exp_*.zip`, halbe Ordner), Muster ohne Treffer = Fehler; Runbook/README erklären es | `test_compare_expands_the_glob_pattern_itself_like_under_powershell` (Argumentliste ohne Shell wie unter PowerShell, mit Zip und halbem Ordner); mit altem `compare.py` rot |
 | R18 | `run_all_checks.ps1`: harte Branch-Prüfung, Folgeschritte auf alten Binaries, Ergebnisordner überschreibbar | offen | |
 | R19 | Nebenbefund (lokal, mit OK des Nutzers): geseedete Szenen verteilten ihre Zufallszahlen in Hash-Reihenfolge von `arena->_cars` (`unordered_set`, adressabhängig) auf die Autos; gleicher Seed ≠ gleiche Startzustände, `EnvFactory_reicht_Seed_…` flackerte (1 von 5) | behoben: Szenen iterieren nach Car-ID, Dribble-Ballführer zieht der geseedete RNG (weiter gleichverteilt); Test ordnet Spieler nach Car-ID zu | `Seed_gleicher_Seed_gibt_gleiche_Autozustaende_unabhaengig_von_der_Speicherreihenfolge` (40 Arenen, beide Reihenfolgen); beide Tests ohne Fix rot, mit Fix 3× grün |
 

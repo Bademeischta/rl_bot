@@ -23,6 +23,7 @@ mit --baseline oder der, dessen Name mit "exp_baseline" beginnt.
 from __future__ import annotations
 
 import argparse
+import glob
 import itertools
 import json
 import math
@@ -300,12 +301,37 @@ def changes_section(experiments: list[dict], baseline: dict) -> str:
     return "\n".join(out)
 
 
+def expand_folders(args: list[str]) -> list[Path]:
+    """Glob-Muster selbst auflösen (Review-Befund R17): Windows PowerShell reicht results/exp_* an
+    native Programme wörtlich weiter. Aus Mustern werden nur Ordner mit summary.json genommen
+    (results/exp_*.zip und halbe Ordner fallen heraus); ein Muster ohne Treffer ist ein Fehler.
+    Explizit genannte Ordner bleiben, wie sie sind (fehlt summary.json, bricht load_experiment ab)."""
+    out: list[Path] = []
+    for arg in args:
+        if any(ch in arg for ch in "*?["):
+            matches = [Path(m) for m in sorted(glob.glob(arg))]
+            dirs = [m for m in matches if m.is_dir() and (m / "summary.json").exists()]
+            skipped = [m.name for m in matches if m not in dirs]
+            if skipped:
+                print(f"compare.py: übersprungen (kein Ergebnisordner): {', '.join(skipped)}", file=sys.stderr)
+            if not dirs:
+                raise SystemExit(f"Muster {arg} trifft keinen Ergebnisordner mit summary.json")
+            out += dirs
+        else:
+            out.append(Path(arg))
+    unique: list[Path] = []
+    for p in out:
+        if all(p.resolve() != q.resolve() for q in unique):
+            unique.append(p)
+    return unique
+
+
 def main() -> int:
     sys.path.insert(0, str(ROOT))
     from eval.ladder import DUEL_EXE  # noqa: E402
 
     ap = argparse.ArgumentParser()
-    ap.add_argument("folders", nargs="+", type=Path)
+    ap.add_argument("folders", nargs="+", help="Ergebnisordner oder Muster wie results/exp_* (löst compare.py selbst auf)")
     ap.add_argument("--baseline", type=Path, default=None)
     ap.add_argument("--out", type=Path, default=None, help="Markdown zusätzlich in Datei schreiben")
     ap.add_argument("--ladder-games", type=int, default=50,
@@ -315,7 +341,7 @@ def main() -> int:
                     help="Ergebnis der gemeinsamen Ladder (Standard: joint_ladder.json neben --out)")
     a = ap.parse_args()
 
-    experiments = [load_experiment(f) for f in a.folders]
+    experiments = [load_experiment(f) for f in expand_folders(a.folders)]
     if a.baseline:
         baseline = load_experiment(a.baseline)
         if not any(e["_folder"] == baseline["_folder"] for e in experiments):
