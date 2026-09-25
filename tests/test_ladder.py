@@ -104,3 +104,45 @@ def test_trueskill_difference_of_8_3_is_about_80_percent():
     denom = math.sqrt(2 * ENV.beta ** 2 + strong.sigma ** 2 + weak.sigma ** 2)
     win_prob = 0.5 * (1 + math.erf(delta_mu / (denom * math.sqrt(2))))
     assert 0.75 < win_prob < 0.95
+
+
+# --- Rating-Schlüssel (Audit M4) -------------------------------------------
+
+def test_rating_key_contains_run_name():
+    from pathlib import Path
+    from eval.ladder import rating_key
+    assert rating_key(Path("runs/lucy_1v1/checkpoints/2704829056/PPO_POLICY.lt")) == "lucy_1v1/2704829056"
+    assert rating_key(Path("runs/lucy_1v1/checkpoints/2704829056")) == "lucy_1v1/2704829056"
+    # gleiche Step-Zahl in zwei Läufen -> zwei Einträge
+    assert (rating_key(Path("runs/sanity/checkpoints/5053568"))
+            != rating_key(Path("runs/archive/lucy_1v1_net1024/checkpoints/5053568")))
+    assert rating_key(Path("runs/archive/lucy_1v1_net1024/checkpoints/5053568")) == "lucy_1v1_net1024/5053568"
+
+
+def test_rating_key_falls_back_to_folder_name():
+    from pathlib import Path
+    from eval.ladder import rating_key
+    assert rating_key(Path("some/where/ckpt_a/PPO_POLICY.lt")) == "ckpt_a"
+    assert rating_key(Path("ckpt_b")) == "ckpt_b"
+
+
+def test_default_ratings_path_is_per_run(tmp_path):
+    from eval.ladder import RATINGS_PATH, default_ratings_path
+    assert default_ratings_path(tmp_path / "runs" / "x") == tmp_path / "runs" / "x" / "ratings.json"
+    assert default_ratings_path(None) == RATINGS_PATH
+
+
+def test_latest_checkpoint_is_numeric_and_per_run(tmp_path, monkeypatch):
+    from deploy.watch import latest_checkpoint
+    run = tmp_path / "runs" / "a"
+    for steps in (999, 1000, 20):
+        d = run / "checkpoints" / str(steps)
+        d.mkdir(parents=True)
+        (d / "PPO_POLICY.lt").write_bytes(b"")
+    other = tmp_path / "runs" / "b" / "checkpoints" / "99999"
+    other.mkdir(parents=True)
+    (other / "PPO_POLICY.lt").write_bytes(b"")
+
+    chosen = latest_checkpoint(run)
+    assert chosen.parent.name == "1000"      # numerisch: 1000 > 999, nicht lexikografisch
+    assert "runs/a" in chosen.as_posix()     # nicht der 99999 aus dem anderen Lauf

@@ -68,11 +68,18 @@ def check_no_other_instance() -> None:
         )
 
 
-def latest_checkpoint() -> Path:
-    candidates = sorted(ROOT.glob("runs/*/checkpoints/*/PPO_POLICY.lt"),
-                        key=lambda p: int(p.parent.name))
+DEFAULT_RUN = ROOT / "runs" / "lucy_1v1"
+
+
+def latest_checkpoint(run_dir: Path = DEFAULT_RUN) -> Path:
+    """Neuester Checkpoint EINES Laufs (Audit M5): numerisch nach Step-Zahl sortiert.
+
+    Vorher wurde über alle Läufe gesucht, auch über `runs/archive/*` mit anderer Netzgröße.
+    """
+    folder = run_dir / "checkpoints" if (run_dir / "checkpoints").exists() else run_dir
+    candidates = sorted(folder.glob("*/PPO_POLICY.lt"), key=lambda p: int(p.parent.name))
     if not candidates:
-        raise SystemExit("Kein Checkpoint gefunden (runs/*/checkpoints/*/PPO_POLICY.lt)")
+        raise SystemExit(f"Kein Checkpoint in {run_dir} (erwartet <run>/checkpoints/<steps>/PPO_POLICY.lt)")
     return candidates[-1]
 
 
@@ -118,7 +125,9 @@ def build_env(team_size: int, render: bool):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--checkpoint", type=Path, help="Standard: neuester Checkpoint")
+    ap.add_argument("--checkpoint", type=Path, help="Standard: neuester Checkpoint aus --run")
+    ap.add_argument("--run", type=Path, default=DEFAULT_RUN,
+                    help="Lauf, aus dem der neueste Checkpoint genommen wird")
     ap.add_argument("--team-size", type=int, default=1)
     ap.add_argument("--episodes", type=int, default=3)
     ap.add_argument("--deterministic", action="store_true",
@@ -130,7 +139,7 @@ def main():
     if not a.no_render:
         check_no_other_instance()
 
-    checkpoint = a.checkpoint or latest_checkpoint()
+    checkpoint = a.checkpoint or latest_checkpoint(a.run)
     if checkpoint.is_dir():
         checkpoint = checkpoint / "PPO_POLICY.lt"
     policy = load_policy(checkpoint)

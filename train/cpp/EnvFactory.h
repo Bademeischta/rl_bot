@@ -18,8 +18,10 @@ class EnvFactory {
 public:
 	TrainConfig cfg;
 
-	// Zähler über alle erzeugten Envs, daraus wird die Teamgröße deterministisch abgeleitet.
+	// Zähler über alle erzeugten Envs, daraus werden Teamgröße und Seed deterministisch
+	// abgeleitet (Envs werden im Hauptthread nacheinander erzeugt, die Reihenfolge ist fix).
 	std::atomic<int> envCounter = 0;
+	std::atomic<int> evalCounter = 0;
 
 	// Vorberechnete Modus-Zuteilung; TeamSizeForIndex greift nur noch darauf zu und ist
 	// damit thread-sicher (Envs werden aus mehreren Threads erzeugt).

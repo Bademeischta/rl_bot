@@ -114,7 +114,10 @@ int main(int argc, char** argv) {
 	for (int game = 0; game < args.games; game++) {
 		// Seitentausch: in ungeraden Spielen spielt A orange
 		bool aIsBlue = (game % 2) == 0;
-		gym.Reset();
+		// Audit K2: Die Beobachtung kommt aus dem Gym (Reset/Step), genau wie im Training.
+		// BuildOBS hier noch einmal aufzurufen würde den Aktions-Stack ein zweites Mal
+		// fortschreiben und die Policy sähe jede Aktion doppelt.
+		FList2 obsSet = gym.Reset();
 
 		GameState state = gym.prevState;
 		int scoreBlue = 0, scoreOrange = 0;
@@ -128,8 +131,8 @@ int main(int argc, char** argv) {
 				bool usesA = (player.team == Team::BLUE) == aIsBlue;
 				auto& policy = usesA ? a : b;
 
-				FList obs = obsBuilder->BuildOBS(player, state, match->prevActions[pi]);
-				auto input = torch::from_blob(obs.data(), { 1, (int64_t)obs.size() }).clone();
+				const FList& obs = obsSet[pi];
+				auto input = torch::from_blob(const_cast<float*>(obs.data()), { 1, (int64_t)obs.size() }).clone();
 				auto probs = PolicyProbs(policy.seq, input, args.temperature);
 
 				int action;
@@ -142,6 +145,7 @@ int main(int argc, char** argv) {
 			}
 
 			auto result = gym.Step(actions);
+			obsSet = result.obs;
 			state = result.state;
 			done = result.done;
 			steps++;

@@ -6,6 +6,7 @@ Ohne Checkpoint oder ohne gebautes Tool werden die Tests übersprungen.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -16,12 +17,25 @@ import pytest
 from deploy.policy import export_policy, load_policy
 
 ROOT = Path(__file__).resolve().parents[1]
-DUMPER = ROOT / "build" / "cpp_cu128" / "dump_policy_actions.exe"
 FIXTURE = ROOT / "tests" / "fixtures" / "obs_golden.json"
 
 
-def _find_checkpoint() -> Path | None:
-    candidates = sorted(ROOT.glob("runs/*/checkpoints/*/PPO_POLICY.lt"))
+def _build_exe(name: str) -> Path:
+    """Pfad eines C++-Tools; Build-Ordner per RLBOT_BUILD_DIR überschreibbar (Linux-Build ohne .exe)."""
+    build = Path(os.environ.get("RLBOT_BUILD_DIR", str(ROOT / "build" / "cpp_cu128")))
+    exe = build / f"{name}.exe"
+    return exe if exe.exists() or not (build / name).exists() else build / name
+
+
+DUMPER = _build_exe("dump_policy_actions")
+# Audit M5: nur der Hauptlauf, numerisch sortiert (vorher lexikografisch über alle Läufe,
+# also auch über runs/archive/* mit anderer Netzgröße). Überschreibbar per Umgebungsvariable.
+PARITY_RUN = Path(os.environ.get("RLBOT_PARITY_RUN", str(ROOT / "runs" / "lucy_1v1")))
+
+
+def _find_checkpoint(run_dir: Path = PARITY_RUN) -> Path | None:
+    folder = run_dir / "checkpoints" if (run_dir / "checkpoints").exists() else run_dir
+    candidates = sorted(folder.glob("*/PPO_POLICY.lt"), key=lambda p: int(p.parent.name))
     return candidates[-1] if candidates else None
 
 

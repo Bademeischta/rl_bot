@@ -1,0 +1,50 @@
+diff --git a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Util/gradscaler.hpp b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Util/gradscaler.hpp
+index 3a783f4..5b0ad80 100644
+--- a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Util/gradscaler.hpp
++++ b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Util/gradscaler.hpp
+@@ -1,5 +1,6 @@
+ #pragma once
+ 
++#include <cassert>
+ #include <iterator>
+ #include <type_traits>
+ 
+@@ -281,7 +282,7 @@ namespace torch {
+ 						for (auto& [_, found_inf] : iterator)
+ 							found_infs.push_back(found_inf.to(_scale.device(), true));
+ 					}
+-					assert(found_infs.size() > 0, "No inf checks were recorded prior to update.");
++					assert(found_infs.size() > 0 && "No inf checks were recorded prior to update.");
+ 
+ 					auto& found_inf_combined = found_infs.front();
+ 					if (found_infs.size() > 1)
+@@ -478,7 +479,7 @@ namespace torch {
+ 			};
+ 
+ 			template <typename Type = double>
+-			inline auto sum(PerDeviceTensors const& per_device) {
++			inline Type sum(PerDeviceTensors const& per_device) {
+ 				Type sum = Type(0);
+ 				for (auto&& [_, v] : per_device)
+ 					sum += v.item<Type>();
+diff --git a/RLGymPPO_CPP/src/public/RLGymPPO_CPP/Util/Timer.h b/RLGymPPO_CPP/src/public/RLGymPPO_CPP/Util/Timer.h
+index cf9cc48..cee4462 100644
+--- a/RLGymPPO_CPP/src/public/RLGymPPO_CPP/Util/Timer.h
++++ b/RLGymPPO_CPP/src/public/RLGymPPO_CPP/Util/Timer.h
+@@ -11,13 +11,13 @@ namespace RLGPC {
+ 
+ 		// Returns elapsed time in seconds
+ 		double Elapsed() {
+-			auto endTime = std::chrono::high_resolution_clock::now();
++			auto endTime = std::chrono::steady_clock::now();
+ 			std::chrono::duration<double> elapsed = endTime - startTime;
+ 			return elapsed.count();
+ 		}
+ 
+ 		void Reset() {
+-			startTime = std::chrono::high_resolution_clock::now();
++			startTime = std::chrono::steady_clock::now();
+ 		}
+ 	};
+ }
+\ No newline at end of file

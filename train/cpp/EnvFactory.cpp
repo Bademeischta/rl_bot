@@ -45,21 +45,39 @@ int EnvFactory::TeamSizeForIndex(int index) const {
 static std::vector<TerminalCondition*> MakeTerminalConditions(const TrainConfig& cfg) {
 	int ticksPerStep = cfg.tickSkip;
 	return {
-		new NoTouchCondition((int)(cfg.noTouchTimeoutSecs * 120 / ticksPerStep)),
+		new NoTouchTruncation((int)(cfg.noTouchTimeoutSecs * 120 / ticksPerStep)),
 		new TimeoutCondition((int)(cfg.gameTimeoutSecs * 120 / ticksPerStep)),
 		new GoalScoreCondition(),
 	};
 }
 
+// Seed-Ströme je Environment: 0 = State-Setter, 1 = Obs-Shuffle (Audit H6).
+// Eval-Envs bekommen einen eigenen Indexbereich, damit sie die Trainings-Envs nicht verschieben.
+constexpr int STREAM_STATE = 0, STREAM_OBS = 1;
+constexpr int EVAL_INDEX_BASE = 1 << 20;
+
+static StackedPaddedOBS* MakeObs(const TrainConfig& cfg, int envIndex) {
+	int64_t seed = cfg.seedEnvs ? (int64_t)SeedForEnv(cfg.randomSeed, envIndex, STREAM_OBS) : -1;
+	StackedPaddedOBS defaults;   // nur für die Normierungskoeffizienten
+	return new StackedPaddedOBS(cfg.maxPlayers, cfg.actionStackSize, cfg.shuffleSlots,
+	                            defaults.posCoef, defaults.velCoef, defaults.angVelCoef,
+	                            defaults.padTimerCoef, seed);
+}
+
 RLGPC::EnvCreateResult EnvFactory::Create() {
-	int teamSize = TeamSizeForIndex(envCounter++);
+	int index = envCounter++;
+	int teamSize = TeamSizeForIndex(index);
+
+	auto* setter = cfg.seedEnvs
+		? new WeightedStateSetter(cfg.states, SeedForEnv(cfg.randomSeed, index, STREAM_STATE))
+		: new WeightedStateSetter(cfg.states);
 
 	auto* match = new Match(
 		BuildLucyReward(cfg.rewards),
 		MakeTerminalConditions(cfg),
-		new StackedPaddedOBS(cfg.maxPlayers, cfg.actionStackSize, true),
+		MakeObs(cfg, index),
 		new DiscreteAction(),
-		new WeightedStateSetter(cfg.states),
+		setter,
 		teamSize,
 		true
 	);
@@ -67,10 +85,11 @@ RLGPC::EnvCreateResult EnvFactory::Create() {
 }
 
 RLGPC::EnvCreateResult EnvFactory::CreateEval(int teamSize) {
+	int index = EVAL_INDEX_BASE + evalCounter++;
 	auto* match = new Match(
 		BuildLucyReward(cfg.rewards),
 		MakeTerminalConditions(cfg),
-		new StackedPaddedOBS(cfg.maxPlayers, cfg.actionStackSize, true),
+		MakeObs(cfg, index),
 		new DiscreteAction(),
 		new KickoffSetter(),
 		teamSize,

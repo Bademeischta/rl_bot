@@ -7,8 +7,29 @@ namespace RLbot {
 
 using RLGSC::CommonValues::BALL_RADIUS;
 
-static float RandF(float min, float max) { return ::Math::RandFloat(min, max); }
-static int RandSign() { return ::Math::RandFloat() > 0.5f ? 1 : -1; }
+uint64_t MixSeed(uint64_t z) {
+	// SplitMix64 (Steele, Lea, Flood 2014)
+	z += 0x9E3779B97F4A7C15ull;
+	z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ull;
+	z = (z ^ (z >> 27)) * 0x94D049BB133111EBull;
+	return z ^ (z >> 31);
+}
+
+uint64_t SeedForEnv(int randomSeed, int envIndex, int stream) {
+	uint64_t base = (uint64_t)(int64_t)randomSeed * 1000003ull;
+	// 63 Bit, damit der Seed auch als int64_t nicht negativ ist (-1 ist der "ungeseedet"-Marker)
+	return MixSeed(base + (uint64_t)envIndex * 7919ull + (uint64_t)stream * 104729ull) >> 1;
+}
+
+float SceneSetter::RandF(float min, float max) const {
+	if (rng)
+		return std::uniform_real_distribution<float>(min, max)(*rng);
+	return ::Math::RandFloat(min, max);
+}
+
+int SceneSetter::RandSign() const {
+	return RandF(0, 1) > 0.5f ? 1 : -1;
+}
 
 // Autos sauber am Boden absetzen, mit Blick auf einen Zielpunkt.
 static void PlaceOnGround(Car* car, Vec pos, Vec lookAt, float boost) {
@@ -138,8 +159,20 @@ GameState DefenseSetter::ResetState(Arena* arena) {
 }
 
 WeightedStateSetter::WeightedStateSetter(const StateSetterWeights& w) {
+	Build(w);
+}
+
+WeightedStateSetter::WeightedStateSetter(const StateSetterWeights& w, uint64_t seed)
+	: seed((int64_t)seed), rng(seed), seeded(true) {
+	Build(w);
+}
+
+void WeightedStateSetter::Build(const StateSetterWeights& w) {
 	auto add = [&](const char* name, float weight, StateSetter* setter) {
 		if (weight > 0) {
+			if (seeded)
+				if (auto* scene = dynamic_cast<SceneSetter*>(setter))
+					scene->rng = &rng;
 			names.push_back(name);
 			weights.push_back(weight);
 			setters.push_back(setter);
@@ -166,7 +199,9 @@ WeightedStateSetter::~WeightedStateSetter() {
 }
 
 GameState WeightedStateSetter::ResetState(Arena* arena) {
-	float roll = ::Math::RandFloat() * totalWeight;
+	float roll = seeded
+		? std::uniform_real_distribution<float>(0.f, totalWeight)(rng)
+		: ::Math::RandFloat() * totalWeight;
 	int picked = (int)setters.size() - 1;
 	for (int i = 0; i < (int)setters.size(); i++) {
 		roll -= weights[i];

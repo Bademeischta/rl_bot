@@ -22,7 +22,15 @@ $env:PATH = "$CMakeBin\CMake\bin;$CMakeBin\Ninja;$env:PATH"
 
 $Torch = "$Root\third_party\libtorch_$Flavor\libtorch"
 if (-not (Test-Path $Torch)) { throw "libtorch fehlt: $Torch (siehe third_party\PINNED.md)" }
+
+# Upstream-Patches (Audit K1 Truncation, GCC-Kompatibilität) anwenden, idempotent.
+& powershell -ExecutionPolicy Bypass -File "$Root\tools\apply_patches.ps1"
+if ($LASTEXITCODE) { throw "Upstream-Patches konnten nicht angewendet werden (tools\apply_patches.ps1)" }
 $Build = "$Root\build\cpp_$Flavor$BuildSuffix"
+# Audit H4: Git-Hash in config_used.json
+$GitHash = (git -C $Root rev-parse --short HEAD 2>$null)
+if (-not $GitHash) { $GitHash = "unbekannt" }
+if (git -C $Root status --porcelain 2>$null) { $GitHash = "$GitHash-dirty" }
 $Py = (& "$Root\.venv\Scripts\python.exe" -c "import sys; print(sys.base_prefix)").Trim()
 
 $cmakeArgs = @(
@@ -32,7 +40,8 @@ $cmakeArgs = @(
     "-DPython_ROOT_DIR=$Py",
     "-DPYTHON_EXECUTABLE=$Py\python.exe",
     "-DCMAKE_POLICY_VERSION_MINIMUM=3.5",
-    "-DCMAKE_CXX_FLAGS=/EHsc /utf-8 $ExtraCxxFlags"
+    "-DCMAKE_CXX_FLAGS=/EHsc /utf-8 $ExtraCxxFlags",
+    "-DRLBOT_GIT_HASH=$GitHash"
 )
 if ($Flavor -eq "cu128") {
     $cmakeArgs += "-DCUDAToolkit_ROOT=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8"

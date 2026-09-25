@@ -6,6 +6,7 @@ Die Fixtures erzeugt `dump_obs.exe` (tools/cpp/dump_obs.cpp). Fehlen sie, werden
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -16,7 +17,9 @@ from env.obs_python import BallView, GameView, PlayerView, build_obs, obs_size
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "tests" / "fixtures" / "obs_golden.json"
-DUMPER = ROOT / "build" / "cpp_cu128" / "dump_obs.exe"
+_BUILD = Path(os.environ.get("RLBOT_BUILD_DIR", str(ROOT / "build" / "cpp_cu128")))
+DUMPER = _BUILD / "dump_obs.exe" if (_BUILD / "dump_obs.exe").exists() or not (_BUILD / "dump_obs").exists() \
+    else _BUILD / "dump_obs"
 
 
 def _ensure_fixture() -> dict:

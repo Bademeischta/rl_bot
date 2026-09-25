@@ -44,6 +44,8 @@ TrainConfig TrainConfig::FromFile(const std::string& path) {
 			READ(e, seen, cfg.actionStackSize, "action_stack_size");
 			READ(e, seen, cfg.noTouchTimeoutSecs, "no_touch_timeout_secs");
 			READ(e, seen, cfg.gameTimeoutSecs, "game_timeout_secs");
+			READ(e, seen, cfg.shuffleSlots, "shuffle_slots");
+			READ(e, seen, cfg.seedEnvs, "seed_envs");
 			seen.insert("mode_mix");
 			if (e.contains("mode_mix")) {
 				auto mix = e.at("mode_mix").get<std::vector<float>>();
@@ -100,6 +102,8 @@ TrainConfig TrainConfig::FromFile(const std::string& path) {
 			READ(l, seen, cfg.collectionDuringLearn, "collection_during_learn");
 			READ(l, seen, cfg.device, "device");
 			READ(l, seen, cfg.timestepLimit, "timestep_limit");
+			READ(l, seen, cfg.extraSteps, "extra_steps");
+			READ(l, seen, cfg.saveOnExit, "save_on_exit");
 			READ(l, seen, cfg.timestepsPerIteration, "timesteps_per_iteration");
 			READ(l, seen, cfg.timestepsPerSave, "timesteps_per_save");
 			READ(l, seen, cfg.checkpointsToKeep, "checkpoints_to_keep");
@@ -107,6 +111,7 @@ TrainConfig TrainConfig::FromFile(const std::string& path) {
 			READ(l, seen, cfg.policyLayerSizes, "policy_layer_sizes");
 			READ(l, seen, cfg.criticLayerSizes, "critic_layer_sizes");
 			READ(l, seen, cfg.ppoEpochs, "ppo_epochs");
+			READ(l, seen, cfg.expBufferIterations, "exp_buffer_iterations");
 			READ(l, seen, cfg.ppoBatchSize, "ppo_batch_size");
 			READ(l, seen, cfg.ppoMiniBatchSize, "ppo_mini_batch_size");
 			READ(l, seen, cfg.entCoef, "ent_coef");
@@ -154,6 +159,10 @@ TrainConfig TrainConfig::FromFile(const std::string& path) {
 		RG_ERR_CLOSE("learner.ppo_mini_batch_size darf nicht größer als ppo_batch_size sein");
 	if (cfg.device != "cuda" && cfg.device != "cpu" && cfg.device != "auto")
 		RG_ERR_CLOSE("learner.device muss cuda, cpu oder auto sein");
+	if (cfg.extraSteps < 0)
+		RG_ERR_CLOSE("learner.extra_steps darf nicht negativ sein");
+	if (cfg.expBufferIterations < 1)
+		RG_ERR_CLOSE("learner.exp_buffer_iterations muss >= 1 sein");
 
 	return cfg;
 }
@@ -165,6 +174,7 @@ std::string TrainConfig::ToJSONString() const {
 		{ "action_stack_size", actionStackSize },
 		{ "no_touch_timeout_secs", noTouchTimeoutSecs }, { "game_timeout_secs", gameTimeoutSecs },
 		{ "mode_mix", { modeMix[0], modeMix[1], modeMix[2] } },
+		{ "shuffle_slots", shuffleSlots }, { "seed_envs", seedEnvs },
 	};
 	j["rewards"] = {
 		{ "goal", rewards.goal }, { "concede", rewards.concede },
@@ -184,11 +194,13 @@ std::string TrainConfig::ToJSONString() const {
 	j["learner"] = {
 		{ "num_threads", numThreads }, { "num_games_per_thread", numGamesPerThread },
 		{ "collection_during_learn", collectionDuringLearn }, { "device", device },
-		{ "timestep_limit", timestepLimit }, { "timesteps_per_iteration", timestepsPerIteration },
+		{ "timestep_limit", timestepLimit }, { "extra_steps", extraSteps }, { "save_on_exit", saveOnExit },
+		{ "timesteps_per_iteration", timestepsPerIteration },
 		{ "timesteps_per_save", timestepsPerSave }, { "checkpoints_to_keep", checkpointsToKeep },
 		{ "checkpoint_folder", checkpointFolder },
 		{ "policy_layer_sizes", policyLayerSizes }, { "critic_layer_sizes", criticLayerSizes },
-		{ "ppo_epochs", ppoEpochs }, { "ppo_batch_size", ppoBatchSize },
+		{ "ppo_epochs", ppoEpochs }, { "exp_buffer_iterations", expBufferIterations },
+		{ "ppo_batch_size", ppoBatchSize },
 		{ "ppo_mini_batch_size", ppoMiniBatchSize }, { "ent_coef", entCoef },
 		{ "clip_range", clipRange }, { "policy_lr", policyLR }, { "critic_lr", criticLR },
 		{ "gae_lambda", gaeLambda }, { "gae_gamma", gaeGamma }, { "random_seed", randomSeed },
@@ -220,7 +232,7 @@ RLGPC::LearnerConfig MakeLearnerConfig(const TrainConfig& cfg) {
 	lc.randomSeed = cfg.randomSeed;
 	lc.gaeLambda = cfg.gaeLambda;
 	lc.gaeGamma = cfg.gaeGamma;
-	lc.expBufferSize = cfg.timestepsPerIteration * 3;
+	lc.expBufferSize = cfg.timestepsPerIteration * cfg.expBufferIterations;
 
 	lc.ppo.policyLayerSizes = cfg.policyLayerSizes;
 	lc.ppo.criticLayerSizes = cfg.criticLayerSizes;

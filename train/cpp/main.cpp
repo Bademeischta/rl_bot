@@ -1,98 +1,79 @@
 // Trainer: liest eine JSON-Config, baut die Environments und startet das PPO-Training.
 //
 //   train_bot.exe <config.json> [--collision-meshes <dir>] [--timestep-limit N] [--device cpu|cuda]
+//                 [--extra-steps N] [--save-on-exit]
 //
-// Die verwendete Config wird beim Start in den Run-Ordner kopiert, damit später nachvollziehbar
-// ist, womit ein Checkpoint trainiert wurde.
+// Die verwendete Config wird beim Start in den Run-Ordner kopiert (config_used.json, mit
+// Git-Hash des Builds und Startzeit), damit später nachvollziehbar ist, womit ein Checkpoint
+// trainiert wurde (Audit H4).
 #include "Config.h"
 #include "EnvFactory.h"
+#include "Metrics.h"
 
 #include <RLGymPPO_CPP/Learner.h>
 
+#include <nlohmann/json.hpp>
+
+#include <chrono>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+
+#ifndef RLBOT_GIT_HASH
+#define RLBOT_GIT_HASH "unbekannt"
+#endif
 
 using namespace RLGPC;
 using namespace RLGSC;
 
 static RLbot::EnvFactory* g_factory = nullptr;
-static std::filesystem::path g_metricsPath;
-static std::vector<std::string> g_metricsColumns;
 
 // DisplayReport() des Upstreams druckt nur eine feste Whitelist, eigene Metriken tauchen
 // dort nie auf. Ohne wandb wären sie damit verloren, deshalb schreiben wir jede Iteration
-// zusätzlich in eine CSV.
-static void AppendMetricsCSV(const Report& report) {
-	if (g_metricsPath.empty())
-		return;
+// zusätzlich in eine CSV (Audit M1: Kopfzeile aus der Datei übernehmen, neue Spalten anhängen).
+static RLbot::MetricsCSVWriter g_metricsCSV;
 
-	bool writeHeader = g_metricsColumns.empty();
-	if (writeHeader)
-		for (auto& pair : report.data)
-			if (pair.first.find("_avg_total") == std::string::npos
-				&& pair.first.find("_avg_count") == std::string::npos)
-				g_metricsColumns.push_back(pair.first);
+static RLbot::EpisodeLengthTracker g_episodeLengths;
 
-	std::ofstream fOut(g_metricsPath, std::ios::app);
-	if (!fOut.good())
-		return;
-
-	if (writeHeader) {
-		for (size_t i = 0; i < g_metricsColumns.size(); i++)
-			fOut << (i ? "," : "") << '"' << g_metricsColumns[i] << '"';
-		fOut << '\n';
-	}
-	for (size_t i = 0; i < g_metricsColumns.size(); i++) {
-		auto it = report.data.find(g_metricsColumns[i]);
-		fOut << (i ? "," : "");
-		if (it != report.data.end())
-			fOut << it->second;
-	}
-	fOut << '\n';
-}
-
-// Wird aus vielen Threads gleichzeitig aufgerufen: nur die Argumente anfassen.
+// Wird aus vielen Threads gleichzeitig aufgerufen: nur die Argumente und den
+// (intern gesperrten) Längen-Tracker anfassen.
 static void OnStep(GameInst* gameInst, const Gym::StepResult& stepResult, Report& gameMetrics) {
-	auto& state = stepResult.state;
-	for (auto& player : state.players) {
-		gameMetrics.AccumAvg("player_speed", player.phys.vel.Length());
-		gameMetrics.AccumAvg("ball_touch_ratio", player.ballTouchedStep);
-		gameMetrics.AccumAvg("in_air_ratio", !player.carState.isOnGround);
-		gameMetrics.AccumAvg("boost_held", player.boostFraction);
-		gameMetrics.AccumAvg("supersonic_ratio", player.carState.isSupersonic);
+	// Skill-Eval-Spiele haben eigene Reports, die nie ausgelesen werden: nicht mitzählen.
+	if (gameInst->isEval)
+		return;
+
+	RLbot::AccumStepMetrics(stepResult.state, gameMetrics);
+
+	if (stepResult.done) {
+		// GameInst::Step erhöht totalSteps erst nach dem Callback, der aktuelle Step zählt also mit.
+		uint64_t length = g_episodeLengths.OnEpisodeEnd(gameInst, gameInst->totalSteps + 1);
+		bool truncated = false;
+#ifdef RLGSC_HAS_TRUNCATION
+		truncated = stepResult.truncated;
+#endif
+		auto end = RLbot::ClassifyEpisodeEnd(stepResult.state, gameInst->match, truncated);
+		RLbot::AccumEpisodeEnd(end, length, RLbot::CurrentSceneName(gameInst->match), gameMetrics);
 	}
-	gameMetrics.AccumAvg("ball_speed", state.ball.vel.Length());
-	gameMetrics.AccumAvg("ball_height", state.ball.pos.z);
 }
 
 static void OnIteration(Learner* learner, Report& allMetrics) {
-	static const char* KEYS[] = {
-		"player_speed", "ball_touch_ratio", "in_air_ratio", "boost_held",
-		"supersonic_ratio", "ball_speed", "ball_height",
-	};
-	AvgTracker trackers[std::size(KEYS)] = {};
-
-	for (auto& gameReport : learner->GetAllGameMetrics())
-		for (size_t i = 0; i < std::size(KEYS); i++)
-			trackers[i] += gameReport.GetAvg(KEYS[i]);
-
-	for (size_t i = 0; i < std::size(KEYS); i++)
-		allMetrics[KEYS[i]] = trackers[i].Get();
-
-	AppendMetricsCSV(allMetrics);
+	RLbot::AggregateGameMetrics(learner->GetAllGameMetrics(), allMetrics);
+	g_metricsCSV.Append(allMetrics);
 }
 
 int main(int argc, char** argv) {
 	if (argc < 2) {
 		std::cerr << "usage: train_bot <config.json> [--collision-meshes <dir>] "
-		             "[--timestep-limit N] [--device cpu|cuda]\n";
+		             "[--timestep-limit N] [--device cpu|cuda] [--extra-steps N] [--save-on-exit]\n";
 		return 2;
 	}
 
 	std::string configPath = argv[1];
 	std::string meshDir = "collision_meshes";
 	int64_t timestepLimitOverride = -1;
+	int64_t extraStepsOverride = -1;
+	bool saveOnExitOverride = false;
 	std::string deviceOverride;
 
 	for (int i = 2; i < argc; i++) {
@@ -104,11 +85,15 @@ int main(int argc, char** argv) {
 		if (arg == "--collision-meshes") meshDir = next();
 		else if (arg == "--timestep-limit") timestepLimitOverride = std::stoll(next());
 		else if (arg == "--device") deviceOverride = next();
+		else if (arg == "--extra-steps") extraStepsOverride = std::stoll(next());
+		else if (arg == "--save-on-exit") saveOnExitOverride = true;
 		else { std::cerr << "Unbekanntes Argument: " << arg << "\n"; return 2; }
 	}
 
 	RLbot::TrainConfig cfg = RLbot::TrainConfig::FromFile(configPath);
 	if (timestepLimitOverride >= 0) cfg.timestepLimit = timestepLimitOverride;
+	if (extraStepsOverride >= 0) cfg.extraSteps = extraStepsOverride;
+	if (saveOnExitOverride) cfg.saveOnExit = true;
 	if (!deviceOverride.empty()) cfg.device = deviceOverride;
 
 	RG_LOG("Config: " << configPath);
@@ -118,8 +103,18 @@ int main(int argc, char** argv) {
 	std::filesystem::path runDir = std::filesystem::path(cfg.checkpointFolder).parent_path();
 	if (!runDir.empty()) {
 		std::filesystem::create_directories(runDir);
-		std::ofstream(runDir / "config_used.json") << cfg.ToJSONString();
-		g_metricsPath = runDir / "metrics.csv";
+		// Audit H4: Git-Hash des Builds und Startzeit mitschreiben, damit Checkpoint und Code
+		// verknüpft sind (-DRLBOT_GIT_HASH aus bench/cpp/build.ps1)
+		nlohmann::json used = nlohmann::json::parse(cfg.ToJSONString());
+		used["_git"] = RLBOT_GIT_HASH;
+		{
+			std::time_t now = std::time(nullptr);
+			char buf[32];
+			std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", std::localtime(&now));
+			used["_started"] = buf;
+		}
+		std::ofstream(runDir / "config_used.json") << used.dump(2);
+		g_metricsCSV = RLbot::MetricsCSVWriter(runDir / "metrics.csv");
 	}
 
 	RocketSim::Init(meshDir);
@@ -139,6 +134,23 @@ int main(int argc, char** argv) {
 	Learner learner([]() { return g_factory->Create(); }, lc);
 	learner.stepCallback = OnStep;
 	learner.iterationCallback = OnIteration;
+
+	// Step-Budget relativ zum geladenen Checkpoint (Experimente, Stufe 3)
+	if (cfg.extraSteps > 0) {
+		learner.config.timestepLimit = learner.totalTimesteps + cfg.extraSteps;
+		RG_LOG("extra_steps: Lauf endet bei " << learner.config.timestepLimit
+			<< " Steps (" << learner.totalTimesteps << " + " << cfg.extraSteps << ")");
+	}
+
 	learner.Learn();
+
+	// End-Checkpoint, falls der letzte Save nicht auf dem Endstand liegt
+	if (cfg.saveOnExit && !learner.config.checkpointSaveFolder.empty()) {
+		auto endFolder = learner.config.checkpointSaveFolder / std::to_string(learner.totalTimesteps);
+		if (!std::filesystem::exists(endFolder / "PPO_POLICY.lt")) {
+			RG_LOG("save_on_exit: Checkpoint bei " << learner.totalTimesteps << " Steps schreiben");
+			learner.Save();
+		}
+	}
 	return 0;
 }

@@ -47,6 +47,25 @@ class DuelResult:
         return 0.5 if total == 0 else self.goals_a / total
 
 
+def rating_key(path: Path) -> str:
+    """Schlüssel eines Checkpoints in ratings.json (Audit M4).
+
+    `runs/<lauf>/checkpoints/<steps>[/PPO_POLICY.lt]` wird zu `<lauf>/<steps>`, damit gleiche
+    Step-Stände aus verschiedenen Läufen (oder Netzgrößen) nicht denselben Eintrag teilen.
+    Liegt der Checkpoint nicht in dieser Struktur, bleibt es beim Ordnernamen.
+    """
+    path = Path(path)
+    ckpt = path.parent if path.name.endswith(".lt") else path
+    if ckpt.parent.name == "checkpoints" and ckpt.parent.parent.name:
+        return f"{ckpt.parent.parent.name}/{ckpt.name}"
+    return ckpt.name
+
+
+def default_ratings_path(run_dir: Path | None) -> Path:
+    """Ratings liegen pro Lauf (`runs/<lauf>/ratings.json`), nicht mehr global in eval/."""
+    return (run_dir / "ratings.json") if run_dir else RATINGS_PATH
+
+
 def standard_error(p: float, n: int) -> float:
     """Standardfehler eines Anteils. Für +-5 % bei p=0,5 braucht es rund 100 Spiele."""
     return math.sqrt(p * (1 - p) / n) if n > 0 else float("inf")
@@ -76,8 +95,8 @@ def run_duel(path_a: Path, path_b: Path, games: int, team_size: int = 1,
         data = json.loads(out.read_text(encoding="utf-8"))
 
     return DuelResult(
-        name_a=path_a.parent.name if path_a.name.endswith(".lt") else path_a.name,
-        name_b=path_b.parent.name if path_b.name.endswith(".lt") else path_b.name,
+        name_a=rating_key(path_a),
+        name_b=rating_key(path_b),
         games=data["games"], goals_a=data["goals_a"], goals_b=data["goals_b"],
         wins_a=data["wins_a"], wins_b=data["wins_b"], draws=data["draws"],
         seconds=data.get("seconds", 0.0), raw=data,
@@ -167,8 +186,11 @@ def main():
     ap.add_argument("--team-size", type=int, default=1)
     ap.add_argument("--opponents", type=int, default=4, help="Wie viele ältere Checkpoints")
     ap.add_argument("--deterministic", action="store_true")
-    ap.add_argument("--ratings", type=Path, default=RATINGS_PATH)
+    ap.add_argument("--ratings", type=Path, default=None,
+                    help="Standard: <run>/ratings.json bei --run, sonst eval/ratings.json")
+    ap.add_argument("--exe", type=Path, default=DUEL_EXE, help="Pfad zu duel.exe")
     a = ap.parse_args()
+    ratings_path = a.ratings or default_ratings_path(a.run)
 
     pairs: list[tuple[Path, Path]] = []
     if a.a and a.b:
@@ -184,7 +206,7 @@ def main():
     else:
         raise SystemExit("Entweder --run oder --a/--b angeben")
 
-    ratings = load_ratings(a.ratings)
+    ratings = load_ratings(ratings_path)
     print(f"Standardfehler bei {a.games} Spielen und p=0,5: "
           f"+-{standard_error(0.5, a.games) * 100:.1f} Prozentpunkte "
           f"(fuer +-5 %: {games_needed(0.05)} Spiele)")
@@ -192,17 +214,17 @@ def main():
     for path_a, path_b in pairs:
         pa = path_a / "PPO_POLICY.lt" if path_a.is_dir() else path_a
         pb = path_b / "PPO_POLICY.lt" if path_b.is_dir() else path_b
-        print(f"\n{pa.parent.name} vs {pb.parent.name} ({a.games} Spiele) ...")
-        result = run_duel(pa, pb, a.games, a.team_size, a.deterministic)
+        print(f"\n{rating_key(pa)} vs {rating_key(pb)} ({a.games} Spiele) ...")
+        result = run_duel(pa, pb, a.games, a.team_size, a.deterministic, exe=a.exe)
         share = result.goal_share_a
         print(f"  Tore {result.goals_a}:{result.goals_b}   Siege {result.wins_a}:{result.wins_b} "
               f"({result.draws} remis)   Toranteil A {share * 100:.1f} % "
               f"+-{standard_error(share, max(1, result.goals_a + result.goals_b)) * 100:.1f}")
         ratings = update_ratings(ratings, result)
 
-    save_ratings(ratings, a.ratings)
+    save_ratings(ratings, ratings_path)
     print_table(ratings)
-    print(f"\nGespeichert: {a.ratings}")
+    print(f"\nGespeichert: {ratings_path}")
 
 
 if __name__ == "__main__":
