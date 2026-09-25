@@ -60,10 +60,19 @@ Rückgabewerte von `check_abort.py`: 0 weiter, 3 abbrechen, 4 Warnung.
 
 ## Vergleich (`compare.py`)
 
-Pro Experiment (letztes Fünftel der Iterationen): Tor-Anteil (`ep_end_goal`), Timeout-Anteil,
-Episodenlänge, Ballkontakt, Entropie, Clip-Fraction, KL, Value Loss, Val Target, Truncated
-Steps, SPS — jeweils mit Differenz zur Baseline; dazu TrueSkill des End-Checkpoints
-(mu − 3σ ± σ aus `ratings.json`) und das Duell gegen das Baseline-Ende (Toranteil ± Standard-
-fehler). Die Hinweise am Ende sind regelbasiert (2-SE-Regel für das Duell, Entropie < 2,5,
-SPS ± 7 %); die Entscheidung behalten / verwerfen / nachmessen bleibt beim Menschen, Kriterien
-in AUDIT.md §6 Stufe 3.
+**Hauptkriterium** (Review R12): das Duell jedes Experiment-Endes gegen das Baseline-Ende
+(`duel_end_vs_baseline.json`, 100 Spiele): Gewinnrate (Remis = halber Sieg) mit
+95-%-Wilson-Intervall. Intervall ganz über 50 % = besser, ganz darunter = schlechter, sonst unklar.
+
+**TrueSkill** nur aus **einer gemeinsamen Ladder**, die `compare.py` selbst mit `duel.exe` spielt:
+alle Experiment-Enden plus Baseline-Start und Baseline-Ende, jeder gegen jeden
+(`--ladder-games`, Default 50 je Paarung; 0 = aus). Ergebnis in `joint_ladder.json` neben `--out`.
+Die Einzel-Ladders in den Lauf-Ordnern haben jeweils eigene Nullpunkte und werden für den
+Vergleich nicht benutzt.
+
+Dazu pro Experiment (letztes Fünftel der Iterationen): Tor-Anteil (`ep_end_goal`),
+Timeout-Anteil, Episodenlänge, Ballkontakt, Entropie, Clip-Fraction, KL, Value Loss, Val Target,
+Truncated Steps, SPS mit Differenz zur Baseline, der Toranteil im Duell (± SE) und die Liste der
+Config-Änderungen (Bündel markiert, R11). Die Hinweise am Ende sind regelbasiert; die
+Entscheidung behalten / verwerfen / nachmessen bleibt beim Menschen, Kriterien in AUDIT.md §6
+Stufe 3.

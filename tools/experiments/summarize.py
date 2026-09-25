@@ -17,7 +17,7 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from metrics_util import KEY_COLUMNS, column, count_bad, mean, read_rows, window_mean  # noqa: E402
+from metrics_util import KEY_COLUMNS, column, count_bad, mean, read_rows, win_rate_ci, window_mean  # noqa: E402
 
 
 def running_stats(checkpoint: Path | None) -> dict:
@@ -64,6 +64,9 @@ def load_duel(path: Path | None) -> dict | None:
     se = math.sqrt(share * (1 - share) / total) if total else None
     d["goal_share_a"] = share
     d["goal_share_se"] = se
+    # Hauptkriterium (Review R12): Gewinnrate mit 95-%-Wilson-Intervall, Remis = halber Sieg
+    rate, low, high = win_rate_ci(d.get("wins_a", 0), d.get("wins_b", 0), d.get("draws", 0))
+    d["win_rate"], d["win_rate_ci_low"], d["win_rate_ci_high"] = rate, low, high
     return d
 
 
@@ -101,11 +104,15 @@ def to_markdown(s: dict) -> str:
         d = s.get(key)
         if d:
             lines += [f"## {label}", "",
-                      f"Tore {d['goals_a']}:{d['goals_b']} in {d['games']} Spielen, Toranteil A "
-                      f"{d['goal_share_a']:.1%} ± {fmt(d['goal_share_se'], 3)} (SE), "
-                      f"Siege {d['wins_a']}:{d['wins_b']} ({d['draws']} remis)", ""]
+                      f"Gewinnrate A **{d['win_rate']:.1%}**, 95-%-KI [{d['win_rate_ci_low']:.1%}, "
+                      f"{d['win_rate_ci_high']:.1%}] (Remis = halber Sieg); "
+                      f"Siege {d['wins_a']}:{d['wins_b']} ({d['draws']} remis) in {d['games']} Spielen; "
+                      f"Tore {d['goals_a']}:{d['goals_b']}, Toranteil A "
+                      f"{d['goal_share_a']:.1%} ± {fmt(d['goal_share_se'], 3)} (SE)", ""]
     if s.get("ratings"):
-        lines += ["## TrueSkill (Ladder im Lauf-Ordner)", "", "| Checkpoint | mu | sigma | mu-3sigma |", "|---|---|---|---|"]
+        lines += ["## TrueSkill (Ladder nur innerhalb dieses Laufs; nicht mit anderen Läufen vergleichbar, "
+                  "dafür die gemeinsame Ladder in compare.py)", "",
+                  "| Checkpoint | mu | sigma | mu-3sigma |", "|---|---|---|---|"]
         for name, r in s["ratings"].items():
             lines.append(f"| {name} | {r['mu']:.2f} | {r['sigma']:.2f} | {r['conservative']:.2f} |")
         lines.append("")

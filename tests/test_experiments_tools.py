@@ -4,12 +4,14 @@ from __future__ import annotations
 import csv
 import json
 import math
+import os
 import sys
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+BUILD_DIR = Path(os.environ.get("RLBOT_BUILD_DIR", str(ROOT / "build" / "cpp_cu128")))
 sys.path.insert(0, str(ROOT / "tools" / "experiments"))
 
 import check_abort  # noqa: E402
@@ -207,6 +209,7 @@ def make_result(folder: Path, name: str, goal: float, entropy: float, duel=None,
 def test_compare_table_marks_baseline_and_deltas(tmp_path):
     base = tmp_path / "exp_baseline_2026-10-01"
     exp = tmp_path / "exp_h2_2026-10-01"
+    # Einzel-Ladder des Lauf-Ordners: darf in compare NICHT auftauchen (Review R12)
     make_result(base, "baseline", 0.30, 3.58,
                 ratings={"exp_baseline/2704829056": {"mu": 25, "sigma": 8.3, "conservative": 0.1},
                          "exp_baseline/2804829056": {"mu": 30, "sigma": 2.0, "conservative": 24.0}})
@@ -214,18 +217,20 @@ def test_compare_table_marks_baseline_and_deltas(tmp_path):
                 duel={"games": 100, "goals_a": 70, "goals_b": 40, "wins_a": 60, "wins_b": 30, "draws": 10,
                       "goal_share_a": 70 / 110, "goal_share_se": math.sqrt((70 / 110) * (40 / 110) / 110)})
     experiments = [compare.load_experiment(base), compare.load_experiment(exp)]
-    table = compare.build_table(experiments, experiments[0])
+    table = compare.build_table(experiments, experiments[0], None)
     lines = table.splitlines()
     assert lines[0].startswith("| Experiment |")
+    assert "Gewinnrate [95-%-KI]" in lines[0]
     assert "baseline (Baseline)" in lines[2]
-    assert "24.00 ± 2.00" in lines[2]              # TrueSkill des End-Checkpoints (höchste Steps)
+    assert "24.00" not in table                   # keine Einzel-Ladder
     assert "0.360 (+0.060 (+20.0%))" in lines[3]  # Delta gegen Baseline
-    assert "63.6% ±" in lines[3]                  # Duell-Toranteil
+    assert "**65.0%** [" in lines[3]              # Gewinnrate (60 + 10/2) / 100
+    assert "63.6% ±" in lines[3]                  # Duell-Toranteil (nebenbei)
     hints = compare.verdict_hints(experiments, experiments[0])
-    assert "signifikant besser" in hints
+    assert "Hauptkriterium Duell: **besser**" in hints
 
 
-def test_compare_hint_reports_insignificant_duel(tmp_path):
+def test_compare_hint_reports_unclear_duel(tmp_path):
     base = tmp_path / "exp_baseline_x"
     exp = tmp_path / "exp_h3_x"
     make_result(base, "baseline", 0.30, 3.58)
@@ -234,8 +239,64 @@ def test_compare_hint_reports_insignificant_duel(tmp_path):
                       "goal_share_a": 0.55, "goal_share_se": math.sqrt(0.55 * 0.45 / 20)})
     experiments = [compare.load_experiment(base), compare.load_experiment(exp)]
     hints = compare.verdict_hints(experiments, experiments[0])
-    assert "kein signifikanter Unterschied" in hints
+    assert "Hauptkriterium Duell: **unklar**" in hints and "enthält 50 %" in hints
 
+
+def test_win_rate_ci_matches_the_wilson_interval():
+    """Referenzwerte des 95-%-Wilson-Intervalls: 50/100 -> [0,4038; 0,5962], 0/10 -> [0; 0,2775]."""
+    from metrics_util import win_rate_ci
+    rate, low, high = win_rate_ci(50, 50, 0)
+    assert rate == pytest.approx(0.5) and low == pytest.approx(0.4038, abs=1e-4) and high == pytest.approx(0.5962, abs=1e-4)
+    rate, low, high = win_rate_ci(0, 10, 0)
+    assert rate == 0 and low == 0 and high == pytest.approx(0.2775, abs=1e-4)
+    assert win_rate_ci(60, 30, 10)[0] == pytest.approx(0.65)   # Remis = halber Sieg
+    assert math.isnan(win_rate_ci(0, 0, 0)[0])
+
+
+def test_summarize_duel_has_win_rate_and_ci(tmp_path):
+    d = tmp_path / "duel.json"
+    d.write_text(json.dumps({"games": 100, "goals_a": 60, "goals_b": 40, "wins_a": 55, "wins_b": 40,
+                             "draws": 5}), encoding="utf-8")
+    out = summarize.load_duel(d)
+    assert out["win_rate"] == pytest.approx(0.575)
+    assert out["win_rate_ci_low"] < 0.575 < out["win_rate_ci_high"]
+
+
+DUEL_EXE = BUILD_DIR / ("duel.exe" if sys.platform == "win32" else "duel")
+MAIN_CKPTS = ROOT / "runs" / "lucy_1v1" / "checkpoints"
+
+
+def _real_checkpoints(n: int) -> list[Path]:
+    if not MAIN_CKPTS.exists():
+        return []
+    c = sorted((p for p in MAIN_CKPTS.iterdir() if (p / "PPO_POLICY.lt").exists()), key=lambda p: int(p.name))
+    return c[-n:] if len(c) >= n else []
+
+
+@pytest.mark.skipif(not DUEL_EXE.exists() or not _real_checkpoints(3), reason="duel.exe oder echte Checkpoints fehlen")
+def test_compare_plays_one_joint_ladder_with_baseline_start_and_end(tmp_path, capsys):
+    """Echter Pfad: compare.py spielt die gemeinsame Ladder mit duel.exe auf echten Checkpoints
+    (nur gelesen). Teilnehmer: Baseline-Start, Baseline-Ende, Experiment-Ende; Einzel-Ladders der
+    Lauf-Ordner werden ignoriert."""
+    start, base_end, exp_end = _real_checkpoints(3)
+    base = tmp_path / "exp_baseline_x"
+    exp = tmp_path / "exp_h2_x"
+    make_result(base, "baseline", 0.30, 3.58,
+                ratings={"exp_baseline_x/999": {"mu": 99, "sigma": 0.5, "conservative": 97.5}})
+    make_result(exp, "h2_ent_coef_0004", 0.33, 3.40)
+    for folder, s_ckpt, e_ckpt in ((base, start, base_end), (exp, start, exp_end)):
+        s = json.loads((folder / "summary.json").read_text(encoding="utf-8"))
+        s["start_checkpoint"], s["end_checkpoint"] = str(s_ckpt), str(e_ckpt)
+        (folder / "summary.json").write_text(json.dumps(s), encoding="utf-8")
+    out = tmp_path / "compare.md"
+    sys.argv = ["compare.py", str(base), str(exp), "--ladder-games", "2", "--exe", str(DUEL_EXE), "--out", str(out)]
+    assert compare.main() == 0
+    ladder = json.loads((tmp_path / "joint_ladder.json").read_text(encoding="utf-8"))
+    assert set(ladder["ratings"]) == {"Baseline-Start", "Baseline-Ende", "h2_ent_coef_0004-Ende"}
+    assert len(ladder["duels"]) == 3 and all(d["games"] == 2 for d in ladder["duels"])
+    md = out.read_text(encoding="utf-8")
+    assert "## Gemeinsame TrueSkill-Ladder" in md and "Baseline-Start" in md
+    assert "97.50" not in md                       # Einzel-Ladder des Lauf-Ordners nicht benutzt
 
 def test_compare_requires_summary(tmp_path):
     (tmp_path / "leer").mkdir()

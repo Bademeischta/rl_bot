@@ -112,6 +112,22 @@ def has_non_finite(rows: list[dict[str, str]], keys: list[str]) -> list[str]:
     return [key for key in keys if any(is_bad_value(r.get(key)) for r in rows)]
 
 
+def win_rate_ci(wins: int, losses: int, draws: int, z: float = 1.96) -> tuple[float, float, float]:
+    """Gewinnrate (Remis = halber Sieg) mit Wilson-Konfidenzintervall über die Spiele (Review R12).
+
+    z = 1,96 ergibt 95 %. Remis als halbe Siege machen das Intervall etwas zu breit (konservativ).
+    Liefert (Rate, untere Grenze, obere Grenze); ohne Spiele nan.
+    """
+    n = wins + losses + draws
+    if n <= 0:
+        return math.nan, math.nan, math.nan
+    p = (wins + 0.5 * draws) / n
+    denom = 1 + z * z / n
+    center = (p + z * z / (2 * n)) / denom
+    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denom
+    return p, max(0.0, center - half), min(1.0, center + half)
+
+
 def count_bad(rows: list[dict[str, str]], key: str) -> int:
     """Wie viele Iterationen in einer Spalte nan, inf oder leer sind."""
     return sum(1 for r in rows if is_bad_value(r.get(key)))

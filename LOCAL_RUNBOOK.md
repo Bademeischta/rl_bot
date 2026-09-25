@@ -133,9 +133,12 @@ Abbruch (Exit 3) ist ein Ergebnis, kein Fehler: `summary.md` nennt den Grund.
 .\.venv\Scripts\python tools\experiments\compare.py results\exp_* --out results\compare.md
 ```
 
-`results\compare.md` zurückgeben. Entscheidung behalten / verwerfen / nachmessen treffe ich
-anhand der Kriterien aus AUDIT.md §6 (Ladder, `ep_end_goal`, Entropie) und trage sie in
-AUDIT.md ein.
+`compare.py` spielt dabei die **gemeinsame Ladder** (alle Experiment-Enden + Baseline-Start +
+Baseline-Ende, jeder gegen jeden, 50 Spiele je Paarung; bei 4 Experimenten 15 Paarungen, einige
+Minuten). `results\compare.md` und `results\joint_ladder.json` zurückgeben. Hauptkriterium ist
+das Duell gegen das Baseline-Ende (Gewinnrate mit 95-%-KI, Review R12); dazu `ep_end_goal`,
+Entropie und die gemeinsame Ladder. Die Entscheidung behalten / verwerfen / nachmessen trage ich
+in AUDIT.md ein.
 
 ## 6. Optional: Stufe 4, Gradientenschritte 6 / 3 / 2 (~1 Stunde)
 

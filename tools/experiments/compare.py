@@ -4,22 +4,35 @@
     python tools/experiments/compare.py results/exp_* --baseline results/exp_baseline_2026-10-01 --out results/compare.md
 
 Jeder Ordner braucht summary.json (aus summarize.py) und, wenn vorhanden, metrics.csv.
-Verglichen werden (letztes Fünftel der Iterationen): ep_end_goal, ep_end_timeout, Entropie,
-Clip-Fraction, KL, Value Loss, Truncated Steps, SPS - dazu Ladder/TrueSkill (mu - 3 sigma des
-End-Checkpoints, Unsicherheit = sigma) und das direkte Duell gegen das Baseline-Ende mit
-Standardfehler des Toranteils. Die Baseline ist der Ordner mit --baseline oder der, dessen
-Name mit "exp_baseline" beginnt.
+
+**Hauptkriterium** (Review-Befund R12) ist das direkte Duell jedes Experiment-Endes gegen das
+Baseline-Ende (duel_end_vs_baseline.json aus run_experiment.ps1): Gewinnrate (Remis = halber Sieg)
+mit 95-%-Konfidenzintervall nach Wilson. Liegt das ganze Intervall über 50 %, ist das Experiment
+besser; ganz darunter schlechter; sonst unklar.
+
+**TrueSkill** kommt nur aus EINER gemeinsamen Ladder, die compare.py selbst spielt: alle
+Experiment-Enden plus Baseline-Start und Baseline-Ende, jeder gegen jeden (--ladder-games Spiele je
+Paarung, 0 = keine Ladder). Die Ladders in den einzelnen Lauf-Ordnern (ratings.json) haben jeweils
+eigene Nullpunkte und sind untereinander nicht vergleichbar; compare.py benutzt sie nicht.
+
+Dazu je Experiment (letztes Fünftel der Iterationen): ep_end_goal, ep_end_timeout, Entropie,
+Clip-Fraction, KL, Value Loss, Truncated Steps, SPS mit Differenz zur Baseline. Experimente, die mehr
+als einen Config-Wert ändern, werden als Bündel markiert (Review R11). Die Baseline ist der Ordner
+mit --baseline oder der, dessen Name mit "exp_baseline" beginnt.
 """
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import math
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from metrics_util import read_rows, window_mean  # noqa: E402
+from metrics_util import read_rows, win_rate_ci, window_mean  # noqa: E402
+
+ROOT = Path(__file__).resolve().parents[2]
 
 COMPARE_COLUMNS = [
     # (Kurzname in summary.json, Anzeigename, Nachkommastellen, "hoch ist gut" oder None)
@@ -40,6 +53,8 @@ COMPARE_COLUMNS = [
 # Experimenten, zählen also nicht als Änderung gegenüber der Baseline.
 RUN_KEYS = {"learner.checkpoint_folder", "learner.extra_steps", "learner.save_on_exit",
             "learner.timestep_limit", "metrics.run"}
+
+BASELINE_START, BASELINE_END = "Baseline-Start", "Baseline-Ende"
 
 
 def flatten(d: dict, prefix: str = "") -> dict:
@@ -100,20 +115,11 @@ def load_experiment(folder: Path) -> dict:
     return s
 
 
-def end_rating(s: dict) -> tuple[float, float] | None:
-    """(mu - 3 sigma, sigma) des End-Checkpoints, wenn eine Ladder im Lauf-Ordner lief."""
-    ratings = s.get("ratings") or {}
-    if not ratings:
+def duel_win_rate(d: dict | None) -> tuple[float, float, float] | None:
+    """(Gewinnrate, KI unten, KI oben) des Duells aus Sicht von A (= Experiment-Ende)."""
+    if not d or not d.get("games"):
         return None
-    # End-Checkpoint = höchste Step-Zahl im Schlüssel "<lauf>/<steps>"
-    def steps(name: str) -> int:
-        try:
-            return int(name.rsplit("/", 1)[-1])
-        except ValueError:
-            return -1
-    name = max(ratings, key=steps)
-    r = ratings[name]
-    return r["conservative"], r["sigma"]
+    return win_rate_ci(d.get("wins_a", 0), d.get("wins_b", 0), d.get("draws", 0))
 
 
 def fmt(v, digits) -> str:
@@ -132,33 +138,110 @@ def delta(v, base, digits) -> str:
     return f"{sign}{d:,.{digits}f}"
 
 
-def build_table(experiments: list[dict], baseline: dict) -> str:
+# --- gemeinsame Ladder -------------------------------------------------------------------
+
+def end_label(s: dict, baseline: dict) -> str:
+    return BASELINE_END if s is baseline else f"{s['name']}-Ende"
+
+
+def ladder_participants(experiments: list[dict], baseline: dict) -> dict[str, Path]:
+    """Label -> PPO_POLICY.lt: Baseline-Start, Baseline-Ende und jedes Experiment-Ende."""
+    out: dict[str, Path] = {}
+
+    def add(label: str, ckpt: str | None):
+        if not ckpt:
+            return
+        policy = Path(ckpt) / "PPO_POLICY.lt"
+        if policy.exists():
+            out[label] = policy
+
+    add(BASELINE_START, baseline.get("start_checkpoint"))
+    for s in experiments:
+        label = end_label(s, baseline)
+        if label in out:
+            label = f"{label} ({s['_folder'].name})"
+        add(label, s.get("end_checkpoint"))
+    return out
+
+
+def run_joint_ladder(participants: dict[str, Path], games: int, exe: Path, out_path: Path | None) -> dict:
+    """Jeder gegen jeden, ein gemeinsames TrueSkill-Modell. Liefert {"ratings": {...}, "duels": [...]}."""
+    sys.path.insert(0, str(ROOT))
+    from eval.ladder import ENV, conservative, run_duel, update_ratings  # noqa: E402
+
+    ratings = {label: ENV.create_rating() for label in participants}
+    duels = []
+    for (la, pa), (lb, pb) in itertools.combinations(participants.items(), 2):
+        print(f"Ladder: {la} gegen {lb} ({games} Spiele) ...", file=sys.stderr)
+        result = run_duel(pa, pb, games, exe=exe)
+        result.name_a, result.name_b = la, lb
+        ratings = update_ratings(ratings, result)
+        duels.append({"a": la, "b": lb, "games": result.games, "goals_a": result.goals_a,
+                      "goals_b": result.goals_b, "wins_a": result.wins_a, "wins_b": result.wins_b,
+                      "draws": result.draws})
+    data = {"games_per_pair": games,
+            "participants": {label: str(path) for label, path in participants.items()},
+            "ratings": {label: {"mu": r.mu, "sigma": r.sigma, "conservative": conservative(r)}
+                        for label, r in ratings.items()},
+            "duels": duels}
+    if out_path:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    return data
+
+
+# --- Ausgabe -------------------------------------------------------------------------------
+
+def build_table(experiments: list[dict], baseline: dict, ladder: dict | None) -> str:
     lines = []
-    header = "| Experiment | Iter. | " + " | ".join(name for _, name, _, _ in COMPARE_COLUMNS) + " | TrueSkill (mu-3σ ± σ) | Duell gg. Baseline-Ende (Toranteil ± SE) |"
+    header = ("| Experiment | Iter. | **Duell gg. Baseline-Ende: Gewinnrate [95-%-KI]** | "
+              + " | ".join(name for _, name, _, _ in COMPARE_COLUMNS)
+              + " | TrueSkill gemeinsame Ladder (mu-3σ ± σ) | Toranteil im Duell ± SE |")
     lines.append(header)
     lines.append("|" + "---|" * (header.count("|") - 1))
     base_last = baseline.get("metrics", {}).get("last_20pct", {})
+    ratings = (ladder or {}).get("ratings", {})
     for s in experiments:
         last = s.get("metrics", {}).get("last_20pct", {})
         is_base = s is baseline
         label = s["name"] + (" (Baseline)" if is_base else bundle_label(config_changes(s, baseline)))
         cells = [label, str(s.get("metrics", {}).get("iterations", "-"))]
+        wr = None if is_base else duel_win_rate(s.get("duel_baseline"))
+        if wr:
+            d = s["duel_baseline"]
+            cells.append(f"**{wr[0]:.1%}** [{wr[1]:.1%}, {wr[2]:.1%}] ({d['wins_a']}:{d['wins_b']}, "
+                         f"{d['draws']} remis, {d['games']} Spiele)")
+        else:
+            cells.append("(Referenz)" if is_base else "-")
         for short, _, digits, _ in COMPARE_COLUMNS:
             v = last.get(short)
             if is_base:
                 cells.append(fmt(v, digits))
             else:
                 cells.append(f"{fmt(v, digits)} ({delta(v, base_last.get(short), digits)})" if v is not None else "-")
-        r = end_rating(s)
-        cells.append(f"{r[0]:.2f} ± {r[1]:.2f}" if r else "-")
+        r = ratings.get(end_label(s, baseline))
+        cells.append(f"{r['conservative']:.2f} ± {r['sigma']:.2f}" if r else "-")
         d = s.get("duel_baseline")
-        if d and not is_base:
+        if d and not is_base and d.get("goal_share_a") is not None:
             se = d.get("goal_share_se")
-            cells.append(f"{d['goal_share_a']:.1%} ± {(se or 0) * 100:.1f} pp ({d['goals_a']}:{d['goals_b']}, {d['games']} Spiele)")
+            cells.append(f"{d['goal_share_a']:.1%} ± {(se or 0) * 100:.1f} pp ({d['goals_a']}:{d['goals_b']})")
         else:
             cells.append("-")
         lines.append("| " + " | ".join(cells) + " |")
     return "\n".join(lines)
+
+
+def ladder_section(ladder: dict | None, reason: str | None) -> str:
+    out = ["", "## Gemeinsame TrueSkill-Ladder", ""]
+    if not ladder:
+        out.append(f"Nicht gespielt: {reason}")
+        return "\n".join(out)
+    out.append(f"Alle Teilnehmer in einem Modell, jeder gegen jeden, {ladder['games_per_pair']} Spiele je "
+               f"Paarung (Einzel-Ladders der Lauf-Ordner sind nicht vergleichbar und werden nicht benutzt).")
+    out += ["", "| Teilnehmer | mu | sigma | mu-3σ |", "|---|---|---|---|"]
+    for label, r in sorted(ladder["ratings"].items(), key=lambda kv: -kv[1]["conservative"]):
+        out.append(f"| {label} | {r['mu']:.2f} | {r['sigma']:.2f} | {r['conservative']:.2f} |")
+    return "\n".join(out)
 
 
 def verdict_hints(experiments: list[dict], baseline: dict) -> str:
@@ -176,15 +259,18 @@ def verdict_hints(experiments: list[dict], baseline: dict) -> str:
         if changes and len(changes) > 1:
             notes.append(f"**Bündel aus {len(changes)} Änderungen** ({', '.join(changes)}): Ein Effekt ist keinem "
                          f"einzelnen Wert zuzuordnen; nur bei schlechtem oder unklarem Ergebnis aufteilen (AUDIT.md §7.6)")
-        d = s.get("duel_baseline")
-        if d and d.get("goal_share_se") is not None:
-            share, se = d["goal_share_a"], d["goal_share_se"]
-            if share - 2 * se > 0.5:
-                notes.append(f"Duell: signifikant besser als Baseline ({share:.1%}, 2 SE = {2 * se:.1%})")
-            elif share + 2 * se < 0.5:
-                notes.append(f"Duell: signifikant schlechter als Baseline ({share:.1%})")
+        wr = duel_win_rate(s.get("duel_baseline"))
+        if wr:
+            rate, low, high = wr
+            if low > 0.5:
+                notes.append(f"Hauptkriterium Duell: **besser** als Baseline-Ende ({rate:.1%}, 95-%-KI [{low:.1%}, {high:.1%}] über 50 %)")
+            elif high < 0.5:
+                notes.append(f"Hauptkriterium Duell: **schlechter** als Baseline-Ende ({rate:.1%}, 95-%-KI [{low:.1%}, {high:.1%}] unter 50 %)")
             else:
-                notes.append(f"Duell: kein signifikanter Unterschied ({share:.1%} ± {2 * se:.1%}); mehr Spiele oder längerer Lauf")
+                notes.append(f"Hauptkriterium Duell: **unklar** ({rate:.1%}, 95-%-KI [{low:.1%}, {high:.1%}] enthält 50 %); "
+                             f"mehr Duell-Spiele oder längerer Lauf")
+        else:
+            notes.append("Hauptkriterium Duell fehlt (kein duel_end_vs_baseline.json; -Baseline bei run_experiment.ps1?)")
         g, gb = last.get("ep_end_goal"), base_last.get("ep_end_goal")
         if g is not None and gb is not None and gb > 0:
             notes.append(f"Tor-Anteil {g:.3f} gegen {gb:.3f} ({(g - gb) / gb:+.1%})")
@@ -194,7 +280,7 @@ def verdict_hints(experiments: list[dict], baseline: dict) -> str:
         sps, spsb = last.get("sps"), base_last.get("sps")
         if sps and spsb and abs(sps / spsb - 1) > 0.07:
             notes.append(f"SPS {sps / spsb - 1:+.1%} gegenüber Baseline (über der 7-%-Streuung)")
-        out.append(f"* **{s['name']}**: " + ("; ".join(notes) if notes else "keine Auffälligkeiten"))
+        out.append(f"* **{s['name']}**: " + "; ".join(notes))
     return "\n".join(out)
 
 
@@ -215,10 +301,18 @@ def changes_section(experiments: list[dict], baseline: dict) -> str:
 
 
 def main() -> int:
+    sys.path.insert(0, str(ROOT))
+    from eval.ladder import DUEL_EXE  # noqa: E402
+
     ap = argparse.ArgumentParser()
     ap.add_argument("folders", nargs="+", type=Path)
     ap.add_argument("--baseline", type=Path, default=None)
     ap.add_argument("--out", type=Path, default=None, help="Markdown zusätzlich in Datei schreiben")
+    ap.add_argument("--ladder-games", type=int, default=50,
+                    help="Spiele je Paarung in der gemeinsamen Ladder (0 = keine Ladder)")
+    ap.add_argument("--exe", type=Path, default=DUEL_EXE, help="Pfad zu duel.exe")
+    ap.add_argument("--ladder-out", type=Path, default=None,
+                    help="Ergebnis der gemeinsamen Ladder (Standard: joint_ladder.json neben --out)")
     a = ap.parse_args()
 
     experiments = [load_experiment(f) for f in a.folders]
@@ -234,9 +328,24 @@ def main() -> int:
             raise SystemExit("Keine Baseline gefunden: --baseline angeben oder Ordner exp_baseline_* mitgeben")
         baseline = candidates[0]
 
+    ladder, reason = None, None
+    participants = ladder_participants(experiments, baseline)
+    if a.ladder_games <= 0:
+        reason = "--ladder-games 0"
+    elif len(participants) < 2:
+        reason = f"weniger als zwei Checkpoints gefunden ({', '.join(participants) or 'keine'})"
+    elif not a.exe.exists():
+        reason = f"duel.exe fehlt: {a.exe}"
+    else:
+        ladder_out = a.ladder_out or ((a.out.parent / "joint_ladder.json") if a.out else None)
+        ladder = run_joint_ladder(participants, a.ladder_games, a.exe, ladder_out)
+
     md = "# Experiment-Vergleich (letztes Fünftel der Iterationen)\n\n"
     md += f"Baseline: `{baseline['_folder']}`\n\n"
-    md += build_table(experiments, baseline) + "\n"
+    md += ("Hauptkriterium: Duell gegen das Baseline-Ende, Gewinnrate (Remis = halber Sieg) mit "
+           "95-%-Wilson-Intervall. TrueSkill nur aus der gemeinsamen Ladder unten.\n\n")
+    md += build_table(experiments, baseline, ladder) + "\n"
+    md += ladder_section(ladder, reason) + "\n"
     md += changes_section(experiments, baseline) + "\n"
     md += verdict_hints(experiments, baseline) + "\n"
     print(md)
