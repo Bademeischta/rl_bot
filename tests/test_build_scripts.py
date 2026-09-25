@@ -222,3 +222,26 @@ def test_apply_patches_reset_replaces_the_first_truncation_patch(tmp_path):
     assert r.stdout.count("[angewendet]") == 2, r.stdout
     gym_h = (clone / "RLGymPPO_CPP" / "RLGymSim_CPP" / "src" / "RLGymSim_CPP" / "Gym.h").read_text(encoding="utf-8")
     assert "RLGSC_HAS_FINAL_OBS" in gym_h
+
+
+# --- R13: bench_expbuffer.ps1 mit eigenem Seed je Wiederholung --------------------------------
+
+@needs_ps51
+def test_bench_expbuffer_uses_a_different_seed_per_repetition():
+    """Echter Plan des Skripts (-DryRun): Innerhalb einer Wiederholung derselbe Seed für alle
+    Varianten (gepaart), zwischen Wiederholungen verschiedene Seeds; Baseline je Wiederholung."""
+    r = _ps("-File", str(ROOT / "tools" / "experiments" / "bench_expbuffer.ps1"),
+            "-StartCheckpoint", str(ROOT), "-Repeats", "3", "-Seed", "123", "-DryRun")
+    assert r.returncode == 0, r.stdout + r.stderr
+    plan = [dict(kv.split("=", 1) for kv in line.split()[1:]) for line in r.stdout.splitlines()
+            if line.startswith("PLAN ")]
+    assert len(plan) == 9
+    seeds_per_rep = {}
+    for p in plan:
+        seeds_per_rep.setdefault(p["rep"], set()).add(p["seed"])
+    assert all(len(s) == 1 for s in seeds_per_rep.values()), seeds_per_rep      # gepaart
+    assert len({next(iter(s)) for s in seeds_per_rep.values()}) == 3             # verschieden
+    assert [next(iter(seeds_per_rep[k])) for k in ("1", "2", "3")] == ["123", "124", "125"]
+    for p in plan:
+        expected = "selbst" if p["variant"] == "h5_updates6_epochs2_buf3" else f"h5_updates6_epochs2_buf3_r{p['rep']}"
+        assert p["baseline"] == expected
