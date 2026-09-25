@@ -27,6 +27,7 @@ TEST(EnvFactory_reicht_Seed_und_Shuffle_an_Env_weiter) {
 	if (!g_arenaReady) return;
 	TrainConfig cfg = SmallConfig();
 	cfg.shuffleSlots = false;
+	cfg.seedEnvs = true;   // Default ist false (altes Verhalten, Review R6)
 
 	EnvFactory f1(cfg), f2(cfg);
 	auto e1 = f1.Create();

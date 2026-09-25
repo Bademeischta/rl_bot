@@ -202,25 +202,28 @@ TEST(ModusMix_trifft_kleine_Anteile_auch_bei_wenigen_Envs) {
 // --- Schalter aus dem Audit (H3 shuffle_slots, H6 seed_envs) ----------------
 
 TEST(Config_shuffle_slots_und_seed_envs_haben_altes_Verhalten_als_Default) {
+	// Review-Befund R6: seed_envs war true und änderte damit still das Verhalten von
+	// lucy_1v1.json (Hauptlauf). Altes Verhalten = zeitgeseedeter Engine = false.
 	auto path = WriteTempConfig("{}");
 	auto cfg = TrainConfig::FromFile(path.string());
 	std::filesystem::remove(path);
 	CHECK(cfg.shuffleSlots);
-	CHECK(cfg.seedEnvs);
+	CHECK(!cfg.seedEnvs);
+	CHECK(!TrainConfig{}.seedEnvs);
 }
 
 TEST(Config_shuffle_slots_und_seed_envs_sind_lesbar_und_roundtrip_fest) {
-	auto path = WriteTempConfig(R"({"env": {"shuffle_slots": false, "seed_envs": false}})");
+	auto path = WriteTempConfig(R"({"env": {"shuffle_slots": false, "seed_envs": true}})");
 	auto cfg = TrainConfig::FromFile(path.string());
 	std::filesystem::remove(path);
 	CHECK(!cfg.shuffleSlots);
-	CHECK(!cfg.seedEnvs);
+	CHECK(cfg.seedEnvs);
 
 	auto path2 = WriteTempConfig(cfg.ToJSONString());
 	auto cfg2 = TrainConfig::FromFile(path2.string());
 	std::filesystem::remove(path2);
 	CHECK(!cfg2.shuffleSlots);
-	CHECK(!cfg2.seedEnvs);
+	CHECK(cfg2.seedEnvs);
 }
 
 // --- Experiment-Optionen (Stufe 3): extra_steps, save_on_exit ------------------

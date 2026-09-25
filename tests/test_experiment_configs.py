@@ -41,8 +41,18 @@ EXPECTED = {
 def test_baseline_equals_main_config_except_run_and_folder():
     main = flatten(json.loads((ROOT / "train" / "configs" / "lucy_1v1.json").read_text(encoding="utf-8")))
     d = diff(main, load("baseline"))
-    assert set(d) == {"learner.checkpoint_folder", "metrics.group"}, d
+    # seed_envs: Default false (altes Verhalten, R6), Experimente setzen es ausdrücklich
+    assert set(d) == {"learner.checkpoint_folder", "metrics.group", "env.seed_envs"}, d
+    assert d["env.seed_envs"] == (None, True)
     assert load("baseline")["env.game_timeout_secs"] == 900.0          # K1a ist drin
+
+
+def test_every_experiment_config_seeds_its_envs_explicitly():
+    """Review-Befund R6: Default ist false (Hauptlauf unverändert), Experimente brauchen true."""
+    configs = sorted(EXP.glob("*.json"))
+    assert len(configs) >= 8
+    for path in configs:
+        assert flatten(json.loads(path.read_text(encoding="utf-8"))).get("env.seed_envs") is True, path.name
 
 
 @pytest.mark.parametrize("name,expected", list(EXPECTED.items()))

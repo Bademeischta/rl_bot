@@ -6,7 +6,7 @@ Step-Zahl** wie der Kontrolllauf, und ändert gegenüber `baseline.json` genau *
 
 | Config (`train/configs/experiments/`) | Änderung | Audit |
 |---|---|---|
-| `baseline.json` | keine (= `lucy_1v1.json` nach K1a/K1b) | Kontrolllauf |
+| `baseline.json` | keine (= `lucy_1v1.json` nach K1a/K1b, plus `env.seed_envs: true` wie in allen Experiment-Configs; Default ist false, Review R6) | Kontrolllauf |
 | `h2_ent_coef_0004.json` | `learner.ent_coef` 0,01 → 0,004 | H2 |
 | `h3_no_shuffle.json` | `env.shuffle_slots` → false | H3 |
 | `k3_rewards.json` | Reward-Block laut AUDIT.md K3 (goal/concede 50, dichte Terme runter, in_air 0) | K3 |
