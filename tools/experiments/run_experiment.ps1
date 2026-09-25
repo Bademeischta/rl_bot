@@ -9,8 +9,10 @@
 #
 # Ablauf:
 #   1. freien Speicherplatz prüfen
-#   2. Checkpoint-Ordner (inkl. RUNNING_STATS.json) nach runs\exp_<name>_<datum>\checkpoints\ KOPIEREN,
-#      das Original bleibt unberührt; ein vorhandener Zielordner wird NIE überschrieben
+#   2. Checkpoint-Ordner (inkl. RUNNING_STATS.json) zweimal KOPIEREN und per Hash prüfen:
+#      runs\exp_<name>_<datum>\start\<steps> (Referenz fürs Duell, außerhalb der Checkpoint-Rotation)
+#      und ...\checkpoints\<steps> (lädt der Trainer). Das Original bleibt unberührt; vorhandene
+#      Lauf-/Ergebnisordner und Zips werden NIE überschrieben
 #   3. Training bis Start-Steps + -Steps (learner.extra_steps), End-Checkpoint per save_on_exit;
 #      Abbruchkriterien aus tools\experiments\check_abort.py werden alle -PollSeconds geprüft
 #   4. Ladder (TrueSkill, eval\ladder.py) und Duell Ende gegen Start (und gegen Baseline-Ende)
@@ -32,7 +34,12 @@ param(
     [int]$MinFreeGB = 20,
     [int]$AbortWarmup = 100,
     [string]$Flavor = "cu128",
-    [switch]$SkipLadder
+    [switch]$SkipLadder,
+    # Nur Schritte 0-2 (Prüfen, Checkpoint kopieren), kein Training; für Tests
+    [switch]$PrepareOnly,
+    # Andere Wurzel für runs\ und results\ (Tests); Standard: Repo-Wurzel
+    [string]$RunsRoot = "",
+    [string]$ResultsRoot = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -56,10 +63,12 @@ if (-not (Test-Path "$StartCheckpoint\RUNNING_STATS.json")) { Fail "Kein RUNNING
 if (-not (Test-Path "$Root\collision_meshes")) { Fail "collision_meshes fehlt im Repo-Wurzelordner" }
 $startSteps = [long](Split-Path $StartCheckpoint -Leaf)
 if ($Name -eq "") { $Name = [IO.Path]::GetFileNameWithoutExtension($Config) }
-$Date = Get-Date -Format "yyyy-MM-dd_HHmm"
+$Date = Get-Date -Format "yyyy-MM-dd_HHmmss"
 $ExpName = "exp_${Name}_${Date}"
-$RunDir = "$Root\runs\$ExpName"
-$ResDir = "$Root\results\$ExpName"
+if ($RunsRoot -eq "") { $RunsRoot = "$Root\runs" }
+if ($ResultsRoot -eq "") { $ResultsRoot = "$Root\results" }
+$RunDir = "$RunsRoot\$ExpName"
+$ResDir = "$ResultsRoot\$ExpName"
 if (Test-Path $RunDir) { Fail "Lauf-Ordner existiert bereits: $RunDir (wird nie ueberschrieben)" }
 if (Test-Path $ResDir) { Fail "Ergebnis-Ordner existiert bereits: $ResDir" }
 New-Item -ItemType Directory -Force -Path $ResDir | Out-Null
@@ -87,14 +96,29 @@ try {
     if ($freeGB -lt $needGB) { Fail "Geschaetzter Bedarf $needGB GB > frei $freeGB GB" }
 
     # --- 2. Checkpoint kopieren --------------------------------------------------
+    # Zwei Kopien (Review-Befund R14): start\<steps> ist die unveränderliche Referenz für das Duell
+    # "Ende gegen Start" und liegt außerhalb der Checkpoint-Rotation (checkpoints_to_keep löscht in
+    # checkpoints\ die ältesten); checkpoints\<steps> lädt der Trainer beim Start.
+    $startDst = "$RunDir\start\$startSteps"
     $ckptDst = "$RunDir\checkpoints\$startSteps"
-    New-Item -ItemType Directory -Force -Path $ckptDst | Out-Null
-    Copy-Item "$StartCheckpoint\*" -Destination $ckptDst -Recurse
-    if (-not (Test-Path "$ckptDst\PPO_POLICY.lt")) { Fail "Kopie fehlgeschlagen: $ckptDst" }
-    Write-Host "Checkpoint kopiert nach $ckptDst (Original unveraendert)"
+    foreach ($dst in @($startDst, $ckptDst)) {
+        New-Item -ItemType Directory -Force -Path $dst | Out-Null
+        Copy-Item "$StartCheckpoint\*" -Destination $dst -Recurse
+        foreach ($f in Get-ChildItem $StartCheckpoint -File) {
+            $copy = Join-Path $dst $f.Name
+            if (-not (Test-Path $copy) -or (Get-FileHash $copy).Hash -ne (Get-FileHash $f.FullName).Hash) {
+                Fail "Kopie fehlerhaft: $copy"
+            }
+        }
+    }
+    Write-Host "Checkpoint kopiert und geprueft: $startDst (Referenz, ausserhalb der Rotation) und $ckptDst (Trainer); Original unveraendert"
+    if ($PrepareOnly) {
+        Write-Host "-PrepareOnly: kein Training" -ForegroundColor Yellow
+        return
+    }
 
     # --- 3. Config ableiten und Training starten ----------------------------------
-    $cfgJson.learner.checkpoint_folder = "runs/$ExpName/checkpoints"
+    $cfgJson.learner.checkpoint_folder = ($RunDir -replace '\\', '/') + "/checkpoints"
     $cfgJson.learner.random_seed = $Seed
     $cfgJson.learner.timestep_limit = 0
     $cfgJson.learner | Add-Member -NotePropertyName extra_steps -NotePropertyValue $Steps -Force
@@ -157,7 +181,7 @@ try {
     $duelBase = "$ResDir\duel_end_vs_baseline.json"
     if ((Test-Path $Duel) -and [long]$endCkpt.Name -ne $startSteps) {
         Write-Host "Duell Ende gegen Start ($DuelGames Spiele)..."
-        Invoke-Native $Duel @('--a', "$($endCkpt.FullName)\PPO_POLICY.lt", '--b', "$ckptDst\PPO_POLICY.lt", '--games', $DuelGames,
+        Invoke-Native $Duel @('--a', "$($endCkpt.FullName)\PPO_POLICY.lt", '--b', "$startDst\PPO_POLICY.lt", '--games', $DuelGames,
             '--meshes', "$Root\collision_meshes", '--out', $duelStart) -MergeStdErr | Select-Object -Last 2 | ForEach-Object { Write-Host $_ }
         if ($Baseline -ne "" -and (Test-Path "$Baseline\summary.json")) {
             $bs = Get-Content "$Baseline\summary.json" -Raw | ConvertFrom-Json
@@ -182,7 +206,7 @@ try {
         if (Test-Path "$RunDir\$f") { Copy-Item "$RunDir\$f" -Destination $ResDir }
     }
     $sumArgs = @("$Root\tools\experiments\summarize.py", "--run", $RunDir, "--out", $ResDir, "--name", $Name,
-                 "--config", $Config, "--start-checkpoint", $ckptDst, "--end-checkpoint", $endCkpt.FullName,
+                 "--config", $Config, "--start-checkpoint", $startDst, "--end-checkpoint", $endCkpt.FullName,
                  "--wall-seconds", $wall)
     if (Test-Path $duelStart) { $sumArgs += @("--duel-start", $duelStart) }
     if (Test-Path $duelBase) { $sumArgs += @("--duel-baseline", $duelBase) }
@@ -192,9 +216,11 @@ try {
 finally {
     Stop-Transcript | Out-Null
 }
+if ($PrepareOnly) { exit 0 }
 
-$zip = "$Root\results\$ExpName.zip"
-Compress-Archive -Path "$ResDir\*" -DestinationPath $zip -Force
+$zip = "$ResultsRoot\$ExpName.zip"
+if (Test-Path $zip) { Fail "Zip existiert bereits: $zip (wird nie ueberschrieben)" }
+Compress-Archive -Path "$ResDir\*" -DestinationPath $zip
 Write-Host "`nFertig nach $([math]::Round(((Get-Date) - $startedAt).TotalMinutes, 1)) min." -ForegroundColor Green
 Write-Host "Ergebnisse: $ResDir"
 Write-Host "Zip zum Zurueckgeben: $zip"

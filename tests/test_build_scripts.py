@@ -245,3 +245,41 @@ def test_bench_expbuffer_uses_a_different_seed_per_repetition():
     for p in plan:
         expected = "selbst" if p["variant"] == "h5_updates6_epochs2_buf3" else f"h5_updates6_epochs2_buf3_r{p['rep']}"
         assert p["baseline"] == expected
+
+
+# --- R14: Start-Checkpoint außerhalb der Rotation ------------------------------------------
+
+MAIN_RUN_CKPTS = ROOT / "runs" / "lucy_1v1" / "checkpoints"
+
+
+def _newest_real_checkpoint():
+    if not MAIN_RUN_CKPTS.exists():
+        return None
+    c = [p for p in MAIN_RUN_CKPTS.iterdir() if p.name.isdigit() and (p / "PPO_POLICY.lt").exists()]
+    return max(c, key=lambda p: int(p.name)) if c else None
+
+
+@needs_ps51
+@pytest.mark.skipif(_newest_real_checkpoint() is None, reason="kein echter Checkpoint in runs/lucy_1v1")
+@pytest.mark.skipif(not (ROOT / "build" / "cpp_cu128" / "train_bot.exe").exists(), reason="train_bot.exe fehlt")
+def test_run_experiment_keeps_the_start_checkpoint_outside_the_rotation(tmp_path):
+    """Echtes run_experiment.ps1 (-PrepareOnly) mit dem echten neuesten Checkpoint (nur gelesen):
+    start/<steps> (Referenz fürs Duell) und checkpoints/<steps> (Trainer), beide byte-gleich."""
+    import hashlib
+    src = _newest_real_checkpoint()
+    before = {f.name: hashlib.sha256(f.read_bytes()).hexdigest() for f in src.iterdir() if f.is_file()}
+    runs, results = tmp_path / "runs", tmp_path / "results"
+    r = _ps("-File", str(ROOT / "tools" / "experiments" / "run_experiment.ps1"),
+            "-Config", str(ROOT / "train" / "configs" / "experiments" / "baseline.json"),
+            "-StartCheckpoint", str(src), "-Name", "pytest", "-MinFreeGB", "0",
+            "-RunsRoot", str(runs), "-ResultsRoot", str(results), "-PrepareOnly")
+    assert r.returncode == 0, r.stdout + r.stderr
+    run_dirs = list(runs.glob("exp_pytest_*"))
+    assert len(run_dirs) == 1
+    for sub in ("start", "checkpoints"):
+        copy = run_dirs[0] / sub / src.name
+        got = {f.name: hashlib.sha256(f.read_bytes()).hexdigest() for f in copy.iterdir() if f.is_file()}
+        assert got == before, sub
+    # Original unverändert
+    assert {f.name: hashlib.sha256(f.read_bytes()).hexdigest() for f in src.iterdir() if f.is_file()} == before
+    assert "start" in r.stdout and "Rotation" in r.stdout
