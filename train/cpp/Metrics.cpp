@@ -6,7 +6,11 @@
 #include <RLGymSim_CPP/Math.h>
 #include <RLGymSim_CPP/Utils/TerminalConditions/NoTouchCondition.h>
 
+#include <cmath>
+#include <fstream>
+#include <iomanip>
 #include <map>
+#include <sstream>
 
 namespace RLbot {
 
@@ -94,6 +98,122 @@ void AggregateGameMetrics(const std::vector<Report>& gameReports, Report& out) {
 	for (auto& pair : sums)
 		if (pair.second.second > 0)
 			out[pair.first] = pair.second.first / pair.second.second;
+}
+
+// --- metrics.csv -----------------------------------------------------------
+
+static bool IsInternalAvgKey(const std::string& key) {
+	return key.find("_avg_total") != std::string::npos || key.find("_avg_count") != std::string::npos;
+}
+
+std::vector<std::string> MetricsCSVWriter::ParseHeader(const std::string& line) {
+	std::vector<std::string> out;
+	std::string cur;
+	bool inQuotes = false;
+	for (size_t i = 0; i < line.size(); i++) {
+		char c = line[i];
+		if (c == '"') {
+			inQuotes = !inQuotes;
+		} else if (c == ',' && !inQuotes) {
+			out.push_back(cur);
+			cur.clear();
+		} else if (c != '\r') {
+			cur += c;
+		}
+	}
+	out.push_back(cur);
+	return out;
+}
+
+std::string MetricsCSVWriter::FormatValue(double value) {
+	if (!std::isfinite(value))
+		return {};
+	std::ostringstream s;
+	s << std::setprecision(12) << value;
+	return s.str();
+}
+
+bool MetricsCSVWriter::LoadExistingHeader() {
+	std::error_code ec;
+	if (!std::filesystem::exists(path, ec) || std::filesystem::file_size(path, ec) == 0)
+		return false;
+	std::ifstream fIn(path);
+	std::string line;
+	if (!std::getline(fIn, line) || line.empty())
+		return false;
+	columns = ParseHeader(line);
+	return true;
+}
+
+void MetricsCSVWriter::RewriteHeader() {
+	// Nur Zeile 1 ändert sich; die Datei wird einmal komplett umkopiert (passiert nur, wenn
+	// ein neuer Schlüssel auftaucht, also selten).
+	std::ifstream fIn(path);
+	if (!fIn.good())
+		return;
+	std::string firstLine;
+	std::getline(fIn, firstLine);
+	std::filesystem::path tmp = path;
+	tmp += ".tmp";
+	{
+		std::ofstream fOut(tmp, std::ios::binary);
+		for (size_t i = 0; i < columns.size(); i++)
+			fOut << (i ? "," : "") << '"' << columns[i] << '"';
+		fOut << '\n';
+		fOut << fIn.rdbuf();
+	}
+	fIn.close();
+	std::error_code ec;
+	std::filesystem::rename(tmp, path, ec);
+	if (ec) {
+		// Fallback (z. B. Windows mit offenem Handle): Inhalt kopieren statt umbenennen
+		std::filesystem::copy_file(tmp, path, std::filesystem::copy_options::overwrite_existing, ec);
+		std::filesystem::remove(tmp, ec);
+	}
+}
+
+void MetricsCSVWriter::Append(const RLGPC::Report& report) {
+	if (path.empty())
+		return;
+
+	bool fileHasData = false;
+	if (!initialized) {
+		fileHasData = LoadExistingHeader();
+		initialized = true;
+	} else {
+		fileHasData = true;
+	}
+
+	bool changed = false;
+	for (auto& pair : report.data) {
+		if (IsInternalAvgKey(pair.first))
+			continue;
+		if (std::find(columns.begin(), columns.end(), pair.first) == columns.end()) {
+			columns.push_back(pair.first);
+			changed = true;
+		}
+	}
+
+	if (fileHasData) {
+		if (changed)
+			RewriteHeader();
+	} else {
+		std::ofstream fOut(path, std::ios::binary);
+		for (size_t i = 0; i < columns.size(); i++)
+			fOut << (i ? "," : "") << '"' << columns[i] << '"';
+		fOut << '\n';
+	}
+
+	std::ofstream fOut(path, std::ios::app | std::ios::binary);
+	if (!fOut.good())
+		return;
+	for (size_t i = 0; i < columns.size(); i++) {
+		auto it = report.data.find(columns[i]);
+		fOut << (i ? "," : "");
+		if (it != report.data.end())
+			fOut << FormatValue(it->second);
+	}
+	fOut << '\n';
 }
 
 } // namespace RLbot

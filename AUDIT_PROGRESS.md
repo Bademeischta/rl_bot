@@ -32,8 +32,8 @@ Status-Werte: `offen` · `umgesetzt (VM-getestet)` · `umgesetzt (ungetestet, lo
 |---|---|---|---|---|---|
 | H4 | 0 | Git-Commit + Tag, Git-Hash in `config_used.json` | teilweise: Commit `54105bf` existiert (vom Nutzer, nach dem Audit); Tag und Hash offen | — | Tag lokal setzen (`LOCAL_RUNBOOK.md`) |
 | M8 | 1 | Metriken Episoden-Ende (`ep_end_goal`, `ep_end_timeout`, `ep_end_notouch`, `ep_end_time`, `ep_length_steps`, `scene_<name>_goal/_length`) | umgesetzt (VM-getestet) | M8 | `tests/cpp/test_metrics.cpp` (8 Tests), Linux-Build; `OnIteration` aggregiert jetzt alle `AccumAvg`-Schlüssel dynamisch |
-| H6 | 1 | Seed an eigene State-Setter | offen | | |
-| M1 | 1 | `metrics.csv` Kopfzeilen an der Quelle | offen | | |
+| H6 | 1 | Seed an eigene State-Setter und Obs-Shuffle (`env.seed_envs`, Default true; false = alter zeitgeseedeter Pfad) | umgesetzt (VM-getestet) | H6 | `Seed_*`-Tests, `OBS_Shuffle_mit_Seed_*`, `EnvFactory_reicht_Seed_*`. Nicht seedbar bleiben Upstream-Teile: `RandomState`, `Arena::ResetToRandomKickoff`, SkillTracker-Seitentausch |
+| M1 | 1 | `metrics.csv`: Kopfzeile aus Datei übernehmen, neue Spalten anhängen, `nan`/`inf` leer (N4), 12 signifikante Stellen | umgesetzt (VM-getestet) | M1 | `CSV_*`-Tests (7); Smoke-Lauf `train_bot` auf CPU in der VM mit Neustart (siehe Protokoll) |
 | K2 | 1 | `duel.cpp` Obs-Doppelbau | offen | | |
 | M4 | 1 | Rating-Schlüssel mit Lauf-Name | offen | | |
 | M5 | 1 | Checkpoint-Auswahl pro Lauf, numerisch | offen | | |
@@ -44,7 +44,7 @@ Status-Werte: `offen` · `umgesetzt (VM-getestet)` · `umgesetzt (ungetestet, lo
 | M2 | 2 | requirements pinnen + rlbot, Abgleichskript | offen | | |
 | K1b | 2 | Truncation-Flag durch Upstream (Patch) | offen | | |
 | H2 | 3 | `ent_coef` 0,004 — nur als Experiment-Config | offen | | |
-| H3 | 3 | Slot-Shuffle aus — Config-Schalter + Experiment-Config | offen | | |
+| H3 | 3 | Slot-Shuffle: Config-Schalter `env.shuffle_slots` (Default true = altes Verhalten); Experiment-Config folgt in Schritt 2 | Schalter umgesetzt (VM-getestet), Experiment vorbereitet | H6 | `OBS_Shuffle_Slot0_Anteil_ist_ein_Drittel` bestätigt die Audit-Aussage „ein Drittel"; `OBS_ohne_Shuffle_Gegner_immer_in_Slot0` |
 | K3 | 3 | Reward-Umgewichtung — nur als Experiment-Config | offen | | |
 | — | 3 | `team_spirit` > 0 — Experiment-Config | offen | | |
 | H5 | 4 | `exp_buffer_iterations` konfigurierbar, Benchmark-Skript | offen | | |
@@ -72,6 +72,8 @@ Status-Werte: `offen` · `umgesetzt (VM-getestet)` · `umgesetzt (ungetestet, lo
 * 25.09.2026 — Session gestartet. AUDIT.md aus dem Upload ins Repo übernommen, Herkunftstabelle
   (§0) ergänzt. Python-Tests in der VM: 51 bestanden, 3 übersprungen. Upstream geklont, Linux-Build
   gestartet.
+
+* 25.09.2026 — M8, H6/H3-Schalter, M1 umgesetzt. Smoke-Lauf `train_bot` auf CPU in der VM (2 Threads x 2 Spiele, Netz 32x32, 2.500 + 2.500 Steps mit Neustart aus dem Checkpoint): metrics.csv hat genau eine Kopfzeile, Spalten `ep_end_*`, `ep_length_steps`, `scene_*` sind da, spaeter auftauchende Schluessel (`scene_aerial_*`) wurden hinten angehaengt. Keine Leistungszahlen aus diesem Lauf verwendet.
 
 ## Übernahme für eine neue Session
 

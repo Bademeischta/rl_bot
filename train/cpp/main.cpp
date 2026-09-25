@@ -18,40 +18,11 @@ using namespace RLGPC;
 using namespace RLGSC;
 
 static RLbot::EnvFactory* g_factory = nullptr;
-static std::filesystem::path g_metricsPath;
-static std::vector<std::string> g_metricsColumns;
 
 // DisplayReport() des Upstreams druckt nur eine feste Whitelist, eigene Metriken tauchen
 // dort nie auf. Ohne wandb wären sie damit verloren, deshalb schreiben wir jede Iteration
-// zusätzlich in eine CSV.
-static void AppendMetricsCSV(const Report& report) {
-	if (g_metricsPath.empty())
-		return;
-
-	bool writeHeader = g_metricsColumns.empty();
-	if (writeHeader)
-		for (auto& pair : report.data)
-			if (pair.first.find("_avg_total") == std::string::npos
-				&& pair.first.find("_avg_count") == std::string::npos)
-				g_metricsColumns.push_back(pair.first);
-
-	std::ofstream fOut(g_metricsPath, std::ios::app);
-	if (!fOut.good())
-		return;
-
-	if (writeHeader) {
-		for (size_t i = 0; i < g_metricsColumns.size(); i++)
-			fOut << (i ? "," : "") << '"' << g_metricsColumns[i] << '"';
-		fOut << '\n';
-	}
-	for (size_t i = 0; i < g_metricsColumns.size(); i++) {
-		auto it = report.data.find(g_metricsColumns[i]);
-		fOut << (i ? "," : "");
-		if (it != report.data.end())
-			fOut << it->second;
-	}
-	fOut << '\n';
-}
+// zusätzlich in eine CSV (Audit M1: Kopfzeile aus der Datei übernehmen, neue Spalten anhängen).
+static RLbot::MetricsCSVWriter g_metricsCSV;
 
 static RLbot::EpisodeLengthTracker g_episodeLengths;
 
@@ -78,7 +49,7 @@ static void OnStep(GameInst* gameInst, const Gym::StepResult& stepResult, Report
 
 static void OnIteration(Learner* learner, Report& allMetrics) {
 	RLbot::AggregateGameMetrics(learner->GetAllGameMetrics(), allMetrics);
-	AppendMetricsCSV(allMetrics);
+	g_metricsCSV.Append(allMetrics);
 }
 
 int main(int argc, char** argv) {
@@ -117,7 +88,7 @@ int main(int argc, char** argv) {
 	if (!runDir.empty()) {
 		std::filesystem::create_directories(runDir);
 		std::ofstream(runDir / "config_used.json") << cfg.ToJSONString();
-		g_metricsPath = runDir / "metrics.csv";
+		g_metricsCSV = RLbot::MetricsCSVWriter(runDir / "metrics.csv");
 	}
 
 	RocketSim::Init(meshDir);

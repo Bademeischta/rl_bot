@@ -174,3 +174,117 @@ TEST(Aggregation_ohne_Daten_schreibt_nichts) {
 	AggregateGameMetrics({ empty }, out);
 	CHECK(out.data.empty());
 }
+
+// --- metrics.csv (Audit M1, N4) ----------------------------------------------
+
+#include <filesystem>
+#include <fstream>
+
+static std::filesystem::path TempCSV(const char* name) {
+	auto p = std::filesystem::temp_directory_path() / (std::string("rlbot_test_") + name + ".csv");
+	std::filesystem::remove(p);
+	return p;
+}
+
+static std::vector<std::string> ReadLines(const std::filesystem::path& p) {
+	std::ifstream f(p);
+	std::vector<std::string> lines;
+	std::string line;
+	while (std::getline(f, line)) lines.push_back(line);
+	return lines;
+}
+
+TEST(CSV_neue_Datei_bekommt_genau_eine_Kopfzeile) {
+	auto p = TempCSV("neu");
+	MetricsCSVWriter w(p);
+	Report r; r["Cumulative Timesteps"] = 100000; r["ball_speed"] = 1234.5;
+	r["ball_speed_avg_total"] = 1; r["ball_speed_avg_count"] = 1;   // interne Schlüssel bleiben draußen
+	w.Append(r);
+	r["Cumulative Timesteps"] = 200000;
+	w.Append(r);
+	auto lines = ReadLines(p);
+	CHECK_EQ((int)lines.size(), 3);
+	CHECK_EQ(lines[0], std::string("\"Cumulative Timesteps\",\"ball_speed\""));
+	CHECK_EQ(lines[1], std::string("100000,1234.5"));
+	CHECK_EQ(lines[2], std::string("200000,1234.5"));
+	std::filesystem::remove(p);
+}
+
+TEST(CSV_Fortsetzen_haengt_keine_zweite_Kopfzeile_an) {
+	auto p = TempCSV("fortsetzen");
+	{
+		MetricsCSVWriter w(p);
+		Report r; r["A"] = 1; r["B"] = 2;
+		w.Append(r);
+	}
+	{
+		MetricsCSVWriter w(p);   // neuer Prozess, gleiche Datei
+		Report r; r["A"] = 3; r["B"] = 4;
+		w.Append(r);
+		CHECK_EQ((int)w.Columns().size(), 2);
+	}
+	auto lines = ReadLines(p);
+	CHECK_EQ((int)lines.size(), 3);
+	CHECK_EQ(lines[0], std::string("\"A\",\"B\""));
+	CHECK_EQ(lines[1], std::string("1,2"));
+	CHECK_EQ(lines[2], std::string("3,4"));
+	std::filesystem::remove(p);
+}
+
+TEST(CSV_neuer_Schluessel_wird_hinten_angehaengt_und_Kopfzeile_neu_geschrieben) {
+	auto p = TempCSV("neuer_schluessel");
+	MetricsCSVWriter w(p);
+	Report r1; r1["A"] = 1; r1["B"] = 2;
+	w.Append(r1);
+	Report r2; r2["A"] = 3; r2["B"] = 4; r2["Skill Rating 2v2"] = 1000;
+	w.Append(r2);
+	Report r3; r3["A"] = 5;   // B fehlt in dieser Iteration -> leeres Feld
+	w.Append(r3);
+	auto lines = ReadLines(p);
+	CHECK_EQ((int)lines.size(), 4);
+	CHECK_EQ(lines[0], std::string("\"A\",\"B\",\"Skill Rating 2v2\""));
+	CHECK_EQ(lines[1], std::string("1,2"));            // alte Zeile bleibt unverändert (kürzer)
+	CHECK_EQ(lines[2], std::string("3,4,1000"));
+	CHECK_EQ(lines[3], std::string("5,,"));
+
+	// Fortsetzen übernimmt die erweiterte Kopfzeile in genau dieser Reihenfolge
+	MetricsCSVWriter w2(p);
+	Report r4; r4["Skill Rating 2v2"] = 7; r4["B"] = 6; r4["A"] = 5;
+	w2.Append(r4);
+	CHECK_EQ(ReadLines(p).back(), std::string("5,6,7"));
+	std::filesystem::remove(p);
+}
+
+TEST(CSV_nan_und_inf_werden_leer_geschrieben) {
+	auto p = TempCSV("nan");
+	MetricsCSVWriter w(p);
+	Report r; r["A"] = NAN; r["B"] = INFINITY; r["C"] = -0.5;
+	w.Append(r);
+	CHECK_EQ(ReadLines(p)[1], std::string(",,-0.5"));
+	std::filesystem::remove(p);
+}
+
+TEST(CSV_grosse_Ganzzahlen_bleiben_exakt) {
+	CHECK_EQ(MetricsCSVWriter::FormatValue(2704829056.0), std::string("2704829056"));
+	CHECK_EQ(MetricsCSVWriter::FormatValue(0.0027), std::string("0.0027"));
+	CHECK_EQ(MetricsCSVWriter::FormatValue(0), std::string("0"));
+}
+
+TEST(CSV_Kopfzeile_mit_Kommas_in_Anfuehrungszeichen_wird_geparst) {
+	auto cols = MetricsCSVWriter::ParseHeader("\"A\",\"B, mit Komma\",\"C\"\r");
+	CHECK_EQ((int)cols.size(), 3);
+	CHECK_EQ(cols[1], std::string("B, mit Komma"));
+	CHECK_EQ(cols[2], std::string("C"));
+}
+
+TEST(CSV_leere_Datei_gilt_als_neu) {
+	auto p = TempCSV("leer");
+	{ std::ofstream f(p); }   // 0 Bytes
+	MetricsCSVWriter w(p);
+	Report r; r["A"] = 1;
+	w.Append(r);
+	auto lines = ReadLines(p);
+	CHECK_EQ((int)lines.size(), 2);
+	CHECK_EQ(lines[0], std::string("\"A\""));
+	std::filesystem::remove(p);
+}

@@ -17,6 +17,7 @@
 
 #include <RLGymPPO_CPP/Threading/GameInst.h>
 
+#include <filesystem>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -60,5 +61,33 @@ private:
 // Anders als eine feste Schlüsselliste nimmt das auch Schlüssel mit, die erst später auftauchen
 // (Szenen, Skill-Ratings je Modus), siehe Audit M1.
 void AggregateGameMetrics(const std::vector<RLGPC::Report>& gameReports, RLGPC::Report& out);
+
+// Schreibt pro Iteration eine Zeile nach metrics.csv (Audit M1, N4).
+//  - Kopfzeile nur, wenn die Datei neu ist; beim Fortsetzen wird die vorhandene Kopfzeile
+//    übernommen (keine wiederholten Kopfzeilen mehr mitten in der Datei)
+//  - taucht ein neuer Schlüssel auf (z. B. "Skill Rating 2v2" nach der ersten Eval), wird er
+//    hinten angehängt und die Kopfzeile in Zeile 1 einmal neu geschrieben; ältere Zeilen
+//    bleiben kürzer, was CSV-Leser als leere Felder lesen
+//  - nicht-endliche Werte (nan, inf) werden als leeres Feld geschrieben
+//  - Zahlen mit 12 signifikanten Stellen, damit "Cumulative Timesteps" exakt bleibt
+class MetricsCSVWriter {
+public:
+	explicit MetricsCSVWriter(std::filesystem::path path = {}) : path(std::move(path)) {}
+
+	void Append(const RLGPC::Report& report);
+
+	const std::vector<std::string>& Columns() const { return columns; }
+	static std::vector<std::string> ParseHeader(const std::string& line);
+	static std::string FormatValue(double value);
+
+private:
+	std::filesystem::path path;
+	std::vector<std::string> columns;
+	bool initialized = false;
+
+	// Liest die Kopfzeile einer vorhandenen Datei; liefert false, wenn die Datei fehlt oder leer ist.
+	bool LoadExistingHeader();
+	void RewriteHeader();
+};
 
 } // namespace RLbot
