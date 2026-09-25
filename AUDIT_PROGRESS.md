@@ -1,0 +1,83 @@
+# AUDIT_PROGRESS: Umsetzungsstand der Audit-Roadmap
+
+Zweck: Eine neue Session (Mensch oder Agent) soll hier ohne weiteres Vorwissen einsteigen können.
+Grundlage ist `AUDIT.md` (Befunde K1–N10, Roadmap Stufen 0–4). Dieses Dokument wird bei jedem
+Roadmap-Punkt fortgeschrieben.
+
+Branch: `claude/rlbot-audit-roadmap-c8t7nl` (abgezweigt von `main` @ `54105bf`).
+Regel: ein Commit pro Roadmap-Punkt, ID in der Commit-Message.
+
+## Arbeitsumgebung der Umsetzung (25.09.2026)
+
+Cloud-Session auf einer Linux-VM (4 Kerne, 15 GB RAM, keine GPU, kein Windows, kein Rocket League,
+kein `runs/`-Ordner). Alles, was Hardware braucht, ist als lokales Paket vorbereitet
+(`LOCAL_RUNBOOK.md`, `tools/local/`, `tools/experiments/`).
+
+Was in der VM läuft:
+
+| Prüfung | Stand | Ergebnis |
+|---|---|---|
+| Python-Tests (`.venv`, numpy 1.26.4, torch 2.14.0+cpu, rlgym 2.0.1, rlbot 2.0.0b55, rlbot_flatbuffers 0.19.0) | vor allen Änderungen | 51 bestanden, 3 übersprungen (Policy-Parität braucht `runs/*/checkpoints`) |
+| Upstream-Klon `RLGymPPO_CPP @ ee4cc56` inkl. Submodule | vorhanden unter `third_party/` (gitignored) | Patches lassen sich mit `git apply --check` prüfen |
+| C++-Build unter Linux (GCC 13, CPU-libtorch aus dem pip-Wheel, Python 3.11-Header) | siehe Protokoll unten | Upstream braucht zwei GCC-Kompatibilitätsänderungen (Timer.h, gradscaler.hpp), siehe `third_party/patches/rlgympppo_cpp_gcc_compat.patch` |
+
+**Keine Performance-Zahl aus dieser VM wird als Messwert verwendet.**
+
+## Statustabelle
+
+Status-Werte: `offen` · `umgesetzt (VM-getestet)` · `umgesetzt (ungetestet, lokal prüfen)` ·
+`vorbereitet (lokal ausführen)` · `verworfen` · `außerhalb Scope`.
+
+| ID | Stufe | Inhalt | Status | Commit | Test / Nachweis |
+|---|---|---|---|---|---|
+| H4 | 0 | Git-Commit + Tag, Git-Hash in `config_used.json` | teilweise: Commit `54105bf` existiert (vom Nutzer, nach dem Audit); Tag und Hash offen | — | Tag lokal setzen (`LOCAL_RUNBOOK.md`) |
+| M8 | 1 | Metriken Episoden-Ende (`ep_end_goal`, `ep_end_timeout`, `ep_length_steps`, Szenen) | offen | | |
+| H6 | 1 | Seed an eigene State-Setter | offen | | |
+| M1 | 1 | `metrics.csv` Kopfzeilen an der Quelle | offen | | |
+| K2 | 1 | `duel.cpp` Obs-Doppelbau | offen | | |
+| M4 | 1 | Rating-Schlüssel mit Lauf-Name | offen | | |
+| M5 | 1 | Checkpoint-Auswahl pro Lauf, numerisch | offen | | |
+| K1a | 2 | Sofortmaßnahme `game_timeout_secs` 900 | offen | | |
+| H1 | 2 | Paketpuffer 7 Ticks im RLBot-Agenten | offen | | |
+| M3 | 2 | Golden-Fixtures nicht überschreiben | offen | | |
+| M7 | 2 | Obs-Größenprüfung im Bot (+ N1 toter Code) | offen | | |
+| M2 | 2 | requirements pinnen + rlbot, Abgleichskript | offen | | |
+| K1b | 2 | Truncation-Flag durch Upstream (Patch) | offen | | |
+| H2 | 3 | `ent_coef` 0,004 — nur als Experiment-Config | offen | | |
+| H3 | 3 | Slot-Shuffle aus — Config-Schalter + Experiment-Config | offen | | |
+| K3 | 3 | Reward-Umgewichtung — nur als Experiment-Config | offen | | |
+| — | 3 | `team_spirit` > 0 — Experiment-Config | offen | | |
+| H5 | 4 | `exp_buffer_iterations` konfigurierbar, Benchmark-Skript | offen | | |
+| M6 | 4 | Obs-Allokationen | nur als Nebeneffekt von H3 (Roadmap) | | |
+| N6 | 4 | AVX-512-Zweig | offen | | |
+| M9 | — | KRC `r <= 0` → `r < 0` | nicht in der Roadmap; offen | | |
+| N2/N3/N5/N7/N8/N9/N10 | — | Niedrig-Punkte außerhalb der Roadmap | offen | | |
+
+## Widersprüche AUDIT.md ↔ Code (Stand vor Umsetzung)
+
+1. **H4 ist teilweise überholt.** Das Audit sagt „kein einziger Commit". Im Repo liegt der Commit
+   `54105bf` vom 24.09.2026 mit dem gesamten Code, `.gitignore` enthält `rlviser.exe` und
+   `settings.txt`. Offen bleiben nur Tag und Git-Hash in `config_used.json`.
+2. **N5:** `third_party/PINNED.md` verweist auf `bench/cpp/CMakeLists.txt` (existiert nicht) und
+   sagt „Patches am Upstream-Code: keine" — bestätigt; wird mit K1b aktualisiert.
+3. **AUDIT_PROGRESS.md** wurde in der Aufgabenstellung als vorhanden bezeichnet, lag aber weder im
+   Repo noch im Upload. Diese Datei ist neu.
+4. Alle anderen Zeilen-/Dateiverweise im Audit wurden gegen den Code geprüft und stimmen
+   (K1, K2, H1, H2, H3, H5, H6, M1–M9). Die Upstream-Verweise (`Gym.cpp:41/81–86/92`,
+   `Match.cpp:32–38`, `ThreadAgent.cpp:139–141`, `ThreadAgentManager.cpp:55`,
+   `TorchFuncs.cpp:24,36`, `PPOLearnerConfig.h:13`, `Math.cpp:59–64`) stimmen mit `ee4cc56`.
+
+## Arbeitsprotokoll
+
+* 25.09.2026 — Session gestartet. AUDIT.md aus dem Upload ins Repo übernommen, Herkunftstabelle
+  (§0) ergänzt. Python-Tests in der VM: 51 bestanden, 3 übersprungen. Upstream geklont, Linux-Build
+  gestartet.
+
+## Übernahme für eine neue Session
+
+1. `AUDIT.md` §0 (Herkunft) und §6 (Roadmap) lesen, dann diese Statustabelle.
+2. `git log --oneline main..` zeigt die Commits pro Roadmap-Punkt.
+3. Offene Punkte stehen oben mit Status `offen`; alles mit `lokal` im Status braucht den
+   Trainings-PC (siehe `LOCAL_RUNBOOK.md`).
+4. Wenn lokale Ergebnisse (`results/*.zip`) vorliegen: `python tools/experiments/compare.py`
+   ausführen und AUDIT.md §7 mit den echten Zahlen fortschreiben.
