@@ -34,9 +34,9 @@ Status-Werte: `offen` · `umgesetzt (VM-getestet)` · `umgesetzt (ungetestet, lo
 | M8 | 1 | Metriken Episoden-Ende (`ep_end_goal`, `ep_end_timeout`, `ep_end_notouch`, `ep_end_time`, `ep_length_steps`, `scene_<name>_goal/_length`) | umgesetzt (VM-getestet) | M8 | `tests/cpp/test_metrics.cpp` (8 Tests), Linux-Build; `OnIteration` aggregiert jetzt alle `AccumAvg`-Schlüssel dynamisch |
 | H6 | 1 | Seed an eigene State-Setter und Obs-Shuffle (`env.seed_envs`, Default true; false = alter zeitgeseedeter Pfad) | umgesetzt (VM-getestet) | H6 | `Seed_*`-Tests, `OBS_Shuffle_mit_Seed_*`, `EnvFactory_reicht_Seed_*`. Nicht seedbar bleiben Upstream-Teile: `RandomState`, `Arena::ResetToRandomKickoff`, SkillTracker-Seitentausch |
 | M1 | 1 | `metrics.csv`: Kopfzeile aus Datei übernehmen, neue Spalten anhängen, `nan`/`inf` leer (N4), 12 signifikante Stellen | umgesetzt (VM-getestet) | M1 | `CSV_*`-Tests (7); Smoke-Lauf `train_bot` auf CPU in der VM mit Neustart (siehe Protokoll) |
-| K2 | 1 | `duel.cpp` Obs-Doppelbau | offen | | |
-| M4 | 1 | Rating-Schlüssel mit Lauf-Name | offen | | |
-| M5 | 1 | Checkpoint-Auswahl pro Lauf, numerisch | offen | | |
+| K2 | 1 | `duel.cpp` nutzt die Obs aus `gym.Reset()`/`result.obs` statt `BuildOBS` doppelt | umgesetzt (VM-getestet) | K2 | Linux-`duel` auf Smoke-Checkpoints gelaufen; `EnvFactory_Env_laeuft_100_Schritte_*` prüft, dass der Stack pro Step um genau eine Aktion wandert. Ladder-Nullmessung über die 10 echten Checkpoints: **lokal** (`LOCAL_RUNBOOK.md`) |
+| M4 | 1 | Rating-Schlüssel `<lauf>/<steps>`, `ratings.json` je Lauf | umgesetzt (VM-getestet) | K2 | `test_rating_key_*`, `test_default_ratings_path_is_per_run`; `ladder.py --run` in der VM mit Linux-`duel` |
+| M5 | 1 | `watch.py --run`, `test_policy_parity` nur Hauptlauf, numerisch sortiert; Build-Ordner/Lauf per `RLBOT_BUILD_DIR`/`RLBOT_PARITY_RUN` überschreibbar | umgesetzt (VM-getestet) | K2 | `test_latest_checkpoint_is_numeric_and_per_run`; Policy-Paritätstests in der VM gegen Linux-`dump_policy_actions` und Smoke-Checkpoint grün |
 | K1a | 2 | Sofortmaßnahme `game_timeout_secs` 900 | offen | | |
 | H1 | 2 | Paketpuffer 7 Ticks im RLBot-Agenten | offen | | |
 | M3 | 2 | Golden-Fixtures nicht überschreiben | offen | | |
