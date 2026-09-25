@@ -146,3 +146,80 @@ def test_latest_checkpoint_is_numeric_and_per_run(tmp_path, monkeypatch):
     chosen = latest_checkpoint(run)
     assert chosen.parent.name == "1000"      # numerisch: 1000 > 999, nicht lexikografisch
     assert "runs/a" in chosen.as_posix()     # nicht der 99999 aus dem anderen Lauf
+
+
+# --- Alte Rating-Schlüssel (Review-Befund R9) ---------------------------------------------
+
+def _legacy_file(path):
+    """ratings.json im Format von vor Audit M4 (Schlüssel = Step-Zahl), mit dem echten Writer."""
+    from eval.ladder import save_ratings
+    save_ratings({"5053568": ENV.create_rating(25.0, 8.3), "10093184": ENV.create_rating(29.2, 7.2)}, path)
+    return path.read_bytes()
+
+
+def test_legacy_keys_stay_readable_and_get_the_run_name(tmp_path):
+    from eval.ladder import load_ratings
+    path = tmp_path / "runs" / "sanity" / "ratings.json"
+    before = _legacy_file(path)
+    ratings = load_ratings(path, "sanity")
+    assert set(ratings) == {"sanity/5053568", "sanity/10093184"}
+    assert ratings["sanity/10093184"].mu == pytest.approx(29.2)
+    assert set(load_ratings(path)) == {"5053568", "10093184"}      # ohne Laufnamen unverändert
+    assert path.read_bytes() == before                              # Datei nie verändert
+
+
+def test_migration_only_writes_a_copy(tmp_path):
+    import json
+    from eval.ladder import migrate_file
+    src = tmp_path / "ratings.json"
+    before = _legacy_file(src)
+    dst = tmp_path / "ratings_v2.json"
+    assert migrate_file(src, dst, "lucy_1v1") == 2
+    assert src.read_bytes() == before
+    assert set(json.loads(dst.read_text(encoding="utf-8"))) == {"lucy_1v1/5053568", "lucy_1v1/10093184"}
+    with pytest.raises(FileExistsError):
+        migrate_file(src, dst, "lucy_1v1")                          # Kopie wird nie überschrieben
+    with pytest.raises(ValueError):
+        migrate_file(src, src, "lucy_1v1")                          # nie in place
+
+
+def test_ladder_cli_refuses_to_rewrite_a_legacy_ratings_file(tmp_path):
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+    run = tmp_path / "runs" / "lucy_1v1"
+    for steps in (100, 200):
+        (run / "checkpoints" / str(steps)).mkdir(parents=True)
+        (run / "checkpoints" / str(steps) / "PPO_POLICY.lt").write_bytes(b"")
+    before = _legacy_file(run / "ratings.json")
+    ladder = Path(__file__).resolve().parents[1] / "eval" / "ladder.py"
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}   # Umlaute in der Meldung
+    r = subprocess.run([sys.executable, str(ladder), "--run", str(run), "--games", "1"],
+                       capture_output=True, text=True, encoding="utf-8", env=env)
+    assert r.returncode != 0
+    assert "alte Schlüssel" in r.stderr and "--migrate" in r.stderr
+    assert (run / "ratings.json").read_bytes() == before
+
+    out = run / "ratings_v2.json"
+    r = subprocess.run([sys.executable, str(ladder), "--migrate", str(run / "ratings.json"), "--out", str(out)],
+                       capture_output=True, text=True, encoding="utf-8", env=env)
+    assert r.returncode == 0, r.stderr
+    assert "lucy_1v1/10093184" in r.stdout
+    assert (run / "ratings.json").read_bytes() == before
+
+
+def test_real_legacy_ratings_file_of_the_sanity_run_is_readable():
+    """Die echte Datei aus runs/sanity (vor M4 geschrieben), nur gelesen."""
+    import hashlib
+    from pathlib import Path
+    from eval.ladder import has_legacy_keys, load_ratings
+    path = Path(__file__).resolve().parents[1] / "runs" / "sanity" / "ratings.json"
+    if not path.exists():
+        pytest.skip("runs/sanity/ratings.json fehlt (nur auf dem Trainings-PC)")
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    ratings = load_ratings(path, "sanity")
+    assert ratings and all(k.startswith("sanity/") for k in ratings)
+    if has_legacy_keys(path):
+        assert set(load_ratings(path)) == {k.split("/", 1)[1] for k in ratings}
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
