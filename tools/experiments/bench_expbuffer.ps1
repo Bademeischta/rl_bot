@@ -1,4 +1,4 @@
-# Stufe 4, Audit H5: A/B über die Gradientenschritte pro Iteration (6 / 3 / 2), misst lokal
+﻿# Stufe 4, Audit H5: A/B über die Gradientenschritte pro Iteration (6 / 3 / 2), misst lokal
 # SPS UND Lernkurve, mit Wiederholungen für die Streuung (bis zu 7 % zwischen identischen Läufen).
 #
 #   powershell -ExecutionPolicy Bypass -File tools\experiments\bench_expbuffer.ps1 `

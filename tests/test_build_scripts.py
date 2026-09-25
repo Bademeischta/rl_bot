@@ -135,3 +135,51 @@ def test_no_script_calls_native_programs_directly():
     assert scripts
     r = _ps("-File", str(ROOT / "tests" / "ps_lint_native_calls.ps1"), *scripts)
     assert r.returncode == 0, "direkte native Aufrufe:\n" + r.stdout + r.stderr
+
+
+# --- B3 / R3: Kodierung der Skripte ---------------------------------------------------------
+
+UTF8_BOM = b"\xef\xbb\xbf"
+
+
+def test_every_ps1_is_ascii_or_utf8_with_bom():
+    """Windows PowerShell 5.1 liest Skripte ohne BOM als ANSI (Windows-1252): Umlaute werden
+    verstümmelt, typografische Zeichen wie – oder „ können dort sogar als Anführungszeichen
+    gelesen werden und die Syntax brechen."""
+    assert PS_SCRIPTS
+    bad = []
+    for p in PS_SCRIPTS:
+        raw = p.read_bytes()
+        if raw.startswith(UTF8_BOM):
+            raw[3:].decode("utf-8")      # muss gültiges UTF-8 sein
+            continue
+        try:
+            raw.decode("ascii")
+        except UnicodeDecodeError:
+            bad.append(str(p.relative_to(ROOT)))
+    assert bad == [], f"weder ASCII noch UTF-8 mit BOM: {bad}"
+
+
+@needs_ps51
+def test_every_ps1_parses_and_reads_identically_under_ps51(tmp_path):
+    """Jedes Skript so lesen wie powershell.exe -File (BOM -> UTF-8, sonst ANSI), parsen und
+    prüfen, dass der gelesene Text dem UTF-8-Quelltext entspricht (keine verstümmelten Zeichen)."""
+    probe = (
+        "$ErrorActionPreference = 'Stop'\n"
+        "foreach ($f in $args) {\n"
+        "  $text = [System.IO.File]::ReadAllText($f, [System.Text.Encoding]::Default)\n"
+        "  $utf8 = [System.IO.File]::ReadAllText($f, (New-Object System.Text.UTF8Encoding $false))\n"
+        "  $t = $null; $e = $null\n"
+        "  [void][System.Management.Automation.Language.Parser]::ParseInput($text, [ref]$t, [ref]$e)\n"
+        "  Write-Output (\"{0}|{1}|{2}\" -f $f, $e.Count, [int]($text -ceq $utf8.TrimStart([char]0xFEFF)))\n"
+        "}\n")
+    script = tmp_path / "probe.ps1"
+    script.write_text(probe, encoding="ascii")
+    r = _ps("-File", str(script), *[str(p) for p in PS_SCRIPTS])
+    assert r.returncode == 0, r.stderr
+    rows = [line.rsplit("|", 2) for line in r.stdout.splitlines() if "|" in line]
+    assert len(rows) == len(PS_SCRIPTS), r.stdout + r.stderr
+    parse_errors = [f for f, n, _ in rows if n != "0"]
+    garbled = [f for f, _, same in rows if same != "1"]
+    assert parse_errors == [], f"Parserfehler unter 5.1: {parse_errors}"
+    assert garbled == [], f"5.1 liest anderen Text als UTF-8 (fehlendes BOM?): {garbled}"

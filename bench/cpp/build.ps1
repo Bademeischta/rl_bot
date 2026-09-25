@@ -1,4 +1,4 @@
-# Baut die C++-Targets gegen CPU- oder cu128-libtorch.
+﻿# Baut die C++-Targets gegen CPU- oder cu128-libtorch.
 #   powershell -File bench\cpp\build.ps1 -Flavor cu128
 #   powershell -File bench\cpp\build.ps1 -Flavor cpu -Target rlbot_tests
 param(

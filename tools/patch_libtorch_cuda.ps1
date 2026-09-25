@@ -1,4 +1,4 @@
-# Wendet third_party/patches/libtorch_cuda_cmake_no_enable_language.patch auf ein frisch
+﻿# Wendet third_party/patches/libtorch_cuda_cmake_no_enable_language.patch auf ein frisch
 # entpacktes libtorch cu128 an (idempotent).
 #
 # Hintergrund: libtorch ruft in Caffe2/public/cuda.cmake unbedingt enable_language(CUDA) auf.

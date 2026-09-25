@@ -1,4 +1,4 @@
-# Wendet die Upstream-Patches aus third_party/patches/ auf den gepinnten Klon von RLGymPPO_CPP an
+﻿# Wendet die Upstream-Patches aus third_party/patches/ auf den gepinnten Klon von RLGymPPO_CPP an
 # (idempotent). Wird von bench/cpp/build.ps1 vor jedem Build aufgerufen.
 #   powershell -ExecutionPolicy Bypass -File tools\apply_patches.ps1 [-Check] [-Repo <klon>]
 #

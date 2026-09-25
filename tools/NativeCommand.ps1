@@ -1,4 +1,4 @@
-# Gemeinsame Hilfsfunktion für native Programme (git, cmake, python, *.exe) in allen Skripten.
+﻿# Gemeinsame Hilfsfunktion für native Programme (git, cmake, python, *.exe) in allen Skripten.
 # Einbinden per Dot-Sourcing:  . "$PSScriptRoot\..\NativeCommand.ps1"  (Pfad je nach Ordner)
 #
 # Warum (Review-Befund R2): Windows PowerShell 5.1 verpackt jede stderr-Zeile eines nativen

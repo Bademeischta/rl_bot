@@ -1,4 +1,4 @@
-# Führt ein Stufe-3-Experiment lokal aus (Audit-Roadmap, Schritt 2) und packt die Ergebnisse.
+﻿# Führt ein Stufe-3-Experiment lokal aus (Audit-Roadmap, Schritt 2) und packt die Ergebnisse.
 #
 #   powershell -ExecutionPolicy Bypass -File tools\experiments\run_experiment.ps1 `
 #       -Config train\configs\experiments\baseline.json `

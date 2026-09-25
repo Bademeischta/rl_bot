@@ -1,4 +1,4 @@
-# Erzeugt die Golden-Fixtures BEWUSST neu (Audit M3). run_all_tests.ps1 überschreibt sie nicht
+﻿# Erzeugt die Golden-Fixtures BEWUSST neu (Audit M3). run_all_tests.ps1 überschreibt sie nicht
 # mehr; es prüft nur noch gegen sie. Dieses Skript ist der einzige Weg, die Referenz zu ändern,
 # damit eine Obs-Layout-Änderung (= alle Checkpoints inkompatibel) als git-Diff sichtbar wird.
 #   powershell -ExecutionPolicy Bypass -File tools\update_golden.ps1 [-Flavor cu128]

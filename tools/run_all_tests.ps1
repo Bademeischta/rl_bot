@@ -1,4 +1,4 @@
-# Führt die komplette Testsuite aus: C++-Unit-Tests, Golden-Fixtures prüfen, Python-Tests.
+﻿# Führt die komplette Testsuite aus: C++-Unit-Tests, Golden-Fixtures prüfen, Python-Tests.
 #   powershell -ExecutionPolicy Bypass -File tools\run_all_tests.ps1
 #   powershell -ExecutionPolicy Bypass -File tools\run_all_tests.ps1 -Repeat 2
 #

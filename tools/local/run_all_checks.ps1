@@ -1,4 +1,4 @@
-# Lokales Prüfpaket (LOCAL_RUNBOOK.md): baut, testet und prüft alles, was in der Cloud-Session
+﻿# Lokales Prüfpaket (LOCAL_RUNBOOK.md): baut, testet und prüft alles, was in der Cloud-Session
 # nicht möglich war, und legt die Ergebnisse als Zip ab.
 #
 #   powershell -ExecutionPolicy Bypass -File tools\local\run_all_checks.ps1
