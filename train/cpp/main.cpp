@@ -6,6 +6,7 @@
 // ist, womit ein Checkpoint trainiert wurde.
 #include "Config.h"
 #include "EnvFactory.h"
+#include "Metrics.h"
 
 #include <RLGymPPO_CPP/Learner.h>
 
@@ -52,34 +53,31 @@ static void AppendMetricsCSV(const Report& report) {
 	fOut << '\n';
 }
 
-// Wird aus vielen Threads gleichzeitig aufgerufen: nur die Argumente anfassen.
+static RLbot::EpisodeLengthTracker g_episodeLengths;
+
+// Wird aus vielen Threads gleichzeitig aufgerufen: nur die Argumente und den
+// (intern gesperrten) Längen-Tracker anfassen.
 static void OnStep(GameInst* gameInst, const Gym::StepResult& stepResult, Report& gameMetrics) {
-	auto& state = stepResult.state;
-	for (auto& player : state.players) {
-		gameMetrics.AccumAvg("player_speed", player.phys.vel.Length());
-		gameMetrics.AccumAvg("ball_touch_ratio", player.ballTouchedStep);
-		gameMetrics.AccumAvg("in_air_ratio", !player.carState.isOnGround);
-		gameMetrics.AccumAvg("boost_held", player.boostFraction);
-		gameMetrics.AccumAvg("supersonic_ratio", player.carState.isSupersonic);
+	// Skill-Eval-Spiele haben eigene Reports, die nie ausgelesen werden: nicht mitzählen.
+	if (gameInst->isEval)
+		return;
+
+	RLbot::AccumStepMetrics(stepResult.state, gameMetrics);
+
+	if (stepResult.done) {
+		// GameInst::Step erhöht totalSteps erst nach dem Callback, der aktuelle Step zählt also mit.
+		uint64_t length = g_episodeLengths.OnEpisodeEnd(gameInst, gameInst->totalSteps + 1);
+		bool truncated = false;
+#ifdef RLGSC_HAS_TRUNCATION
+		truncated = stepResult.truncated;
+#endif
+		auto end = RLbot::ClassifyEpisodeEnd(stepResult.state, gameInst->match, truncated);
+		RLbot::AccumEpisodeEnd(end, length, RLbot::CurrentSceneName(gameInst->match), gameMetrics);
 	}
-	gameMetrics.AccumAvg("ball_speed", state.ball.vel.Length());
-	gameMetrics.AccumAvg("ball_height", state.ball.pos.z);
 }
 
 static void OnIteration(Learner* learner, Report& allMetrics) {
-	static const char* KEYS[] = {
-		"player_speed", "ball_touch_ratio", "in_air_ratio", "boost_held",
-		"supersonic_ratio", "ball_speed", "ball_height",
-	};
-	AvgTracker trackers[std::size(KEYS)] = {};
-
-	for (auto& gameReport : learner->GetAllGameMetrics())
-		for (size_t i = 0; i < std::size(KEYS); i++)
-			trackers[i] += gameReport.GetAvg(KEYS[i]);
-
-	for (size_t i = 0; i < std::size(KEYS); i++)
-		allMetrics[KEYS[i]] = trackers[i].Get();
-
+	RLbot::AggregateGameMetrics(learner->GetAllGameMetrics(), allMetrics);
 	AppendMetricsCSV(allMetrics);
 }
 

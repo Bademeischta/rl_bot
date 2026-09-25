@@ -26,7 +26,7 @@ target_include_directories(rlbot_env PUBLIC "${CMAKE_SOURCE_DIR}")
 target_link_libraries(rlbot_env PUBLIC RLGymSim_CPP)
 
 # --- Trainer ---
-add_executable(train_bot train/cpp/main.cpp train/cpp/Config.cpp train/cpp/EnvFactory.cpp)
+add_executable(train_bot train/cpp/main.cpp train/cpp/Config.cpp train/cpp/EnvFactory.cpp train/cpp/Metrics.cpp)
 set_target_properties(train_bot PROPERTIES CXX_STANDARD 20)
 target_include_directories(train_bot PRIVATE "${JSON_INCLUDE}")
 target_link_libraries(train_bot PRIVATE rlbot_env RLGymPPO_CPP)
@@ -43,8 +43,10 @@ add_executable(rlbot_tests
     tests/cpp/test_obs.cpp
     tests/cpp/test_state_setters.cpp
     tests/cpp/test_config.cpp
+    tests/cpp/test_metrics.cpp
     train/cpp/Config.cpp
     train/cpp/EnvFactory.cpp
+    train/cpp/Metrics.cpp
 )
 set_target_properties(rlbot_tests PROPERTIES CXX_STANDARD 20)
 target_include_directories(rlbot_tests PRIVATE "${JSON_INCLUDE}")

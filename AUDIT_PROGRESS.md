@@ -31,7 +31,7 @@ Status-Werte: `offen` · `umgesetzt (VM-getestet)` · `umgesetzt (ungetestet, lo
 | ID | Stufe | Inhalt | Status | Commit | Test / Nachweis |
 |---|---|---|---|---|---|
 | H4 | 0 | Git-Commit + Tag, Git-Hash in `config_used.json` | teilweise: Commit `54105bf` existiert (vom Nutzer, nach dem Audit); Tag und Hash offen | — | Tag lokal setzen (`LOCAL_RUNBOOK.md`) |
-| M8 | 1 | Metriken Episoden-Ende (`ep_end_goal`, `ep_end_timeout`, `ep_length_steps`, Szenen) | offen | | |
+| M8 | 1 | Metriken Episoden-Ende (`ep_end_goal`, `ep_end_timeout`, `ep_end_notouch`, `ep_end_time`, `ep_length_steps`, `scene_<name>_goal/_length`) | umgesetzt (VM-getestet) | M8 | `tests/cpp/test_metrics.cpp` (8 Tests), Linux-Build; `OnIteration` aggregiert jetzt alle `AccumAvg`-Schlüssel dynamisch |
 | H6 | 1 | Seed an eigene State-Setter | offen | | |
 | M1 | 1 | `metrics.csv` Kopfzeilen an der Quelle | offen | | |
 | K2 | 1 | `duel.cpp` Obs-Doppelbau | offen | | |
