@@ -13,7 +13,8 @@ import rlbot_flatbuffers as flat  # noqa: E402
 from deploy.action_table import LOOKUP_TABLE  # noqa: E402
 from deploy.packet_adapter import build_pad_index_map  # noqa: E402
 from deploy.policy import Policy, PolicyMeta, _build_sequential  # noqa: E402
-from deploy.rlbot.bot import ACTION_STACK, OBS_DELAY, TICK_SKIP, PacketBuffer, RLbotAgent  # noqa: E402
+from deploy.rlbot.bot import (ACTION_STACK, OBS_DELAY, TICK_SKIP, PacketBuffer, RLbotAgent,  # noqa: E402
+                              obs_delay_from_env)
 from env.obs_python import BOOST_LOCATIONS, SIDE_WALL_X, obs_size  # noqa: E402
 from tests.test_packet_adapter import make_packet, make_player  # noqa: E402
 
@@ -278,3 +279,45 @@ def test_wrong_action_count_is_rejected():
     from deploy.rlbot.bot import check_policy_compatible
     with pytest.raises(ValueError, match="Aktionen"):
         check_policy_compatible(make_policy(obs_size(3, 5), 45))
+
+
+# --- Rückweg für den Paketpuffer (Review-Befund R8) ----------------------------------------
+
+def test_obs_delay_default_is_7_and_env_var_overrides(monkeypatch):
+    monkeypatch.delenv("RLBOT_OBS_DELAY", raising=False)
+    assert obs_delay_from_env() == OBS_DELAY == 7
+    for raw, expected in (("0", 0), ("3", 3), (" 7 ", 7), ("", 7)):
+        assert obs_delay_from_env({"RLBOT_OBS_DELAY": raw}) == expected
+    for bad in ("8", "-1", "sieben"):
+        with pytest.raises(ValueError, match="RLBOT_OBS_DELAY"):
+            obs_delay_from_env({"RLBOT_OBS_DELAY": bad})
+    monkeypatch.setenv("RLBOT_OBS_DELAY", "0")
+    agent = make_agent()                                   # liest die Variable beim Start
+    assert agent.obs_delay == 0 and agent.packet_buffer.delay == 0
+
+
+def test_obs_delay_parameter_sets_the_buffer_length(monkeypatch):
+    monkeypatch.delenv("RLBOT_OBS_DELAY", raising=False)
+    agent = make_agent()
+    agent._init_runtime_state(obs_delay=3)
+    seen = capture_ball_x(agent)
+    feed(agent, range(0, 25))
+    # Entscheidungen bei 0, 8, 16, 24 -> Pakete 0 (nichts Älteres), 5, 13, 21
+    assert seen == [0.0, 5.0, 13.0, 21.0]
+    assert agent.last_obs_delay == 3
+
+
+def test_obs_delay_zero_is_exactly_the_behaviour_before_h1(monkeypatch):
+    """0 = vor Audit H1: immer das aktuelle Paket, und Replay/Countdown werden nicht besonders
+    behandelt (es wird weiter entschieden, der Aktions-Stack läuft weiter)."""
+    monkeypatch.delenv("RLBOT_OBS_DELAY", raising=False)
+    agent = make_agent()
+    agent._init_runtime_state(obs_delay=0)
+    seen = capture_ball_x(agent)
+    feed(agent, range(0, 25))
+    assert seen == [0.0, 8.0, 16.0, 24.0]
+    assert agent.last_obs_delay == 0
+    feed(agent, range(25, 41), phase=flat.MatchPhase.Replay)
+    assert seen[-2:] == [32.0, 40.0]                       # im Replay weiter entschieden
+    assert len(agent.action_history) == ACTION_STACK       # 6 Entscheidungen, Stack voll, nie geleert
+    assert len(agent.packet_buffer) == 0                   # Puffer wird gar nicht benutzt

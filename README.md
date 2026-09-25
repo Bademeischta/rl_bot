@@ -63,6 +63,10 @@ Derselbe Befehl setzt einen abgebrochenen Lauf am jüngsten Checkpoint fort.
 ```
 Dann `deploy/rlbot/bot.toml` im RLBot-Launcher laden.
 
+Der Bot entscheidet wie im Training auf dem Paket von vor 7 Ticks (Audit H1). Rückweg zum
+Verhalten davor (aktuelles Paket): vor dem Start von RLBot in derselben Shell
+`$env:RLBOT_OBS_DELAY = "0"` setzen (erlaubt 0 bis 7, Default 7).
+
 ## Tests
 ```powershell
 powershell -ExecutionPolicy Bypass -File tools\run_all_tests.ps1 -Repeat 2
