@@ -37,8 +37,8 @@ Status-Werte: `offen` · `umgesetzt (VM-getestet)` · `umgesetzt (ungetestet, lo
 | K2 | 1 | `duel.cpp` nutzt die Obs aus `gym.Reset()`/`result.obs` statt `BuildOBS` doppelt | umgesetzt (VM-getestet) | K2 | Linux-`duel` auf Smoke-Checkpoints gelaufen; `EnvFactory_Env_laeuft_100_Schritte_*` prüft, dass der Stack pro Step um genau eine Aktion wandert. Ladder-Nullmessung über die 10 echten Checkpoints: **lokal** (`LOCAL_RUNBOOK.md`) |
 | M4 | 1 | Rating-Schlüssel `<lauf>/<steps>`, `ratings.json` je Lauf | umgesetzt (VM-getestet) | K2 | `test_rating_key_*`, `test_default_ratings_path_is_per_run`; `ladder.py --run` in der VM mit Linux-`duel` |
 | M5 | 1 | `watch.py --run`, `test_policy_parity` nur Hauptlauf, numerisch sortiert; Build-Ordner/Lauf per `RLBOT_BUILD_DIR`/`RLBOT_PARITY_RUN` überschreibbar | umgesetzt (VM-getestet) | K2 | `test_latest_checkpoint_is_numeric_and_per_run`; Policy-Paritätstests in der VM gegen Linux-`dump_policy_actions` und Smoke-Checkpoint grün |
-| K1a | 2 | Sofortmaßnahme `game_timeout_secs` 900 | offen | | |
-| H1 | 2 | Paketpuffer 7 Ticks im RLBot-Agenten | offen | | |
+| K1a | 2 | `game_timeout_secs` 900 in `lucy_1v1.json` und `lucy_multimode.json`; `sanity.json` bleibt bei 120 s (Rauchtest, siehe AUDIT.md 7.5) | umgesetzt | K1a | Wirkung lokal mit `ep_end_time` (M8) pruefen: Anteil muss deutlich unter den geschaetzten 1/3 fallen |
+| H1 | 2 | `PacketBuffer` in `deploy/rlbot/bot.py`: Entscheidung auf dem Paket von vor 7 Ticks; Replay/Countdown/Pause leeren Puffer und Aktions-Stack (wie ein Reset im Training) | umgesetzt (VM-getestet) | H1 | 10 neue Tests in `tests/test_bot_logic.py`: Delay 7 nach Aufwaermen, erste Entscheidung Delay 0, verpasste Ticks, grosse Luecke, Tor-Replay/Kickoff, Pause, Duplikate, Frame-Ruecksprung. Latenz im echten Spiel: **lokal** (Deployment-Smoke-Test) |
 | M3 | 2 | Golden-Fixtures nicht überschreiben | offen | | |
 | M7 | 2 | Obs-Größenprüfung im Bot (+ N1 toter Code) | offen | | |
 | M2 | 2 | requirements pinnen + rlbot, Abgleichskript | offen | | |

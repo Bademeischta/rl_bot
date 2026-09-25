@@ -39,13 +39,16 @@ def make_player(pos=(0, 0, 17), vel=(0, 0, 0), ang_vel=(0, 0, 0), rot=(0.0, 0.0,
     )
 
 
-def make_packet(players, ball_pos=(0, 0, 93), ball_vel=(0, 0, 0), pads=None, frame=0):
+def make_packet(players, ball_pos=(0, 0, 93), ball_vel=(0, 0, 0), pads=None, frame=0,
+                phase=None):
+    """Synthetisches Paket. Standardphase ist Active (laufendes Spiel)."""
     pads = pads or [flat.BoostPadState(is_active=True, timer=0.0) for _ in BOOST_LOCATIONS]
     ball = flat.BallInfo(physics=flat.Physics(
         location=flat.Vector3(*ball_pos), velocity=flat.Vector3(*ball_vel),
         angular_velocity=flat.Vector3(0, 0, 0), rotation=flat.Rotator(0, 0, 0)))
+    phase = flat.MatchPhase.Active if phase is None else phase
     return flat.GamePacket(balls=[ball], players=players, boost_pads=pads,
-                           match_info=flat.MatchInfo(frame_num=frame))
+                           match_info=flat.MatchInfo(frame_num=frame, match_phase=phase))
 
 
 def identity_pad_map():
