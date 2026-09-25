@@ -13,6 +13,8 @@
 //   ep_end_truncated Anteil, den der Upstream als Truncation meldet (nur mit K1-Patch)
 //   ep_length_steps  mittlere Episodenlänge in Steps (Steps * tick_skip / 120 = Sekunden)
 //   scene_<name>_goal, scene_<name>_length   dasselbe je State-Setter-Szene
+//   raw_step_reward  Reward pro Spieler und Step VOR einem Zero-Sum-Wrapper (Review R10); ohne
+//                    Wrapper gleich "Average Step Reward", mit Zero-Sum im 1v1 ist der sonst 0
 #pragma once
 
 #include <RLGymPPO_CPP/Threading/GameInst.h>
@@ -27,6 +29,9 @@ namespace RLbot {
 
 // Pro-Step-Metriken über alle Spieler und den Ball.
 void AccumStepMetrics(const RLGSC::GameState& state, RLGPC::Report& metrics);
+
+// raw_step_reward aus dem RawRewardTap des Matches (nichts, wenn es keinen gibt).
+void AccumRawReward(const RLGSC::Match* match, RLGPC::Report& metrics);
 
 // Wie eine Episode geendet hat, abgeleitet aus dem Zustand und den Terminal-Bedingungen.
 struct EpisodeEnd {

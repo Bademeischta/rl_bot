@@ -10,7 +10,7 @@ Step-Zahl** wie der Kontrolllauf, und ändert gegenüber `baseline.json` genau *
 | `h2_ent_coef_0004.json` | `learner.ent_coef` 0,01 → 0,004 | H2 |
 | `h3_no_shuffle.json` | `env.shuffle_slots` → false | H3 |
 | `k3_rewards.json` | Reward-Block laut AUDIT.md K3 (goal/concede 50, dichte Terme runter, in_air 0) | K3 |
-| `team_spirit_01.json` | `rewards.team_spirit` 0 → 0,1 (schaltet ZeroSumReward ein) | optional, K3 zweiter Hebel |
+| `zero_sum.json` (früher `team_spirit_01.json`) | `rewards.team_spirit` 0 → 0,1 **und** `goal`/`concede` 10 → 5. Im 1v1 ist τ wirkungslos: jedes τ > 0 ergibt `r_i − r_j` (Zero-Sum). Zero-Sum zählt Tore doppelt, deshalb halbiert: nach dem Wrapper bleibt ein Tor ±10 wie in der Baseline, gemessen wird nur der Zero-Sum-Effekt auf das Shaping. `Average Step/Episode Reward` sind hier konstant 0 → `raw_step_reward` (vor dem Wrapper) ansehen | optional, K3 zweiter Hebel (Review R10) |
 
 `RUNNING_STATS.json` wird bei allen Experimenten **übernommen** (Begründung AUDIT.md §7.3).
 
@@ -27,7 +27,7 @@ powershell -ExecutionPolicy Bypass -File tools\experiments\run_experiment.ps1 `
     -Config train\configs\experiments\h2_ent_coef_0004.json `
     -StartCheckpoint runs\lucy_1v1\checkpoints\2704829056 -Steps 100000000 -Seed 123 `
     -Baseline results\exp_baseline_<datum>
-# ... dito h3_no_shuffle, k3_rewards, team_spirit_01
+# ... dito h3_no_shuffle, k3_rewards, zero_sum
 
 # 3. Vergleich
 .\.venv\Scripts\python tools\experiments\compare.py results\exp_* --out results\compare.md

@@ -17,6 +17,8 @@ KEY_COLUMNS = [
     ("Collected Steps/Second", "sps_collect"),
     ("Average Episode Reward", "ep_reward"),
     ("Average Step Reward", "step_reward"),
+    # Reward vor einem Zero-Sum-Wrapper (Review R10): im 1v1 mit Zero-Sum ist step_reward sonst 0
+    ("raw_step_reward", "raw_step_reward"),
     ("ep_end_goal", "ep_end_goal"),
     ("ep_end_timeout", "ep_end_timeout"),
     ("ep_end_notouch", "ep_end_notouch"),

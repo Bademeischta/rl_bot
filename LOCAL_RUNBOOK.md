@@ -109,15 +109,21 @@ $C = "runs\lucy_1v1\checkpoints\2704829056"
 powershell -ExecutionPolicy Bypass -File tools\experiments\run_experiment.ps1 -Config train\configs\experiments\h2_ent_coef_0004.json -StartCheckpoint $C -Steps 100000000 -Seed 123 -Baseline $B
 powershell -ExecutionPolicy Bypass -File tools\experiments\run_experiment.ps1 -Config train\configs\experiments\h3_no_shuffle.json    -StartCheckpoint $C -Steps 100000000 -Seed 123 -Baseline $B
 powershell -ExecutionPolicy Bypass -File tools\experiments\run_experiment.ps1 -Config train\configs\experiments\k3_rewards.json       -StartCheckpoint $C -Steps 100000000 -Seed 123 -Baseline $B
-powershell -ExecutionPolicy Bypass -File tools\experiments\run_experiment.ps1 -Config train\configs\experiments\team_spirit_01.json   -StartCheckpoint $C -Steps 100000000 -Seed 123 -Baseline $B
+powershell -ExecutionPolicy Bypass -File tools\experiments\run_experiment.ps1 -Config train\configs\experiments\zero_sum.json         -StartCheckpoint $C -Steps 100000000 -Seed 123 -Baseline $B
 ```
 
 Erwartungen aus AUDIT.md: **H2** Entropie < 3,4, Clip-Fraction > 5 %, KL Richtung 0,006
 (Warnung des Runners bei Entropie < 2,5). **H3** keine Verschlechterung, eher schnellere
 gegnerbezogene Metriken. **K3** `Avg Val Target` sinkt von ~10 Richtung ~3, Value Loss springt
 in den ersten Iterationen (Aufwärmphase des Abbruchkriteriums), `Average Step Reward` fällt von
-~0,74 auf ~0,2, `ep_end_goal` sollte steigen. **team_spirit** in 1v1 = Shaping des Gegners wird
-abgezogen; Vorzeichen des Episoden-Rewards ändert sich.
+~0,74 auf ~0,2, `ep_end_goal` sollte steigen. **zero_sum** (früher `team_spirit_01`, Review R10):
+Im 1v1 ist `team_spirit` selbst wirkungslos, der Wert > 0 schaltet nur `ZeroSumReward` ein, und
+jeder Spieler bekommt `r_i − r_j` (eigenes Shaping minus das des Gegners). Tor/Gegentor sind in der
+Config auf 5 halbiert, damit ein Tor nach dem Wrapper wie in der Baseline ±10 wert ist; gemessen
+wird also nur der Zero-Sum-Effekt auf das dichte Shaping. `Average Step Reward` und
+`Average Episode Reward` sind dabei **konstant 0** (Summe beider Spieler) und sagen nichts; das
+Shaping-Niveau steht in `raw_step_reward` (Reward vor dem Wrapper, in der Baseline gleich
+`Average Step Reward`). Aussagekräftig sind `ep_end_goal`, Ballkontakt und das Duell.
 
 Abbruch (Exit 3) ist ein Ergebnis, kein Fehler: `summary.md` nennt den Grund.
 

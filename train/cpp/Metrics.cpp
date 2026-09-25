@@ -1,5 +1,6 @@
 #include "Metrics.h"
 
+#include "../../env/cpp/Rewards.h"
 #include "../../env/cpp/StateSetters.h"
 #include "../../env/cpp/TimeoutCondition.h"
 
@@ -28,6 +29,18 @@ void AccumStepMetrics(const GameState& state, Report& metrics) {
 	}
 	metrics.AccumAvg("ball_speed", state.ball.vel.Length());
 	metrics.AccumAvg("ball_height", state.ball.pos.z);
+}
+
+void AccumRawReward(const Match* match, Report& metrics) {
+	if (!match)
+		return;
+	const RawRewardTap* tap = FindRawRewardTap(match->rewardFn);
+	if (!tap || tap->lastRaw.empty())
+		return;
+	double sum = 0;
+	for (float r : tap->lastRaw)
+		sum += r;
+	metrics.AccumAvg("raw_step_reward", sum / tap->lastRaw.size());
 }
 
 EpisodeEnd ClassifyEpisodeEnd(const GameState& state, const Match* match, bool truncatedFlag) {

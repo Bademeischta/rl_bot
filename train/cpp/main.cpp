@@ -42,6 +42,7 @@ static void OnStep(GameInst* gameInst, const Gym::StepResult& stepResult, Report
 		return;
 
 	RLbot::AccumStepMetrics(stepResult.state, gameMetrics);
+	RLbot::AccumRawReward(gameInst->match, gameMetrics);
 
 	if (stepResult.done) {
 		// GameInst::Step erhöht totalSteps erst nach dem Callback, der aktuelle Step zählt also mit.

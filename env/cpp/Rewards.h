@@ -152,6 +152,33 @@ public:
 	}
 };
 
+// Reicht die Rewards eines Kindes unverändert durch und merkt sich die des letzten Schritts
+// (Review-Befund R10). Sitzt zwischen den Lucy-Termen und einem ZeroSumReward: Im 1v1 mit
+// Zero-Sum summieren sich die Rewards beider Spieler zu 0, "Average Step/Episode Reward" ist dann
+// konstant 0 und sagt nichts mehr über das Shaping-Niveau. main.cpp loggt deshalb den Mittelwert
+// von lastRaw als raw_step_reward (Metrics.h). Jedes Env hat seine eigene Instanz, Schreiben
+// (Gym::Step) und Lesen (Step-Callback) passieren im selben Thread.
+class RawRewardTap : public RewardFunction {
+public:
+	RewardFunction* child;
+	std::vector<float> lastRaw;
+
+	explicit RawRewardTap(RewardFunction* child) : child(child) {}
+	RG_NO_COPY(RawRewardTap);
+
+	virtual void Reset(const GameState& initialState) { child->Reset(initialState); }
+	virtual void PreStep(const GameState& state) { child->PreStep(state); }
+	virtual std::vector<float> GetAllRewards(const GameState& state, const ActionSet& prevActions, bool final) {
+		lastRaw = child->GetAllRewards(state, prevActions, final);
+		return lastRaw;
+	}
+	virtual ~RawRewardTap() { delete child; }
+};
+
+// Findet den RawRewardTap in einem von BuildLucyReward gebauten Reward (direkt oder als Kind
+// des ZeroSumReward); nullptr, wenn es keinen gibt.
+const RawRewardTap* FindRawRewardTap(const RewardFunction* fn);
+
 // Belohnt Zeit in der Luft (nur wenn nicht am Boden und nicht demoliert).
 class InAirReward : public RewardFunction {
 public:
