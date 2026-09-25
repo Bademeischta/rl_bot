@@ -96,12 +96,21 @@ TEST(ZeroSum_1v1_team_spirit_ist_wirkungslos) {
 		                        new DiscreteAction(), new WeightedStateSetter(sw, 99), 1, true);
 		Gym gym(match, 8);
 		gym.Reset();
+		// Spieler-Reihenfolge folgt arena->_cars (unordered_set, adressabhängig, siehe R19):
+		// Aktionen und Rewards deshalb über die Car-ID zuordnen, nicht über den Index.
+		const auto& players = gym.prevState.players;
 		std::vector<float> rewards;
 		for (int i = 0; i < 30; i++) {
-			auto r = gym.Step(IList{ i % 90, (i * 7) % 90 });
+			IList actions(players.size());
+			for (size_t p = 0; p < players.size(); p++)
+				actions[p] = (players[p].carId == 1) ? i % 90 : (i * 7) % 90;
+			auto r = gym.Step(actions);
 			CHECK_NEAR(r.reward[0] + r.reward[1], 0.0, 1e-5);
-			rewards.push_back(r.reward[0]);
+			for (size_t p = 0; p < r.state.players.size(); p++)
+				if (r.state.players[p].carId == 1)
+					rewards.push_back(r.reward[p]);
 		}
+		CHECK_EQ(rewards.size(), (size_t)30);
 		perTau.push_back(rewards);
 		delete match;
 	}
