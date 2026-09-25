@@ -22,6 +22,12 @@ if(NOT RLBOT_GYM_H MATCHES "RLGSC_HAS_TRUNCATION")
     message(FATAL_ERROR "Upstream-Patch fehlt: third_party/patches/rlgympppo_cpp_truncation.patch ist nicht angewendet. "
                         "Ausfuehren: powershell -File tools\\apply_patches.ps1 (oder git apply, siehe third_party/PINNED.md)")
 endif()
+# Review-Befund R4: Die erste Fassung des Patches bootstrappte Timeouts von der Reset-Beobachtung.
+if(NOT RLBOT_GYM_H MATCHES "RLGSC_HAS_FINAL_OBS")
+    message(FATAL_ERROR "Upstream-Patch veraltet: third_party/RLGymPPO_CPP traegt die alte Fassung von "
+                        "rlgympppo_cpp_truncation.patch (ohne finalObs). Ausfuehren: "
+                        "powershell -File tools\\apply_patches.ps1 -Reset")
+endif()
 
 find_package(Torch REQUIRED)
 
@@ -58,6 +64,7 @@ add_executable(rlbot_tests
     tests/cpp/test_config.cpp
     tests/cpp/test_metrics.cpp
     tests/cpp/test_env.cpp
+    tests/cpp/test_truncation.cpp
     train/cpp/Config.cpp
     train/cpp/EnvFactory.cpp
     train/cpp/Metrics.cpp

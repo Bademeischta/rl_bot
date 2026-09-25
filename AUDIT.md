@@ -1527,11 +1527,14 @@ hintereinander (`MultiAppend`). `TorchFuncs::ComputeGAE` benutzt als „nächste
 `values[step + 1]`, also den Wert des **nächsten Zustands in der verketteten Liste**. Am Ende jeder
 Teil-Trajektorie (markiert als `truncated`) ist das der erste Zustand eines **anderen Spiels**, nicht
 der tatsächliche Folgezustand. Nur die allerletzte Trajektorie bekommt über `nextStates[count − 1]`
-den richtigen Wert. Betroffen sind ~1.024 von ~100.000 Steps pro Iteration (1 %), der Fehler pro
-Ereignis ist die Differenz zweier V-Werte ähnlicher Zustände, also klein — aber es ist genau derselbe
-Mechanismus, den K1 für Timeouts braucht. Der K1-Patch behebt beides auf einmal: An jedem
-`truncated`-Step wird mit `V(nextStates[step])` gebootstrapt, und `ThreadAgent` legt für beendete
-Episoden die **letzte Beobachtung der Episode** (nicht die Reset-Beobachtung) in `nextStates` ab.
+den richtigen Wert. Die Trajektorien sind **pro Spieler** getrennt: Im 1v1 sind das 1.024 Spiele ×
+2 Spieler = 2.048 Teil-Trajektorien, also ~2.048 von ~100.000 Steps pro Iteration (~2 %; korrigiert
+nach Review R4, vorher stand hier „~1.024 … 1 %"). Der Fehler pro Ereignis ist die Differenz zweier
+V-Werte ähnlicher Zustände, also klein — aber es ist genau derselbe Mechanismus, den K1 für
+Timeouts braucht. Der K1-Patch behebt beides auf einmal: An jedem `truncated`-Step wird mit
+`V(nextStates[step])` gebootstrapt, und `ThreadAgent` legt für beendete Episoden die **letzte
+Beobachtung der Episode** (nicht die Reset-Beobachtung) in `nextStates` ab — in der ersten Fassung
+des Patches tat er das **nicht** (siehe 7.2b).
 
 ### 7.2a Umsetzung K1 (Stand 25.09.2026)
 
@@ -1541,10 +1544,42 @@ Bedingungen aus, damit ein Tor im selben Schritt wie ein Timeout als Tor zählt;
 `ThreadAgent` legt für beendete Episoden die letzte Beobachtung der Episode in `nextStates` ab
 und die GAE bootstrappt an jedem `truncated`-Step mit `V(nextStates[step])` — ohne (2) würde
 ein Timeout mit dem Wert der Reset-Beobachtung der **nächsten** Episode bootstrappen (siehe
-7.2). Neue Report-Größe `Truncated Steps` (Timeouts + Blockgrenzen, erwartet ~1.024 + Timeouts
-pro Iteration). Geprüft in der VM per C++-Tests und Smoke-Lauf; die Wirkung auf das Lernen ist
-**lokal** zu messen (Baseline-Experiment enthält den Patch, Vergleich gegen den alten
-`metrics.csv`-Verlauf über `ep_end_time`, `Avg Val Target`).
+7.2). Neue Report-Größe `Truncated Steps` (Timeouts + Blockgrenzen). Die Zählung ist **pro
+Spieler**: Jede Spieler-Trajektorie eines Sammelblocks endet mit einem `truncated`-Step (außer sie
+endet genau mit einem Tor), im 1v1 mit 1.024 Spielen also **mindestens ~2.048 pro Iteration**, dazu
+2 je Timeout (korrigiert nach Review R4; vorher stand hier „~1.024 + Timeouts"). Geprüft in der VM
+per C++-Tests und Smoke-Lauf; die Wirkung auf das Lernen ist **lokal** zu messen
+(Baseline-Experiment enthält den Patch, Vergleich gegen den alten `metrics.csv`-Verlauf über
+`ep_end_time`, `Avg Val Target`).
+
+### 7.2b Korrektur K1b (Review-Befund R4, 25.09.2026, lokal auf dem Trainings-PC)
+
+**Befund:** Die erste Fassung des Patches bootstrappte Timeouts doch von der **Reset-Beobachtung**
+der nächsten Episode. `GameInst::Step` hält `auto& nextObs = stepResult.obs` und überschreibt es bei
+`done` mit `gym->Reset()`, *bevor* der `ThreadAgent` das `StepResult` sieht; der `ThreadAgent` las
+genau dieses `stepResult.obs` als „letzte Beobachtung". Der Unit-Test
+`K1_GAE_bootstrappt_Truncation_und_nicht_Terminal` prüfte nur die GAE-Formel mit handgebauten
+Eingaben und konnte das nicht bemerken. Folge: Das Ziel am Timeout war `γ·V(Reset-Obs)` statt
+`γ·V(letzte Obs)` — besser als 0 (vor K1), aber nicht der richtige Folgewert.
+
+**Korrektur** (`third_party/patches/rlgympppo_cpp_truncation.patch`, neue Fassung):
+
+* `Gym::StepResult::finalObs` (neu): `GameInst::Step` verschiebt (`std::move`, keine Kopie) die
+  letzte Beobachtung dorthin, bevor `obs` die Reset-Beobachtung wird — nur an Episodenenden.
+* `ThreadAgent` legt für beendete Episoden `finalObs` in `nextStates` ab.
+* Diagnose je Iteration in `metrics.csv`: `Timeout Truncations` (Anzahl pro Spieler),
+  `Trunc Bootstrap Reset Share` (Anteil der Timeouts, deren Bootstrap-Zustand die Reset-Obs ist:
+  muss **0** sein, war vorher 1), `Trunc Bootstrap V Final` / `V Reset` / `V Diff` (mittleres
+  V(letzte Obs), V(Reset-Obs) und ihre Differenz in normierten Einheiten wie `Avg Val Target`).
+* Schalter `env.timeouts_as_truncation` (Default `true` = korrigiertes Verhalten). `false` meldet
+  NoTouch- und Spielzeit-Timeout wieder als echtes Episodenende (Ziel 0 wie vor dem Audit): Rückweg
+  und A/B-Vergleich. Die Korrektur an den Blockgrenzen (7.2) bleibt in beiden Stellungen aktiv.
+* `Gym.h` definiert `RLGSC_HAS_FINAL_OBS`; das Wurzel-CMake bricht mit einem Upstream-Klon in der
+  alten Fassung ab (`tools\apply_patches.ps1 -Reset` setzt ihn zurück und wendet neu an).
+* Test über den echten Pfad Gym → GameInst → ThreadAgent → Learner/GAE
+  (`tests/cpp/test_truncation.cpp`, `K1b_Echter_Pfad_…`): Bootstrap-Zustand = letzte Beobachtung
+  vor dem Reset, ≠ `states[t+1]`, Bootstrap-Wert ≠ `values[t+1]`, Advantage = r + γ·V(letzte Obs) −
+  V(s), `Trunc Bootstrap Reset Share` = 0. Mit dem alten Verhalten schlägt er fehl (lokal geprüft).
 
 ### 7.3 Entscheidung zu K3 und `RUNNING_STATS.json` (Return-std 15,12)
 

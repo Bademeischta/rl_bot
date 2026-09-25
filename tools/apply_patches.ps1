@@ -1,6 +1,6 @@
 ﻿# Wendet die Upstream-Patches aus third_party/patches/ auf den gepinnten Klon von RLGymPPO_CPP an
 # (idempotent). Wird von bench/cpp/build.ps1 vor jedem Build aufgerufen.
-#   powershell -ExecutionPolicy Bypass -File tools\apply_patches.ps1 [-Check] [-Repo <klon>]
+#   powershell -ExecutionPolicy Bypass -File tools\apply_patches.ps1 [-Check] [-Reset] [-Repo <klon>]
 #
 # Patches (Reihenfolge = Anwendungsreihenfolge):
 #   rlgympppo_cpp_gcc_compat.patch   Timer.h/gradscaler.hpp für GCC (Linux-Build der Tests);
@@ -9,9 +9,13 @@
 #                                    ThreadAgent, GAE-Bootstrap vom echten Folgezustand)
 # Der libtorch-Patch (cuda.cmake) läuft getrennt über tools\patch_libtorch_cuda.ps1.
 #
-# -Repo: anderer Klon als third_party\RLGymPPO_CPP (Tests: frischer Checkout des gepinnten Commits)
+# -Repo:  anderer Klon als third_party\RLGymPPO_CPP (Tests: frischer Checkout des gepinnten Commits)
+# -Reset: verwirft vorher alle Änderungen an versionierten Dateien des Klons (git checkout -- .),
+#         z. B. wenn dort noch die erste Fassung des Truncation-Patches angewendet ist (Review R4).
+#         Betrifft nur den Upstream-Klon, nie das RLbot-Repo.
 param(
     [switch]$Check,
+    [switch]$Reset,
     [string]$Repo = ""
 )
 
@@ -32,6 +36,12 @@ if ($head -ne $Pinned) {
     Write-Host "WARNUNG: $Repo steht auf $head, gepinnt ist $Pinned (PINNED.md)." -ForegroundColor Yellow
 }
 
+if ($Reset) {
+    if ($Check) { throw "-Check und -Reset schliessen sich aus" }
+    Write-Host "Setze $Repo auf den sauberen Stand zurueck (git checkout -- .)" -ForegroundColor Yellow
+    Invoke-Native git @('-C', $Repo, 'checkout', '--', '.') -MergeStdErr | ForEach-Object { Write-Host $_ }
+}
+
 $applied = 0; $already = 0; $failed = 0
 foreach ($patch in $Patches) {
     $name = Split-Path $patch -Leaf
@@ -49,6 +59,7 @@ foreach ($patch in $Patches) {
         Write-Host "[FEHLER] $name laesst sich weder anwenden noch ist er angewendet." -ForegroundColor Red
         Write-Host "         Upstream-Stand pruefen (git -C third_party\RLGymPPO_CPP status / diff)."
         Write-Host "         Zeilenenden: third_party\patches\*.patch muessen LF haben (.gitattributes)."
+        Write-Host "         Aeltere Fassung des Patches angewendet? Dann: tools\apply_patches.ps1 -Reset"
         $failed++
         continue
     }

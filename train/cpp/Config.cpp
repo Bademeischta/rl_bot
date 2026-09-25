@@ -46,6 +46,7 @@ TrainConfig TrainConfig::FromFile(const std::string& path) {
 			READ(e, seen, cfg.gameTimeoutSecs, "game_timeout_secs");
 			READ(e, seen, cfg.shuffleSlots, "shuffle_slots");
 			READ(e, seen, cfg.seedEnvs, "seed_envs");
+			READ(e, seen, cfg.timeoutsAsTruncation, "timeouts_as_truncation");
 			seen.insert("mode_mix");
 			if (e.contains("mode_mix")) {
 				auto mix = e.at("mode_mix").get<std::vector<float>>();
@@ -175,6 +176,7 @@ std::string TrainConfig::ToJSONString() const {
 		{ "no_touch_timeout_secs", noTouchTimeoutSecs }, { "game_timeout_secs", gameTimeoutSecs },
 		{ "mode_mix", { modeMix[0], modeMix[1], modeMix[2] } },
 		{ "shuffle_slots", shuffleSlots }, { "seed_envs", seedEnvs },
+		{ "timeouts_as_truncation", timeoutsAsTruncation },
 	};
 	j["rewards"] = {
 		{ "goal", rewards.goal }, { "concede", rewards.concede },

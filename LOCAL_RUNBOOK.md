@@ -93,7 +93,9 @@ powershell -ExecutionPolicy Bypass -File tools\experiments\run_experiment.ps1 `
 Erfolg: `results\exp_baseline_<datum>.zip`; `summary.md` ohne `ABGEBROCHEN`; im letzten Fünftel
 etwa: Entropie ≈ 3,58, KL ≈ 0,003, Clip-Fraction ≈ 2–3 %, `ep_end_goal` 0,1–0,4 (bisher nur
 geschätzt), `ep_end_time` deutlich unter dem im Audit geschätzten Drittel (K1a: 900 s),
-`Truncated Steps` ≈ 1.000–1.100 pro Iteration (1.024 Blockgrenzen + Timeouts), `Avg Val Target`
+`Truncated Steps` mindestens ~2.048 pro Iteration (pro Spieler gezählt: 1.024 Spiele × 2 Spieler
+Blockgrenzen, dazu 2 je Timeout), `Timeout Truncations` = 2 × Timeouts der Iteration,
+`Trunc Bootstrap Reset Share` = 0 (K1b-Korrektur, AUDIT.md §7.2b), `Avg Val Target`
 ≈ 10, SPS in der Größenordnung der bisherigen ~68.000 (lokal nachmessen). Abweichungen sind
 keine Fehler, sondern das Ergebnis.
 

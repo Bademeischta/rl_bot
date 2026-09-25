@@ -71,26 +71,33 @@ index 50f688b..d59d626 100644
  }
 \ No newline at end of file
 diff --git a/RLGymPPO_CPP/RLGymSim_CPP/src/RLGymSim_CPP/Gym.h b/RLGymPPO_CPP/RLGymSim_CPP/src/RLGymSim_CPP/Gym.h
-index 311d3da..5ca71fd 100644
+index 311d3da..82ecb93 100644
 --- a/RLGymPPO_CPP/RLGymSim_CPP/src/RLGymSim_CPP/Gym.h
 +++ b/RLGymPPO_CPP/RLGymSim_CPP/src/RLGymSim_CPP/Gym.h
-@@ -1,6 +1,9 @@
+@@ -1,6 +1,12 @@
  #pragma once
  #include "Envs/Match.h"
  
 +// RLbot patch (truncation) applied: Gym::StepResult carries a truncated flag.
 +#define RLGSC_HAS_TRUNCATION 1
++// RLbot patch (truncation, review R4): StepResult::finalObs holds the last observation of a
++// finished episode; truncated episodes bootstrap from it instead of the reset observation.
++#define RLGSC_HAS_FINAL_OBS 1
 +
  namespace RLGSC {
  	class Gym {
  	public:
-@@ -26,6 +29,9 @@ namespace RLGSC {
+@@ -26,6 +32,13 @@ namespace RLGSC {
  			FList reward;
  			bool done;
  			GameState state;
 +			// RLbot patch (truncation): done, but only because of a truncation condition.
 +			// Kept last so existing aggregate initializers stay valid.
 +			bool truncated = false;
++			// RLbot patch (truncation, review R4): the last observation of the finished episode.
++			// Only set by RLGPC::GameInst::Step when done, right BEFORE obs is replaced by the
++			// reset observation of the next episode; empty otherwise (Gym::Step never sets it).
++			FList2 finalObs = {};
  		};
  		virtual StepResult Step(const ActionParser::Input& actionsData);
  
@@ -112,10 +119,10 @@ index 91bcad2..a5aa473 100644
  }
 \ No newline at end of file
 diff --git a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/ThreadAgent.cpp b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/ThreadAgent.cpp
-index 478d2b9..04f4c25 100644
+index 478d2b9..fd1aaaa 100644
 --- a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/ThreadAgent.cpp
 +++ b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/ThreadAgent.cpp
-@@ -136,12 +136,21 @@ void _RunFunc(ThreadAgent* ta) {
+@@ -136,12 +136,24 @@ void _RunFunc(ThreadAgent* ta) {
  
  				auto& stepResult = stepResults[i];
  
@@ -129,17 +136,20 @@ index 478d2b9..04f4c25 100644
  				auto tDone = torch::tensor(done);
  				auto tTruncated = torch::tensor(truncated);
  
-+				// For finished episodes, nextObsTensor already holds the RESET observation of
-+				// the next episode (GameInst::Step resets the gym). The GAE needs the last
-+				// observation of the finished episode to bootstrap a truncation correctly.
++				// For finished episodes, nextObsTensor (and stepResult.obs) already hold the RESET
++				// observation of the next episode (GameInst::Step resets the gym). The GAE needs
++				// the last observation of the finished episode to bootstrap a truncation
++				// correctly; GameInst::Step saved it in stepResult.finalObs before the reset
++				// (review R4: the first version of this patch read stepResult.obs here, i.e.
++				// bootstrapped timeouts from the reset observation).
 +				torch::Tensor finalObsTensor;
 +				if (stepResult.done)
-+					finalObsTensor = FLIST2_TO_TENSOR(stepResult.obs);
++					finalObsTensor = FLIST2_TO_TENSOR(stepResult.finalObs);
 +
  				for (int j = 0; j < numPlayers; j++) {
  					ta->trajectories[i][j].AppendSingleStep(
  						{
-@@ -154,7 +163,7 @@ void _RunFunc(ThreadAgent* ta) {
+@@ -154,7 +166,7 @@ void _RunFunc(ThreadAgent* ta) {
  							torch::Tensor(),
  #endif
  
@@ -149,10 +159,35 @@ index 478d2b9..04f4c25 100644
  							tTruncated
  						}
 diff --git a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/ThreadAgentManager.cpp b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/ThreadAgentManager.cpp
-index 9b128f6..f824903 100644
+index 9b128f6..0be420a 100644
 --- a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/ThreadAgentManager.cpp
 +++ b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/ThreadAgentManager.cpp
-@@ -52,7 +52,10 @@ RLGPC::GameTrajectory RLGPC::ThreadAgentManager::CollectTimesteps(uint64_t amoun
+@@ -43,16 +43,35 @@ RLGPC::GameTrajectory RLGPC::ThreadAgentManager::CollectTimesteps(uint64_t amoun
+ 		// Combine all of their trajectories into one long trajectory
+ 		// We will return this giant trajectory to the learner
+ 		std::vector<GameTrajectory> trajs;
++		lastEnvTruncIdx.clear();
++		lastEnvTruncHasNext.clear();
+ 		for (auto agent : agents) {
+ 			agent->trajMutex.lock();
+ 			for (auto& trajSet : agent->trajectories) {
+ 				for (auto& traj : trajSet) {
+ 					if (traj.size > 0) {
++						// RLbot patch (truncation, review R4): remember where the environment itself
++						// truncated (timeouts), before the block boundary below is marked as well.
++						// Positions refer to the concatenated result (MultiAppend keeps this order).
++						{
++							torch::Tensor truncs = traj.data.truncateds.slice(0, 0, traj.size).contiguous();
++							const float* t = truncs.data_ptr<float>();
++							for (size_t i = 0; i < traj.size; i++) {
++								if (t[i] > 0.5f) {
++									lastEnvTruncIdx.push_back((int64_t)(totalTimesteps + i));
++									lastEnvTruncHasNext.push_back(i + 1 < traj.size);
++								}
++							}
++						}
++
+ 						// If the last timestep is not a done, mark it as truncated
  						// The GAE needs to know when the environment state stops being continuous
  						// This happens either because the environment reset (i.e. goal scored), called "done",
  						//	or the data got cut short, called "truncated"
@@ -164,6 +199,24 @@ index 9b128f6..f824903 100644
  						trajs.push_back(traj);
  						totalTimesteps += traj.size;
  						traj.Clear();
+diff --git a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/ThreadAgentManager.h b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/ThreadAgentManager.h
+index 8476b28..99709d0 100644
+--- a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/ThreadAgentManager.h
++++ b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/ThreadAgentManager.h
+@@ -30,6 +30,13 @@ namespace RLGPC {
+ 		double lastIterationTime = 0;
+ 		WelfordRunningStat obsStats;
+ 
++		// RLbot patch (truncation, review R4): environment truncations (timeouts, not block
++		// boundaries) of the last CollectTimesteps() call, as positions in the returned
++		// trajectory. hasNext: the following position belongs to the same game and player, its
++		// state is the reset observation of the next episode. Used for diagnostics only.
++		std::vector<int64_t> lastEnvTruncIdx;
++		std::vector<bool> lastEnvTruncHasNext;
++
+ 		ThreadAgentManager(
+ 			DiscretePolicy* policy, DiscretePolicy* policyHalf, ExperienceBuffer* expBuffer, 
+ 			bool standardizeOBS, bool deterministic, bool blockConcurrentInfer, uint64_t maxCollect, torch::Device device) :
 diff --git a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Util/TorchFuncs.cpp b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Util/TorchFuncs.cpp
 index 71eb714..4e20560 100644
 --- a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Util/TorchFuncs.cpp
@@ -218,7 +271,7 @@ index 2a2ce17..e0b1c88 100644
  
  		// torch::cat({a, b}, 0) but returns b.clone() if a is undefined
 diff --git a/RLGymPPO_CPP/src/public/RLGymPPO_CPP/Learner.cpp b/RLGymPPO_CPP/src/public/RLGymPPO_CPP/Learner.cpp
-index 923de67..4c95adb 100644
+index 923de67..fca7dc3 100644
 --- a/RLGymPPO_CPP/src/public/RLGymPPO_CPP/Learner.cpp
 +++ b/RLGymPPO_CPP/src/public/RLGymPPO_CPP/Learner.cpp
 @@ -651,13 +651,43 @@ void RLGPC::Learner::AddNewExperience(GameTrajectory& gameTraj, Report& report)
@@ -276,3 +329,135 @@ index 923de67..4c95adb 100644
  	);
  
  	float avgRet = 0;
+@@ -677,6 +708,59 @@ void RLGPC::Learner::AddNewExperience(GameTrajectory& gameTraj, Report& report)
+ 	report["Avg Advantage"] = advantages.abs().mean().item<float>();
+ 	report["Avg Val Target"] = valueTargets.abs().mean().item<float>();
+ 
++	// RLbot patch (truncation, review R4): diagnostics for environment truncations (timeouts).
++	// Proves in metrics.csv that timeouts bootstrap from the last observation of the episode:
++	//   Timeout Truncations          count per player and iteration
++	//   Trunc Bootstrap Reset Share  share of timeouts whose bootstrap state IS the reset
++	//                                observation of the next episode (must be 0; was 1 before R4)
++	//   Trunc Bootstrap V Final/Reset/Diff  mean V(last obs), mean V(reset obs) and their
++	//                                difference, in the critic's (normalized) units
++	{
++		const auto& envIdx = agentMgr->lastEnvTruncIdx;
++		const auto& envHasNext = agentMgr->lastEnvTruncHasNext;
++		FList rewardList = truncationDiagnosticsCallback ? TENSOR_TO_FLIST(trajData.rewards) : FList();
++		FList advList = truncationDiagnosticsCallback ? TENSOR_TO_FLIST(advantages) : FList();
++		TruncationDiagnostics diag = {};
++		diag.gamma = config.gaeGamma;
++		diag.returnStd = retStd;
++		diag.rewardClipRange = config.rewardClipRange;
++
++		report["Timeout Truncations"] = (int64_t)envIdx.size();
++		int64_t pairs = 0, bootstrapIsReset = 0;
++		double sumFinal = 0, sumReset = 0;
++		for (size_t k = 0; k < envIdx.size(); k++) {
++			int64_t i = envIdx[k];
++			bool hasNext = envHasNext[k] && i + 1 < (int64_t)count;
++			float vBoot = truncNextValues.empty() ? valPreds[i + 1] : truncNextValues[i];
++			if (hasNext) {
++				pairs++;
++				sumFinal += vBoot;
++				sumReset += valPreds[i + 1];
++				if (torch::equal(trajData.nextStates[i], trajData.states[i + 1]))
++					bootstrapIsReset++;
++			}
++			if (truncationDiagnosticsCallback) {
++				diag.envTruncIdx.push_back(i);
++				diag.envTruncHasNext.push_back(hasNext);
++				diag.bootstrapStates.push_back(TENSOR_TO_FLIST(trajData.nextStates[i]));
++				diag.followingStates.push_back(hasNext ? TENSOR_TO_FLIST(trajData.states[i + 1]) : FList());
++				diag.bootstrapValues.push_back(vBoot);
++				diag.followingValues.push_back(hasNext ? valPreds[i + 1] : NAN);
++				diag.stateValues.push_back(valPreds[i]);
++				diag.rewards.push_back(rewardList[i]);
++				diag.advantages.push_back(advList[i]);
++			}
++		}
++		if (pairs > 0) {
++			report["Trunc Bootstrap Reset Share"] = (double)bootstrapIsReset / pairs;
++			report["Trunc Bootstrap V Final"] = sumFinal / pairs;
++			report["Trunc Bootstrap V Reset"] = sumReset / pairs;
++			report["Trunc Bootstrap V Diff"] = (sumFinal - sumReset) / pairs;
++		}
++		if (truncationDiagnosticsCallback)
++			truncationDiagnosticsCallback(diag);
++	}
++
+ 	if (config.standardizeReturns) {
+ 		int numToIncrement = RS_MIN(config.maxReturnsPerStatsInc, returns.size());
+ 		returnStats.Increment(returns, numToIncrement);
+diff --git a/RLGymPPO_CPP/src/public/RLGymPPO_CPP/Learner.h b/RLGymPPO_CPP/src/public/RLGymPPO_CPP/Learner.h
+index 0a648f5..0e3e3d1 100644
+--- a/RLGymPPO_CPP/src/public/RLGymPPO_CPP/Learner.h
++++ b/RLGymPPO_CPP/src/public/RLGymPPO_CPP/Learner.h
+@@ -10,6 +10,23 @@ namespace RLGPC {
+ 
+ 	typedef std::function<void(class Learner*, Report&)> IterationCallback;
+ 
++	// RLbot patch (truncation, review R4): what the GAE of one iteration saw at the steps where
++	// the environment truncated (timeouts; block boundaries are not included). One entry per
++	// such step. Filled in Learner::AddNewExperience only if the callback is set (tests).
++	struct TruncationDiagnostics {
++		std::vector<int64_t> envTruncIdx;   // position in the iteration's trajectory
++		std::vector<bool> envTruncHasNext;  // the next position is the same game and player
++		FList2 bootstrapStates;             // nextStates[idx]: state the GAE bootstraps from
++		FList2 followingStates;             // states[idx + 1]: reset obs of the next episode (empty if !hasNext)
++		FList bootstrapValues;              // value used for the bootstrap in the GAE
++		FList followingValues;              // V(states[idx + 1]) = what the unpatched GAE used (NAN if !hasNext)
++		FList stateValues;                  // V(states[idx])
++		FList rewards;                      // raw reward of the step
++		FList advantages;                   // GAE advantage of the step
++		float gamma = 0, returnStd = 1, rewardClipRange = 0;
++	};
++	typedef std::function<void(const TruncationDiagnostics&)> TruncationDiagnosticsCallback;
++
+ 	// https://github.com/AechPro/rlgym-ppo/blob/main/rlgym_ppo/learner.py
+ 	class RG_IMEXPORT Learner {
+ 	public:
+@@ -53,6 +70,8 @@ namespace RLGPC {
+ 
+ 		IterationCallback iterationCallback = NULL;
+ 		StepCallback stepCallback = NULL;
++		// RLbot patch (truncation, review R4)
++		TruncationDiagnosticsCallback truncationDiagnosticsCallback = NULL;
+ 
+ 		RG_NO_COPY(Learner);
+ 
+diff --git a/RLGymPPO_CPP/src/public/RLGymPPO_CPP/Threading/GameInst.cpp b/RLGymPPO_CPP/src/public/RLGymPPO_CPP/Threading/GameInst.cpp
+index fc2d367..077bfa4 100644
+--- a/RLGymPPO_CPP/src/public/RLGymPPO_CPP/Threading/GameInst.cpp
++++ b/RLGymPPO_CPP/src/public/RLGymPPO_CPP/Threading/GameInst.cpp
+@@ -9,8 +9,6 @@ RLGSC::Gym::StepResult RLGPC::GameInst::Step(const IList& actions) {
+ 	// Step with agent actions
+ 	auto stepResult = gym->Step(actions);
+ 
+-	auto& nextObs = stepResult.obs;
+-
+ 	{ // Update avg rewards
+ 		float totalRew = 0;
+ 		for (int i = 0; i < match->playerAmount; i++)
+@@ -25,13 +23,18 @@ RLGSC::Gym::StepResult RLGPC::GameInst::Step(const IList& actions) {
+ 
+ 	// Environment ending
+ 	if (stepResult.done) {
+-		nextObs = gym->Reset();
+-		
++		// RLbot patch (truncation, review R4): keep the last observation of the episode before
++		// obs is overwritten with the reset observation of the next episode. The ThreadAgent
++		// bootstraps truncated episodes (timeouts) from it. Moved, not copied, and only at
++		// episode ends: no cost in the normal step.
++		stepResult.finalObs = std::move(stepResult.obs);
++		stepResult.obs = gym->Reset();
++
+ 		avgEpRew += curEpRew;
+ 		curEpRew = 0;
+ 	}
+ 
+-	curObs = nextObs;
++	curObs = stepResult.obs;
+ 	totalSteps++;
+ 
+ 	return stepResult;

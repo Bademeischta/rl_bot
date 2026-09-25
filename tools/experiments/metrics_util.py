@@ -31,6 +31,10 @@ KEY_COLUMNS = [
     ("Avg Val Target", "val_target"),
     ("Avg Advantage", "advantage"),
     ("Truncated Steps", "truncated_steps"),
+    # K1b-Diagnose (Review R4, AUDIT.md §7.2b): Reset-Share muss 0 sein
+    ("Timeout Truncations", "timeout_truncations"),
+    ("Trunc Bootstrap Reset Share", "trunc_reset_share"),
+    ("Trunc Bootstrap V Diff", "trunc_v_diff"),
     ("Skill Rating 1v1", "skill_rating"),
     ("Cumulative Model Updates", "model_updates"),
     ("Total Iteration Time", "iter_s"),

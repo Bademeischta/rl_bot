@@ -27,6 +27,10 @@ struct TrainConfig {
 	// Eigene State-Setter und den Slot-Shuffle aus learner.random_seed + Env-Index seeden
 	// (Audit H6). false = RocketSims zeitgeseedeter Engine wie vor dem Audit.
 	bool seedEnvs = true;
+	// NoTouch- und Spielzeit-Timeout als Truncation melden (Audit K1, Review-Befund R4): der
+	// Learner bootstrappt dann vom Wert der letzten Beobachtung der Episode. false = Timeouts
+	// sind wieder echte Episodenenden mit Ziel 0 wie vor dem Audit (Rückweg, A/B-Vergleich).
+	bool timeoutsAsTruncation = true;
 
 	RewardWeights rewards = {};
 	StateSetterWeights states = {};

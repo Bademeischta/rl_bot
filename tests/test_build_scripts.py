@@ -187,3 +187,38 @@ def test_every_ps1_parses_and_reads_identically_under_ps51(tmp_path):
     garbled = [f for f, _, same in rows if same != "1"]
     assert parse_errors == [], f"Parserfehler unter 5.1: {parse_errors}"
     assert garbled == [], f"5.1 liest anderen Text als UTF-8 (fehlendes BOM?): {garbled}"
+
+
+# --- R4: Upstream-Klon mit der ersten Fassung des Truncation-Patches --------------------------
+
+FIRST_TRUNCATION_PATCH_COMMIT = "c1e6359"   # K1b, Bootstrap von der Reset-Obs (Review R4)
+
+
+@needs_ps51
+@needs_git
+@pytest.mark.skipif(not (UPSTREAM / ".git").exists(), reason="third_party/RLGymPPO_CPP fehlt")
+def test_apply_patches_reset_replaces_the_first_truncation_patch(tmp_path):
+    """Auf einem Klon mit der alten Patch-Fassung meldet apply_patches.ps1 einen Fehler statt
+    stillschweigend weiterzubauen; mit -Reset wird die neue Fassung sauber angewendet."""
+    old = _git("show", f"{FIRST_TRUNCATION_PATCH_COMMIT}:third_party/patches/rlgympppo_cpp_truncation.patch")
+    assert old.returncode == 0, old.stderr
+    old_patch = tmp_path / "old_truncation.patch"
+    old_patch.write_bytes(old.stdout.encode("utf-8"))
+    clone = tmp_path / "upstream"
+    assert _git("clone", "-q", "--shared", "--no-checkout", str(UPSTREAM), str(clone)).returncode == 0
+    assert _git("checkout", "-q", PINNED, cwd=clone).returncode == 0
+    for patch in (PATCH_DIR / "rlgympppo_cpp_gcc_compat.patch", old_patch):
+        r = _git("apply", str(patch), cwd=clone)
+        assert r.returncode == 0, r.stderr
+
+    script = str(ROOT / "tools" / "apply_patches.ps1")
+    r = _ps("-File", script, "-Repo", str(clone))
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "[FEHLER] rlgympppo_cpp_truncation.patch" in r.stdout
+    assert "-Reset" in r.stdout
+
+    r = _ps("-File", script, "-Reset", "-Repo", str(clone))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert r.stdout.count("[angewendet]") == 2, r.stdout
+    gym_h = (clone / "RLGymPPO_CPP" / "RLGymSim_CPP" / "src" / "RLGymSim_CPP" / "Gym.h").read_text(encoding="utf-8")
+    assert "RLGSC_HAS_FINAL_OBS" in gym_h
