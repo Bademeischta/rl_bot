@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -329,3 +330,52 @@ def test_results_folder_is_ignored_by_git():
     """run_all_checks verlangt ein sauberes Arbeitsverzeichnis; results/ darf es nicht verschmutzen."""
     r = _git("check-ignore", "-q", "results/local_check_x/SUMMARY.md")
     assert r.returncode == 0
+
+
+@needs_ps51
+@pytest.mark.skipif(sys.platform != "win32", reason="exklusive Dateisperre nur unter Windows")
+def test_run_all_checks_zip_survives_a_briefly_locked_file(tmp_path):
+    """Ein Virenscanner oder ein offenes Log kann eine Datei kurz exklusiv sperren. Das Zip soll es
+    dann erneut versuchen statt das Paket abzubrechen (beim ersten echten Lauf so passiert)."""
+    import ctypes
+    import threading
+    import time
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateFileW.restype = wintypes.HANDLE
+    kernel32.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID,
+                                     wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+    held = {}
+
+    def locker():
+        deadline = time.time() + 120
+        while time.time() < deadline:
+            dirs = [d for d in tmp_path.iterdir() if d.is_dir()]
+            if dirs:
+                break
+            time.sleep(0.05)
+        res = dirs[0]
+        lock = res / "gesperrt.txt"
+        lock.write_text("x", encoding="ascii")
+        # GENERIC_READ, kein Teilen (share mode 0), OPEN_EXISTING
+        h = kernel32.CreateFileW(str(lock), 0x80000000, 0, None, 3, 0x80, None)
+        held["ok"] = h not in (None, wintypes.HANDLE(-1).value)
+        while time.time() < deadline and not (res / "SUMMARY.md").exists():
+            time.sleep(0.05)
+        time.sleep(3)                                  # erster Zip-Versuch trifft die Sperre
+        kernel32.CloseHandle(h)
+
+    t = threading.Thread(target=locker)
+    t.start()
+    r = _ps("-File", str(ROOT / "tools" / "local" / "run_all_checks.ps1"), "-Flavor", "nichtda", "-SkipBuild",
+            "-Repeat", "1", "-ResultsRoot", str(tmp_path))
+    t.join()
+    assert held.get("ok"), "Sperre konnte nicht gesetzt werden"
+    res = next(d for d in tmp_path.iterdir() if d.is_dir())
+    zip_path = tmp_path / f"{res.name}.zip"
+    assert zip_path.exists(), r.stdout + r.stderr
+    import zipfile
+    with zipfile.ZipFile(zip_path) as z:
+        assert "gesperrt.txt" in z.namelist() and "SUMMARY.md" in z.namelist()
+    assert "Zip konnte nicht" not in r.stdout

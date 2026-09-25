@@ -194,9 +194,27 @@ finally {
     $lines -join "`n" | Set-Content -Path "$Res\SUMMARY.md" -Encoding UTF8
     Write-Host "`n$($lines -join "`n")"
     Stop-Transcript | Out-Null
-    Compress-Archive -Path "$Res\*" -DestinationPath $zip
+    # Eine kurz gesperrte Datei (Virenscanner, ein Editor mit offenem Log) soll nicht das ganze
+    # Paket kippen: bis zu 5 Versuche, danach Fehler im Ergebnis statt Abbruch mitten im finally
+    $zipError = $null
+    for ($attempt = 1; $attempt -le 5; $attempt++) {
+        try {
+            if (Test-Path $zip) { Remove-Item $zip }   # nur ein eigenes, unvollständiges Zip dieses Laufs
+            Compress-Archive -Path "$Res\*" -DestinationPath $zip -ErrorAction Stop
+            $zipError = $null
+            break
+        } catch {
+            $zipError = $_.Exception.Message
+            Start-Sleep -Seconds 2
+        }
+    }
     Write-Host "`nErgebnisse: $Res" -ForegroundColor Green
-    Write-Host "Zip zum Zurueckgeben: $zip" -ForegroundColor Green
+    if ($zipError) {
+        $status["7 Zip"] = "FEHLER: $zipError"
+        Write-Host "Zip konnte nicht geschrieben werden: $zipError" -ForegroundColor Red
+    } else {
+        Write-Host "Zip zum Zurueckgeben: $zip" -ForegroundColor Green
+    }
 }
 $bad = @($status.Values | Where-Object { $_ -like "FEHLER*" -or $_ -like "uebersprungen wegen*" })
 if ($bad.Count -or $status.Count -lt 6) {
