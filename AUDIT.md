@@ -1635,3 +1635,31 @@ vergleicht dagegen.
   unverändertem Torwert ±10 nach dem Wrapper: gemessen wird nur der Zero-Sum-Effekt auf das
   Shaping. `Average Step/Episode Reward` sind dort konstant 0, `raw_step_reward` zeigt das
   Shaping-Niveau vor dem Wrapper.
+* **Hauptkriterium und TrueSkill** (Review R12): Entschieden wird primär über das Duell jedes
+  Experiment-Endes gegen das Baseline-Ende (Gewinnrate, Remis = halber Sieg, 95-%-Wilson-KI).
+  TrueSkill kommt nur noch aus einer gemeinsamen Ladder, die `compare.py` spielt (alle
+  Experiment-Enden, Baseline-Start, Baseline-Ende). Achtung aus dem Mini-Lauf (§7.7): Die meisten
+  Duellspiele enden remis; vor Stufe 3 über Spielzahl bzw. `--max-seconds` entscheiden.
+
+### 7.7 Review-Fixes und lokale Verifikation (25.09.2026, Trainings-PC)
+
+Ein unabhängiger Review nach dem Merge von PR #1 fand 18 Befunde (R1–R18); beim Beheben kam
+ein Nebenbefund dazu (R19). Status je Befund, Tests und Nachweise stehen in `AUDIT_PROGRESS.md`
+(Abschnitt „Review-Fixes"). Die wichtigsten Punkte für dieses Audit:
+
+* **K1b war in der ersten Fassung falsch** und ist korrigiert (§7.2b).
+* **Build-Blocker**: Die Patches lagen mit CRLF vor und ließen sich unter Windows nie anwenden
+  (R1); alle PowerShell-Skripte brachen unter Windows PowerShell 5.1 an stderr-Ausgaben nativer
+  Programme ab (R2) bzw. wurden ohne BOM als ANSI gelesen (R3). Erst danach lief der erste echte
+  MSVC-cu128-Build beider Patches.
+* **H6 war im 1v1 nicht reproduzierbar** (R19): RocketSim hält die Autos in einem
+  `std::unordered_set`, die geseedeten Szenen verteilten ihre Zufallszahlen deshalb
+  adressabhängig. Behoben durch Iteration nach Car-ID.
+* **Abbruch bei NaN griff nie** (R5): NaN wurde als leeres Feld geschrieben und leere Felder
+  wurden ignoriert.
+
+Gemessen auf dem Trainings-PC (lokal / Auditor-Kategorie, §0): Return-std im neuesten Checkpoint
+3.907.335.040 = **14,81** (Audit: 15,12 bei 2,70 Mrd.); Kurzläufe `sanity.json` ~74.000 SPS und
+`baseline.json` ~71.000 SPS (je nur 2–3 Mio. Steps, keine eingeschwungenen Werte);
+Deployment-Latenz p95 0,28 ms. Der Hauptlauf wurde nach dem Audit mit dem alten Binary von
+2,70 auf 3,91 Mrd. Steps weitertrainiert; der Checkpoint 2704829056 existiert nicht mehr.

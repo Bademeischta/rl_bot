@@ -50,37 +50,42 @@ Skripte immer mit `powershell` (Windows PowerShell 5.1) starten. Wer eine `.ps1`
 als UTF-8 **mit BOM** speichern (oder nur ASCII verwenden) und native Programme über
 `Invoke-Native` (`tools\NativeCommand.ps1`) aufrufen; `tests\test_build_scripts.py` prüft beides.
 
-## 1. Prüfpaket: `tools\local\run_all_checks.ps1` (~20–30 Minuten)
+## 1. Prüfpaket: `tools\local\run_all_checks.ps1` (~3 Minuten inkrementell, erster Build länger)
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File tools\local\run_all_checks.ps1
 ```
 
-| Schritt | Dauer (geschätzt) | Erfolg erkennbar an |
+Gemessen am 25.09.2026 auf dem Trainings-PC (Commit `9d62f94`, inkrementeller Build): 2,4 min,
+alle Schritte OK, Exit 0. Voraussetzung: sauberes Arbeitsverzeichnis (`results\` ist ignoriert).
+
+| Schritt | Dauer (gemessen) | Erfolg erkennbar an |
 |---|---|---|
-| 1 Branch-Stand | Sekunden | `Branch: claude/rlbot-audit-roadmap-c8t7nl`, keine uncommitteten Änderungen |
-| 2 Patches + Build cu128 | 5–15 Minuten (wie ein normaler Build) | `apply_patches.ps1`: 2 Patches „angewendet" (beim zweiten Mal „bereits angewendet"); Build endet ohne `error` |
-| 3 Tests, 2 Durchläufe | 2–5 Minuten | `75 bestanden, 0 fehlgeschlagen` (C++), `Golden-Fixtures unveraendert`, Python ≥ 97 `passed` (3 Policy-Paritätstests laufen nur mit Checkpoint, siehe Schritt 6), `Alle Durchläufe bestanden.` |
-| 4 Python-Versionen | Sekunden | Tabelle; `OK` bei allen Pins. `ABWEICHUNG`/`FEHLT` ist **Information**, kein Fehler: Die Pins stammen aus dem Audit, nicht aus einem `pip freeze` |
-| 5 Smoke-Training `sanity.json`, 2 Mio. Steps | 1–3 Minuten (Anlaufphase langsamer) | `Timestep limit of 2000000 reached`; `smoke_metrics.csv` mit Spalten `ep_end_goal`, `ep_end_timeout`, `ep_length_steps`, `Truncated Steps`; genau eine Kopfzeile; Entropie im letzten Fünftel zwischen 4,2 und 4,5 (frisches Netz, vgl. `docs/phases.md` Phase 1: 4,499 bei 0,1 Mio.); keine `nan` |
-| 6 Deployment-Smoke + Bestandsaufnahme | 1–2 Minuten | `deploy_smoke.txt`: `Obs-Größe 257 und 90 Aktionen passen`, Latenz p95 deutlich unter 66,7 ms (in der VM: 0,4 ms auf CPU); `policy_parity.txt`: `3 passed`; `run_inspect.json`: neuester Checkpoint 2704829056, `return_std` ≈ 15,12, `header_lines` 5 (alter Stand), `_git` in `config_used.json` erst nach dem nächsten Trainingsstart |
-| 7 Zip | Sekunden | `results\local_check_<datum>.zip` |
+| 1 Git-Stand | Sekunden | `Uncommittet: nichts`; Branch, voller Hash und Upstream-Hash in `git.txt` (kein fester Branch mehr, R18) |
+| 2 Patches + Build cu128 | 16 s inkrementell (voller Build einige Minuten) | `apply_patches.ps1`: 2 Patches „angewendet" bzw. „bereits angewendet"; Build ohne `error`. Mit `-SkipBuild` müssen die Binaries jünger als der HEAD-Commit sein |
+| 3 Tests, 2 Durchläufe | ~1 min | je Durchlauf `88 bestanden, 0 fehlgeschlagen` (C++), `Golden-Fixtures unveraendert`, `147 passed`, 0 übersprungen (die Paritätstests laufen gegen `runs\lucy_1v1`), `Alle Durchläufe bestanden.` |
+| 4 Python-Versionen | Sekunden | `16 von 16 Paketen stimmen`; Abweichungen wären nur Information |
+| 5 Smoke-Training `sanity.json`, 2 Mio. Steps | ~1 min | `Timestep limit of 2000000 reached`; genau eine Kopfzeile, kein `nan`; Entropie ~4,48; `k1b_diagnose.txt`: `OK: Timeouts bootstrappen vom letzten Zustand vor dem Reset` (gemessen: 7.654 Timeout-Truncations in 17 von 20 Iterationen, Reset-Anteil 0, V-Differenz −0,74); `Truncated Steps` ≈ 2.048 + Timeouts |
+| 6 Deployment-Smoke + Bestandsaufnahme | 5 s | `deploy_smoke.txt`: `Obs-Größe 257 und 90 Aktionen passen`, Latenz p95 0,28 ms (Budget 66,7 ms); `policy_parity.txt`: `3 passed`; `run_inspect.json`: neuester Checkpoint 3907335040, `return_std` 14,81, `header_lines` 6 (Hauptlauf noch mit altem Binary) |
+| 7 Zip | Sekunden | `results\local_check_<datum_hhmmss>.zip` (bis zu 5 Versuche, falls eine Datei kurz gesperrt ist) |
 
 Bei Fehlern:
 
+* **Schritt 1 „nicht sauber"** → erst committen; alle abhängigen Schritte stehen dann auf
+  „uebersprungen wegen Schritt 1" (R18: keine Tests auf alten Binaries).
 * **Build bricht ab** → `results\local_check_<datum>\build.log`. Steht dort `Upstream-Patch
   fehlt`, hat `apply_patches.ps1` nicht gegriffen: `powershell -File tools\apply_patches.ps1
-  -Check` zeigt den Zustand; `git -C third_party\RLGymPPO_CPP status` zeigt fremde Änderungen.
-  Steht dort etwas zu `enable_language(CUDA)`, fehlt der libtorch-Patch
-  (`tools\patch_libtorch_cuda.ps1`).
+  -Check` zeigt den Zustand. Steht dort `Upstream-Patch veraltet` (Klon mit der ersten Fassung
+  des Truncation-Patches): `powershell -File tools\apply_patches.ps1 -Reset`. Steht dort etwas zu
+  `enable_language(CUDA)`, fehlt der libtorch-Patch (`tools\patch_libtorch_cuda.ps1`).
 * **`Obs-Layout hat sich geaendert`** → **nicht** `update_golden.ps1` ausführen, sondern
   `tests.log` und den frischen Dump (`%TEMP%\rlbot_obs_check_1.json`) zurückgeben. Das Layout
   darf sich nicht geändert haben (Checkpoint-Kompatibilität).
-* **Python-Tests < 97 passed** → fehlen `rlbot`/`rlbot_flatbuffers`/`rlgym` im `.venv`?
+* **Python-Tests zu wenige** → fehlen `rlbot`/`rlbot_flatbuffers`/`rlgym` im `.venv`?
   `python_versions.txt` zeigt es.
 * **Smoke-Training bricht ab** → `smoke_train.log`. `nan` in der ersten Iteration wäre ein
-  Build-Problem (libtorch-Version prüfen).
-* Jeder Schritt läuft unabhängig weiter; `SUMMARY.md` im Ergebnisordner zeigt alle Stati.
+  Build-Problem (libtorch-Version prüfen). **K1b-Diagnose nicht bestanden** → `k1b_diagnose.txt`.
+* `SUMMARY.md` im Ergebnisordner zeigt alle Stati; Exit 0 nur, wenn alles OK ist.
 
 ## 2. Nullmessung der Ladder (Stufe 1, Roadmap Punkt 6; ~10–30 Minuten)
 
@@ -95,6 +100,11 @@ Ergebnis: `runs\lucy_1v1\ratings.json` (neuer Schlüssel `lucy_1v1/<steps>`). Er
 neueren Checkpoints liegen vorn; ob das Rating mit den Steps monoton steigt, ist genau die
 offene Frage aus AUDIT.md K3 (der Skill-Tracker im Training kann konstruktionsbedingt nicht
 plateauen). `ratings.json` mit zurückgeben.
+
+Liegt irgendwo noch eine `ratings.json` von vor Audit M4 (Schlüssel nur `<steps>`, z. B.
+`runs\sanity\ratings.json`), schreibt die Ladder **nicht** hinein, sondern bricht mit Hinweis ab
+(Review R9). Ansehen: `eval\ladder.py --show <datei>`; migrieren nur in eine Kopie:
+`eval\ladder.py --migrate <datei> --out <kopie.json>`, danach `--ratings <kopie.json>`.
 
 ## 3. Kontrolllauf Baseline (Stufe 3; ~30–40 Minuten)
 
@@ -115,6 +125,15 @@ Blockgrenzen, dazu 2 je Timeout), `Timeout Truncations` = 2 × Timeouts der Iter
 `Trunc Bootstrap Reset Share` = 0 (K1b-Korrektur, AUDIT.md §7.2b), `Avg Val Target`
 ≈ 10, SPS in der Größenordnung der bisherigen ~68.000 (lokal nachmessen). Abweichungen sind
 keine Fehler, sondern das Ergebnis.
+
+Probelauf (Review-Fix, 25.09.2026, **kein Experiment**): dieselbe Baseline-Config mit
+`-Steps 3000000 -DuelGames 20 -LadderGames 10` vom Checkpoint 3907335040 lief in 1,6 min
+komplett durch (Kopie `start\` + `checkpoints\` mit Hash-Prüfung, Training ~71.000 SPS,
+End-Checkpoint 3910425600 per `save_on_exit` und `pick_checkpoint.py`, Duell, Lauf-Ladder,
+`summary.md`, Zip). Auffällig: **17 von 20 Duellspielen endeten remis** (nach 120 s Spielzeit
+ohne Tor, `duel.exe --max-seconds`); die Gewinnrate des Hauptkriteriums wird bei 100 Spielen
+entsprechend breite Intervalle haben. Ob mehr Spiele oder längere Spiele sinnvoll sind, ist vor
+Schritt 4 zu entscheiden (AUDIT_PROGRESS.md, offene Punkte).
 
 ## 4. Experimente (Stufe 3, je ~30–40 Minuten, nacheinander)
 
@@ -192,6 +211,9 @@ schreibe AUDIT.md/Roadmap mit den echten Zahlen fort.
   Hauptlaufs mit dieser Config ist Checkpoint-kompatibel; der Timeout-Anteil wird ab dann in
   `metrics.csv` als `ep_end_time` sichtbar.
 * Der K1-Patch ändert die Value-Targets; der Critic passt sich an, die Policy bleibt gültig
-  (AUDIT.md, Checkpoint-Kompatibilität). Alle Experimente inklusive Baseline laufen mit Patch.
+  (AUDIT.md, Checkpoint-Kompatibilität). Alle Experimente inklusive Baseline laufen mit Patch
+  in der korrigierten Fassung (K1b bootstrappt von der letzten Obs, AUDIT.md §7.2b). Rückweg
+  bzw. A/B: `"env": { "timeouts_as_truncation": false }`.
+* Deployment: `$env:RLBOT_OBS_DELAY = "0"` schaltet den H1-Paketpuffer ab (Verhalten vor H1).
 * Alte Build-Verzeichnisse (`build\cpp_cu128_avx512`) und Logs (`build_avx512.log`,
   `build_t.log`) sind laut N6 überflüssig; gelöscht wird nichts automatisch.

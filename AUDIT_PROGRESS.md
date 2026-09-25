@@ -4,8 +4,9 @@ Zweck: Eine neue Session (Mensch oder Agent) soll hier ohne weiteres Vorwissen e
 Grundlage ist `AUDIT.md` (Befunde K1–N10, Roadmap Stufen 0–4). Dieses Dokument wird bei jedem
 Roadmap-Punkt fortgeschrieben.
 
-Branch: `claude/rlbot-audit-roadmap-c8t7nl` (abgezweigt von `main` @ `54105bf`, als PR #1 in `main`
-gemergt). Regel: ein Commit pro Roadmap-Punkt, ID in der Commit-Message.
+Branches: `claude/rlbot-audit-roadmap-c8t7nl` (Audit-Roadmap, abgezweigt von `main` @ `54105bf`,
+als PR #1 in `main` gemergt) und `claude/review-fixes` (Review-Befunde R1-R19, von `main` @
+`bb7f93e`, eigener PR). Regel: ein Commit pro Punkt, ID in der Commit-Message.
 
 ## Review-Fixes (Branch `claude/review-fixes`, lokal auf dem Trainings-PC, ab 25.09.2026)
 
@@ -36,11 +37,65 @@ Befundliste aus dem Auftrag.
 | R18 | `run_all_checks.ps1`: harte Branch-Prüfung, Folgeschritte auf alten Binaries, Ergebnisordner überschreibbar | behoben: Schritt 1 prüft „Arbeitsverzeichnis sauber“ und gibt Branch, vollen Hash und Upstream-Hash aus; Schritte deklarieren Abhängigkeiten (3, 5, 6 brauchen den Build, 2 braucht 1) und werden sonst „übersprungen wegen Schritt n“; `-SkipBuild` verlangt Binaries jünger als HEAD; Ergebnisordner `local_check_<datum>_<hhmmss>`, Ordner/Zip nie überschrieben; Exit 1 bei Fehler/Übersprung; `results/` in `.gitignore`; Smoke mit absoluten Pfaden | `test_run_all_checks_skips_dependent_steps_…` (echtes Skript unter 5.1 mit fehlenden Binaries), `test_results_folder_is_ignored_by_git`; mit altem Skript rot |
 | R19 | Nebenbefund (lokal, mit OK des Nutzers): geseedete Szenen verteilten ihre Zufallszahlen in Hash-Reihenfolge von `arena->_cars` (`unordered_set`, adressabhängig) auf die Autos; gleicher Seed ≠ gleiche Startzustände, `EnvFactory_reicht_Seed_…` flackerte (1 von 5) | behoben: Szenen iterieren nach Car-ID, Dribble-Ballführer zieht der geseedete RNG (weiter gleichverteilt); Test ordnet Spieler nach Car-ID zu | `Seed_gleicher_Seed_gibt_gleiche_Autozustaende_unabhaengig_von_der_Speicherreihenfolge` (40 Arenen, beide Reihenfolgen); beide Tests ohne Fix rot, mit Fix 3× grün |
 
+Nachträge im selben Befund (eigene Commits): „R2 Nachtrag" (leere stderr-Zeilen),
+„R4 Nachtrag" (`tools/local/check_k1b.py` prüft die K1b-Diagnose im Smoke-Schritt),
+„R10 Nachtrag" (ZeroSum-Test ordnete nach Index statt Car-ID und flackerte, wie R19),
+„R18 Nachtrag" (Zip mit Wiederholung, falls eine Datei kurz gesperrt ist).
+
 Nebenbefund bei der Bestandsaufnahme: Der Hauptlauf `runs/lucy_1v1` wurde nach dem Audit mit dem
 **alten** Binary (ohne K1b, `game_timeout_secs` 300) bis 3.907.335.040 Steps weitertrainiert; der
 Checkpoint `2704829056` aus Runbook und Audit existiert wegen `checkpoints_to_keep = 10` nicht
-mehr. Die alten Binaries sind vor dem Neubau nach `build/cpp_cu128_vor_review_2026-09-25/`
-gesichert.
+mehr (Runbook nimmt jetzt immer den neuesten). Die alten Binaries sind vor dem Neubau nach
+`build/cpp_cu128_vor_review_2026-09-25/` gesichert. `runs/lucy_1v1` wurde nur gelesen.
+
+### Verifikation lokal (25.09.2026, Windows PowerShell 5.1, MSVC 14.51, cu128)
+
+| Prüfung | Ergebnis |
+|---|---|
+| `git apply --check` beider Patches auf frischem Checkout von `ee4cc56` | OK (Test `test_patches_apply_to_a_fresh_checkout_of_the_pinned_commit`, dazu `apply_patches.ps1` unter 5.1) |
+| Erster MSVC-cu128-Build mit dem Truncation-Patch (alte Fassung, vor R4) | fehlerfrei, 75/75 C++-Tests; danach alle Builds mit der neuen Fassung fehlerfrei |
+| Alle `.ps1` unter `powershell.exe` 5.1 geparst und wie `-File` gelesen | 11 Skripte, 0 Parserfehler, textgleich zu UTF-8 |
+| `tools\local\run_all_checks.ps1` unter 5.1, Commit `9d62f94`, sauberes Arbeitsverzeichnis | **alle 6 Schritte OK, Exit 0, 2,4 min** (`results\local_check_2026-09-25_191736.zip`) |
+| C++-Tests (`rlbot_tests`), 2 Durchläufe im Prüfpaket + 12 Durchläufe einzeln | **88/88** in jedem Durchlauf |
+| Python-Tests, 2 Durchläufe | **147 passed, 0 skipped** je Durchlauf (Paritätstests gegen den echten Checkpoint) |
+| Golden-Fixtures | unverändert (120 Obs, Aktionstabelle, 47 Rotationen, 1e-5) |
+| Smoke `sanity.json`, 2 Mio. Steps, GPU | 20 Iterationen, eine Kopfzeile, kein `nan`, Entropie ~4,48, ~74.000 SPS; **K1b-Diagnose OK**: 7.654 Timeout-Truncations in 17 Iterationen, `Trunc Bootstrap Reset Share` überall 0, V(letzte Obs) − V(Reset-Obs) im Mittel −0,74; `Truncated Steps` 2.180 = ~2.046 Blockgrenzen + 134 Timeouts; `_git` = `9d62f94` (nicht dirty); `raw_step_reward` = `Average Step Reward` (kein Wrapper) |
+| Deployment-Smoke mit dem echten Checkpoint 3907335040 | Obs 257 / 90 Aktionen passen, Latenz p95 0,28 ms (Budget 66,7 ms), Policy-Parität 3/3 |
+| `run_experiment.ps1` Mini-Modus, `baseline.json`, 3 Mio. Steps, 20 Duell-/10 Ladder-Spiele | **komplett durch, Exit 0, 1,6 min**: `start\` + `checkpoints\` per Hash geprüft, Training ~71.000 SPS, End-Checkpoint 3910425600 (`save_on_exit`, `pick_checkpoint.py`), Duell Ende gegen Start (Gewinnrate 47,5 %, KI [27,9 %, 68,0 %], 17 von 20 remis), Lauf-Ladder, `summary.md/json`, Zip |
+| `compare.py "results/exp_mini_*"` mit gemeinsamer Ladder | Muster selbst aufgelöst (Zip übersprungen), Ladder Baseline-Start gegen Baseline-Ende mit `duel.exe` (10 Spiele, 9 remis), `results\mini_compare.md`, `results\joint_ladder.json` |
+
+### Was jetzt noch ungetestet ist
+
+* Der **Abbruchpfad** von `run_experiment.ps1` am Stück (check_abort löst aus → Stop-Datei →
+  Trainer beendet sauber → Zusammenfassung mit `ABGEBROCHEN`): Die Bausteine sind einzeln getestet
+  (`--stop-file` am echten Trainer, `Stop-TrainerGracefully` mit reagierendem und hängendem
+  Prozess, `check_abort` mit echter CSV), der Gesamtablauf lief nicht, weil im Mini-Lauf nichts
+  abbrach.
+* Das **Duell gegen das Baseline-Ende** in `run_experiment.ps1` (`-Baseline`) und damit die
+  Hauptkriteriums-Spalte mit echten Daten: nur mit Testdaten geprüft (es gab bewusst nur einen
+  Mini-Lauf, kein zweites Experiment).
+* `bench_expbuffer.ps1` außerhalb von `-DryRun` (würde sechs Trainingsläufe starten).
+* `tools\update_golden.ps1` (bewusst nicht ausgeführt: würde die Referenz überschreiben).
+* Wirkung von K1b, K1a, H6/R19 auf das Lernen; alle Experimente (Stufe 3/4) – laut Auftrag nicht
+  gestartet.
+* H1/R8 im echten Spiel über RLBot (Paketfolge, Phasenwechsel, `RLBOT_OBS_DELAY`).
+* `config_used.json` eines echten Laufs als Config für `train_bot.exe` (nur per Unit-Test mit dem
+  echten Erzeugungscode geprüft).
+
+### Offen / zu entscheiden
+
+* **Duell-Remis:** Im Mini-Lauf endeten 17 von 20 Duellspielen und 9 von 10 Ladder-Spielen ohne
+  Tor (`duel.exe` bricht nach 120 s Spielzeit ab). Das Hauptkriterium „Gewinnrate mit 95-%-KI"
+  wird mit 100 Spielen deshalb breite Intervalle haben. Vor den Experimenten entscheiden: mehr
+  Spiele (`-DuelGames`), längere Spiele (`--max-seconds`) oder zusätzlich den Toranteil gewichten.
+* Kosmetik unter 5.1: Umlaute in Ausgaben nativer Programme (git-Commitbetreff in `git.txt`,
+  Python-Meldungen) erscheinen in den Logs verstümmelt, weil PowerShell deren Ausgabe mit der
+  OEM-Codepage liest. Inhaltlich ohne Folgen; nicht geändert, weil MSVC-Meldungen umgekehrt in
+  dieser Codepage kommen.
+* Beim Verifizieren angelegt (nicht gelöscht, alles neu und außerhalb von `runs\lucy_1v1`):
+  `runs\local_check_2026-09-25_161247|191339|191736\` (Smoke-Läufe), `runs\exp_mini_baseline_2026-09-25_192023\`
+  (Mini-Lauf), `runs\local_check_2026-09-25_1611\` (leer, Gegenprobe mit dem alten Skript) und die
+  zugehörigen Ordner/Zips in `results\` (ignoriert). Können gelöscht werden.
 
 ## Arbeitsumgebung der Umsetzung (25.09.2026)
 
@@ -75,7 +130,7 @@ Status-Werte: `offen` · `umgesetzt (VM-getestet)` · `umgesetzt (ungetestet, lo
 | H4 | 0 | Git-Commit + Tag, Git-Hash in `config_used.json` | Commit `54105bf` existiert (vom Nutzer, nach dem Audit); `config_used.json` trägt jetzt `_git` (Build-Hash, `-dirty`-Suffix) und `_started`; **Tag `baseline-2.7G` lokal setzen** (Runbook Schritt 0) | Schritt 2a | VM-Smoke-Lauf: `_git` = Build-Hash |
 | M8 | 1 | Metriken `ep_end_goal`, `ep_end_timeout`, `ep_end_notouch`, `ep_end_time`, `ep_end_truncated`, `ep_length_steps`, `scene_<name>_goal/_length` | umgesetzt (VM-getestet) | M8 | `tests/cpp/test_metrics.cpp` (8); `OnIteration` aggregiert alle `AccumAvg`-Schlüssel dynamisch |
 | H6 | 1 | Seed an eigene State-Setter und Obs-Shuffle (`env.seed_envs`, Default **false** seit R6 = alter zeitgeseedeter Pfad; Experimente setzen true) | umgesetzt (VM-getestet) | H6 | `Seed_*`, `OBS_Shuffle_mit_Seed_*`, `EnvFactory_reicht_Seed_*`. Nicht seedbar bleiben Upstream-Teile: `RandomState`, `Arena::ResetToRandomKickoff`, SkillTracker-Seitentausch |
-| M1 | 1 | `metrics.csv`: Kopfzeile aus Datei übernehmen, neue Spalten anhängen, `nan`/`inf` leer (N4), 12 signifikante Stellen | umgesetzt (VM-getestet) | M1 | `CSV_*`-Tests (7); Smoke-Lauf mit Neustart |
+| M1 | 1 | `metrics.csv`: Kopfzeile aus Datei übernehmen, neue Spalten anhängen, 12 signifikante Stellen; `nan`/`inf` seit R5 **wörtlich** (N4 hatte leer geschrieben, das übersah `check_abort`) | umgesetzt (lokal getestet) | M1, R5 | `CSV_*`-Tests; Smoke-Lauf mit einer Kopfzeile |
 | K2 | 1 | `duel.cpp` nutzt `gym.Reset()`/`result.obs` statt `BuildOBS` doppelt | umgesetzt (VM-getestet) | K2 | Linux-`duel` auf Smoke-Checkpoints; `EnvFactory_Env_laeuft_100_Schritte_*` (Stack wandert um genau eine Aktion). **Ladder-Nullmessung lokal** (Runbook Schritt 2) |
 | M4 | 1 | Rating-Schlüssel `<lauf>/<steps>`, `ratings.json` je Lauf | umgesetzt (VM-getestet) | K2 | `test_rating_key_*`; `ladder.py --run` in der VM |
 | M5 | 1 | `watch.py --run`, Policy-Paritätstest nur Hauptlauf, numerisch sortiert; `RLBOT_BUILD_DIR`/`RLBOT_PARITY_RUN` | umgesetzt (VM-getestet) | K2 | `test_latest_checkpoint_*`; Paritätstests gegen Linux-Binary grün |
@@ -84,12 +139,12 @@ Status-Werte: `offen` · `umgesetzt (VM-getestet)` · `umgesetzt (ungetestet, lo
 | M3 | 2 | Golden-Fixtures werden nur noch geprüft (`tools/check_golden.py`, Toleranz 1e-5), Referenz bewusst per `tools/update_golden.ps1` | umgesetzt (VM-getestet) | M3/M7/M2 | `tests/test_tools_checks.py` |
 | M7 | 2 | `check_policy_compatible()` in `bot.py`; N1 toter Code entfernt | umgesetzt (VM-getestet) | M3/M7/M2 | 3 Tests |
 | M2 | 2 | `requirements.txt` gepinnt (inkl. `rlbot`, `rlbot_flatbuffers`); `tools/local/check_python_versions.py`; `run_all_tests.ps1` verlangt ≥ 60 ausgeführte Python-Tests | umgesetzt; **Pins ungeprüft gegen den PC** | M3/M7/M2 | Runbook Schritt 1.4 meldet Abweichungen |
-| K1b | 2 | Upstream-Patch `rlgympppo_cpp_truncation.patch`: `IsTruncation()`, `StepResult::truncated`, ThreadAgent, letzte Episoden-Obs in `nextStates`, GAE-Bootstrap mit `V(nextStates)`; `apply_patches.ps1` in `build.ps1`; CMake bricht ohne Patch ab | umgesetzt (VM-getestet, **MSVC ungetestet**) | K1b | 6 `K1_*`-Tests inkl. GAE-Nachweis (Timeout bootstrappt γ·V(next), Tor 0); Smoke-Lauf mit `Truncated Steps` |
+| K1b | 2 | Upstream-Patch `rlgympppo_cpp_truncation.patch`: `IsTruncation()`, `StepResult::truncated`, ThreadAgent, letzte Episoden-Obs in `nextStates`, GAE-Bootstrap mit `V(nextStates)`; `apply_patches.ps1` in `build.ps1`; CMake bricht ohne Patch ab | **erste Fassung fehlerhaft** (Bootstrap von der Reset-Obs), korrigiert in R4; MSVC-cu128 lokal gebaut und getestet | K1b, R4 | `K1_*` + `K1b_*` (echter Pfad bis zur GAE); Smoke-Lauf: Reset-Anteil 0 |
 | H2 | 3 | `ent_coef` 0,004 — Experiment-Config `h2_ent_coef_0004.json` | vorbereitet (lokal ausführen) | Schritt 2b | `tests/test_experiment_configs.py`: genau eine Änderung |
 | H3 | 3 | Schalter `env.shuffle_slots` (Default true = bisher); Experiment `h3_no_shuffle.json` | Schalter umgesetzt (VM-getestet), Experiment vorbereitet | H6, 2b | `OBS_Shuffle_Slot0_Anteil_ist_ein_Drittel` bestätigt die Audit-Aussage „ein Drittel" |
 | K3 | 3 | Reward-Umgewichtung laut AUDIT.md — Experiment `k3_rewards.json`; `RUNNING_STATS.json` wird übernommen (AUDIT.md 7.3) | vorbereitet (lokal ausführen) | Schritt 2b | Config-Test; Abbruchkriterium mit Aufwärmphase |
 | — | 3 | Zero-Sum-Shaping — Experiment `zero_sum.json` (früher `team_spirit_01.json`, siehe R10) | vorbereitet (lokal ausführen) | Schritt 2b, R10 | Config-Test, `ZeroSum_*` |
-| — | 3 | Trainer-Optionen `extra_steps`, `save_on_exit` (Defaults = bisher); `run_experiment.ps1`, `check_abort.py`, `summarize.py`, `compare.py` | umgesetzt (Optionen VM-getestet; Runner nur Syntax) | Schritt 2a/2b | 19 + 6 Tests |
+| — | 3 | Trainer-Optionen `extra_steps`, `save_on_exit`, `--stop-file` (R15); `run_experiment.ps1`, `check_abort.py`, `summarize.py`, `compare.py`, `pick_checkpoint.py` | umgesetzt, lokal getestet (Mini-Lauf komplett, R12-R17) | Schritt 2a/2b, R12-R17 | siehe Review-Tabelle |
 | H5 | 4 | `learner.exp_buffer_iterations` (Default 3), Configs 6/3/2 Updates, `bench_expbuffer.ps1` | Option umgesetzt (VM-getestet), Benchmark vorbereitet (lokal) | H5 | Config-Tests; „+10 %" bleibt Schätzung bis zur lokalen Messung |
 | M6 | 4 | Obs-Allokationen | offen — H3 wurde als Schalter, nicht als Slot-Permutations-Umbau umgesetzt; Roadmap sieht M6 nur als Nebeneffekt vor | — | — |
 | N6 | 4 | AVX-512-Zweig | **verworfen**: lokal auf dem Ryzen gemessen (3 gg. 3, −0,8 % in der Streuung), kein Benchmark-Skript; Ordner/Logs bleiben liegen | — | AUDIT.md 7.4 |
@@ -110,7 +165,10 @@ Status-Werte: `offen` · `umgesetzt (VM-getestet)` · `umgesetzt (ungetestet, lo
    Wert des nächsten Listeneintrags (anderes Spiel). Mit dem K1-Patch behoben.
 5. Alle anderen Zeilen-/Dateiverweise im Audit stimmen mit dem Code und dem Upstream `ee4cc56`.
 
-## Was nicht getestet werden konnte (ehrliche Liste)
+## Was nicht getestet werden konnte (ehrliche Liste, Stand Cloud-Session)
+
+Überholt durch „Verifikation lokal" und „Was jetzt noch ungetestet ist" im Abschnitt
+Review-Fixes oben; hier unverändert als Stand der Cloud-Session.
 
 * Alle `*.ps1` (Build, Tests, Experimente, Prüfpaket): in der VM nur per PowerShell-Parser auf
   Syntax geprüft, nie ausgeführt. Erste Ausführung = Runbook Schritt 1.
@@ -131,12 +189,21 @@ Status-Werte: `offen` · `umgesetzt (VM-getestet)` · `umgesetzt (ungetestet, lo
 * 25.09.2026 — Schritt 2 (Experiment-Configs, Runner, Abbruchkriterien, compare), Schritt 3 (H5,
   N6/M6 dokumentiert), Schritt 4 (`run_all_checks.ps1`, Deployment-Smoke, Runbook). Stand:
   75 C++-Tests, 97 Python-Tests grün in der VM; alle PowerShell-Skripte syntaktisch geparst.
+* 25.09.2026 (lokal, Trainings-PC) — Review-Befunde R1-R18 plus Nebenbefund R19 behoben, je ein
+  Commit (plus vier Nachträge). Erster MSVC-cu128-Build beider Patches. K1b-Fehler (Bootstrap von
+  der Reset-Obs) am echten Pfad reproduziert und korrigiert. `run_all_checks.ps1` unter
+  PowerShell 5.1 komplett grün (88 C++ / 147 Python, je 2×), Smoke mit K1b-Diagnose,
+  Deployment-Smoke mit Checkpoint 3907335040, Mini-Lauf `run_experiment.ps1` + `compare.py`.
+  Unterwegs zwei flackernde Tests gefunden und behoben (R19, R10-Nachtrag), beide wegen der
+  adressabhängigen Reihenfolge von `arena->_cars`.
 
 ## Übernahme für eine neue Session
 
-1. `AUDIT.md` §0 (Herkunft), §6 (Roadmap) und §7 (Nachtrag) lesen, dann die Statustabelle oben.
-2. `git log --oneline main..` zeigt die Commits pro Roadmap-Punkt.
-3. Offene Punkte: alles mit `lokal` im Status braucht den Trainings-PC (`LOCAL_RUNBOOK.md`).
+1. `AUDIT.md` §0 (Herkunft), §6 (Roadmap) und §7 (Nachtrag, §7.2b K1b-Korrektur, §7.6
+   Experiment-Design) lesen, dann die Review-Tabelle und die Statustabelle oben.
+2. `git log --oneline bb7f93e..` zeigt die Commits pro Review-Befund.
+3. Offene Punkte: „Was jetzt noch ungetestet ist" und „Offen / zu entscheiden" im Abschnitt
+   Review-Fixes (vor allem die Duell-Remis vor Stufe 3); alles Weitere nach `LOCAL_RUNBOOK.md`.
 4. Wenn lokale Ergebnisse (`results/*.zip`, `results/compare.md`) vorliegen: pro Experiment
    entscheiden (behalten / verwerfen / nachmessen) nach AUDIT.md §6 Stufe 3, dann AUDIT.md §7
    und die Roadmap mit den echten Zahlen fortschreiben; erst danach Stufe 4 (`bench_expbuffer.ps1`).
