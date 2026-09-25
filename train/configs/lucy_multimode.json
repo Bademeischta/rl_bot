@@ -5,7 +5,7 @@
     "max_players": 3,
     "action_stack_size": 5,
     "no_touch_timeout_secs": 30.0,
-    "game_timeout_secs": 300.0,
+    "game_timeout_secs": 900.0,
     "mode_mix": [2.0, 1.0, 1.0]
   },
   "rewards": {
