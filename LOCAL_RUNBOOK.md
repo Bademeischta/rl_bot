@@ -16,15 +16,18 @@ Dauerangaben sind Schätzungen auf Basis der im Audit gelesenen ~68.000 SPS (AUD
 ```powershell
 cd C:\RLbot
 git fetch origin
-git checkout claude/rlbot-audit-roadmap-c8t7nl
+git checkout main          # nach dem Merge der Review-Fixes; vorher: claude/review-fixes
 git pull
 
-# H4: Rückfallpunkt markieren - der Commit, mit dem der 2,70-Mrd-Checkpoint trainiert wurde
+# H4: Rückfallpunkt markieren - der Commit, mit dem der Hauptlauf trainiert wurde
 git tag baseline-2.7G 54105bf
 git push origin baseline-2.7G
 
-# Stufe 0 Punkt 2: aktuellen Checkpoint AUSSERHALB von runs\ sichern (Pfad frei wählen)
-Copy-Item runs\lucy_1v1\checkpoints\2704829056 D:\rlbot_backup\2704829056 -Recurse
+# Stufe 0 Punkt 2: aktuellen Checkpoint AUSSERHALB von runs\ sichern (Pfad frei wählen).
+# Der Hauptlauf stand beim Review-Fix (25.09.2026) bei 3907335040 Steps; 2704829056 aus dem
+# Audit ist durch checkpoints_to_keep = 10 inzwischen gelöscht. Immer den neuesten nehmen:
+$C = (Get-ChildItem runs\lucy_1v1\checkpoints -Directory | Sort-Object { [long]$_.Name } | Select-Object -Last 1).FullName
+Copy-Item $C "D:\rlbot_backup\$(Split-Path $C -Leaf)" -Recurse
 
 # Python-Umgebung auf die Pins bringen (torch zuerst separat, rlgym-ppo aus git)
 .\.venv\Scripts\python -m pip install torch==2.11.0+cu128 --index-url https://download.pytorch.org/whl/cu128
@@ -32,9 +35,20 @@ Copy-Item runs\lucy_1v1\checkpoints\2704829056 D:\rlbot_backup\2704829056 -Recur
 .\.venv\Scripts\python -m pip install git+https://github.com/AechPro/rlgym-ppo
 ```
 
-Der laufende Hauptlauf (`train_bot.exe`, PID 31720 laut Audit) muss für die Schritte 1–4
-**gestoppt** sein: Build und Tests würden ihn bremsen, die Experimente brauchen die GPU.
-Stoppen kurz nach einem Checkpoint (`docs/phases.md`, „Pausieren und Fortsetzen").
+Der Hauptlauf (`train_bot.exe`) muss für die Schritte 1–4 **gestoppt** sein: Build und Tests
+würden ihn bremsen, die Experimente brauchen die GPU. Stoppen kurz nach einem Checkpoint
+(`docs/phases.md`, „Pausieren und Fortsetzen").
+
+**Achtung beim Fortsetzen des Hauptlaufs:** Der Neubau ersetzt `build\cpp_cu128\train_bot.exe`.
+Die Binaries, mit denen `runs\lucy_1v1` bis 3,9 Mrd. Steps trainiert wurde (ohne K1b, alter
+Config-Parser), liegen gesichert in `build\cpp_cu128_vor_review_2026-09-25\`. Der neue Trainer
+verhält sich mit `lucy_1v1.json` wie besprochen: `seed_envs` Default false (R6), aber K1b
+(Timeouts als Truncation) und K1a (900 s) sind aktiv; Rückweg für K1b:
+`"env": { "timeouts_as_truncation": false }`.
+
+Skripte immer mit `powershell` (Windows PowerShell 5.1) starten. Wer eine `.ps1` bearbeitet:
+als UTF-8 **mit BOM** speichern (oder nur ASCII verwenden) und native Programme über
+`Invoke-Native` (`tools\NativeCommand.ps1`) aufrufen; `tests\test_build_scripts.py` prüft beides.
 
 ## 1. Prüfpaket: `tools\local\run_all_checks.ps1` (~20–30 Minuten)
 
@@ -85,9 +99,12 @@ plateauen). `ratings.json` mit zurückgeben.
 ## 3. Kontrolllauf Baseline (Stufe 3; ~30–40 Minuten)
 
 ```powershell
+# Start-Checkpoint: der neueste des Hauptlaufs (Stand Review-Fix: 3907335040), für ALLE
+# Experimente derselbe; run_experiment kopiert ihn nach runs\exp_*\start\ und \checkpoints\
+$C = (Get-ChildItem runs\lucy_1v1\checkpoints -Directory | Sort-Object { [long]$_.Name } | Select-Object -Last 1).FullName
 powershell -ExecutionPolicy Bypass -File tools\experiments\run_experiment.ps1 `
     -Config train\configs\experiments\baseline.json `
-    -StartCheckpoint runs\lucy_1v1\checkpoints\2704829056 -Steps 100000000 -Seed 123
+    -StartCheckpoint $C -Steps 100000000 -Seed 123
 ```
 
 Erfolg: `results\exp_baseline_<datum>.zip`; `summary.md` ohne `ABGEBROCHEN`; im letzten Fünftel
@@ -105,7 +122,7 @@ Jeweils mit `-Baseline` auf den Ergebnisordner aus Schritt 3:
 
 ```powershell
 $B = "results\exp_baseline_<datum>"
-$C = "runs\lucy_1v1\checkpoints\2704829056"
+$C = "<derselbe Start-Checkpoint wie in Schritt 3>"
 powershell -ExecutionPolicy Bypass -File tools\experiments\run_experiment.ps1 -Config train\configs\experiments\h2_ent_coef_0004.json -StartCheckpoint $C -Steps 100000000 -Seed 123 -Baseline $B
 powershell -ExecutionPolicy Bypass -File tools\experiments\run_experiment.ps1 -Config train\configs\experiments\h3_no_shuffle.json    -StartCheckpoint $C -Steps 100000000 -Seed 123 -Baseline $B
 powershell -ExecutionPolicy Bypass -File tools\experiments\run_experiment.ps1 -Config train\configs\experiments\k3_rewards.json       -StartCheckpoint $C -Steps 100000000 -Seed 123 -Baseline $B
@@ -149,11 +166,14 @@ in AUDIT.md ein.
 Erst wenn Stufe 3 entschieden ist:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File tools\experiments\bench_expbuffer.ps1 -StartCheckpoint runs\lucy_1v1\checkpoints\2704829056 -Steps 20000000 -Repeats 2
+powershell -ExecutionPolicy Bypass -File tools\experiments\bench_expbuffer.ps1 -StartCheckpoint $C -Steps 20000000 -Repeats 2 -DryRun
+powershell -ExecutionPolicy Bypass -File tools\experiments\bench_expbuffer.ps1 -StartCheckpoint $C -Steps 20000000 -Repeats 2
 ```
 
-Ergebnis: `results\bench_expbuffer_<datum>.md` (SPS und Lernkurve je Variante, Streuung über
-die Wiederholungen).
+`-DryRun` zeigt vorher den Plan: Wiederholung r läuft mit Seed 123 + (r − 1), alle Varianten
+einer Wiederholung mit demselben Seed, Duell jeweils gegen die 6-Update-Variante derselben
+Wiederholung (Review R13). Ergebnis: `results\bench_expbuffer_<datum>.md` (SPS und Lernkurve je
+Variante, Streuung über die Wiederholungen).
 
 ## 7. Was du mir zurückgibst
 
