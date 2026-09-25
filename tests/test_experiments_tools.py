@@ -291,3 +291,36 @@ def test_cpp_writer_nan_episode_reward_does_not_abort(tmp_path):
     _cpp_csv(p, 30, "--set", "9", "Average Episode Reward", "nan")
     r = _check_abort_cli(p)
     assert r.returncode == check_abort.OK, r.stdout + r.stderr
+
+
+# --- R11: Bündel (mehr als eine Änderung gegenüber der Baseline) -----------------------------
+
+EXP_CONFIGS = ROOT / "train" / "configs" / "experiments"
+
+
+def make_result_with_config(folder: Path, name: str, config: str):
+    """Ergebnisordner wie von run_experiment.ps1: summary.json plus config.json (hier die echte
+    Experiment-Config, mit BOM wie von PowerShell geschrieben)."""
+    make_result(folder, name, 0.3, 3.5)
+    raw = (EXP_CONFIGS / f"{config}.json").read_text(encoding="utf-8")
+    (folder / "config.json").write_bytes(b"\xef\xbb\xbf" + raw.encode("utf-8"))
+
+
+def test_compare_marks_k3_as_a_bundle_of_seven_values(tmp_path, capsys):
+    base = tmp_path / "exp_baseline_x"
+    make_result_with_config(base, "baseline", "baseline")
+    make_result_with_config(tmp_path / "exp_k3_x", "k3_rewards", "k3_rewards")
+    make_result_with_config(tmp_path / "exp_h2_x", "h2_ent_coef_0004", "h2_ent_coef_0004")
+    make_result_with_config(tmp_path / "exp_zs_x", "zero_sum", "zero_sum")
+    sys.argv = ["compare.py", str(base), str(tmp_path / "exp_k3_x"), str(tmp_path / "exp_h2_x"),
+                str(tmp_path / "exp_zs_x")]
+    assert compare.main() == 0
+    md = capsys.readouterr().out
+    k3_row = next(line for line in md.splitlines() if line.startswith("| k3_rewards"))
+    assert "Bündel: 7 Werte" in k3_row
+    h2_row = next(line for line in md.splitlines() if line.startswith("| h2_ent_coef_0004"))
+    assert "Bündel" not in h2_row
+    zs_row = next(line for line in md.splitlines() if line.startswith("| zero_sum"))
+    assert "Bündel: 3 Werte" in zs_row
+    assert "**Bündel aus 7 Änderungen**" in md and "rewards.in_air" in md
+    assert "`learner.ent_coef` 0.01 → 0.004" in md

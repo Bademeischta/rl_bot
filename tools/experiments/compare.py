@@ -36,6 +36,50 @@ COMPARE_COLUMNS = [
     ("sps", "SPS", 0, None),
 ]
 
+# Felder, die run_experiment.ps1 pro Lauf setzt, und Anmerkungen: kein Unterschied zwischen
+# Experimenten, zählen also nicht als Änderung gegenüber der Baseline.
+RUN_KEYS = {"learner.checkpoint_folder", "learner.extra_steps", "learner.save_on_exit",
+            "learner.timestep_limit", "metrics.run"}
+
+
+def flatten(d: dict, prefix: str = "") -> dict:
+    out = {}
+    for k, v in d.items():
+        if isinstance(v, dict):
+            out.update(flatten(v, f"{prefix}{k}."))
+        else:
+            out[f"{prefix}{k}"] = v
+    return out
+
+
+def load_config(s: dict) -> dict | None:
+    """Config des Laufs: config.json im Ergebnisordner (von run_experiment.ps1 abgeleitet), sonst
+    die Original-Config aus summary.json."""
+    candidates = [s["_folder"] / "config.json"]
+    if s.get("config"):
+        candidates.append(Path(s["config"]))
+    for path in candidates:
+        if path.exists():
+            return flatten(json.loads(path.read_text(encoding="utf-8-sig")))   # PowerShell schreibt ein BOM
+    return None
+
+
+def config_changes(s: dict, baseline: dict) -> dict[str, tuple] | None:
+    """Alle Config-Werte, in denen sich ein Experiment von der Baseline unterscheidet."""
+    a, b = load_config(baseline), load_config(s)
+    if a is None or b is None:
+        return None
+    keys = {k for k in set(a) | set(b) if k not in RUN_KEYS and not k.rsplit(".", 1)[-1].startswith("_")}
+    return {k: (a.get(k), b.get(k)) for k in sorted(keys) if a.get(k) != b.get(k)}
+
+
+def bundle_label(changes: dict | None) -> str:
+    """Review-Befund R11: Ein Experiment mit mehr als einer Änderung ist ein Bündel. Sein Ergebnis
+    lässt sich keinem einzelnen Wert zuordnen (K3: 7 Reward-Gewichte)."""
+    if changes and len(changes) > 1:
+        return f" **(Bündel: {len(changes)} Werte)**"
+    return ""
+
 
 def load_experiment(folder: Path) -> dict:
     summary_path = folder / "summary.json"
@@ -97,7 +141,8 @@ def build_table(experiments: list[dict], baseline: dict) -> str:
     for s in experiments:
         last = s.get("metrics", {}).get("last_20pct", {})
         is_base = s is baseline
-        cells = [s["name"] + (" (Baseline)" if is_base else ""), str(s.get("metrics", {}).get("iterations", "-"))]
+        label = s["name"] + (" (Baseline)" if is_base else bundle_label(config_changes(s, baseline)))
+        cells = [label, str(s.get("metrics", {}).get("iterations", "-"))]
         for short, _, digits, _ in COMPARE_COLUMNS:
             v = last.get(short)
             if is_base:
@@ -127,6 +172,10 @@ def verdict_hints(experiments: list[dict], baseline: dict) -> str:
         last = s.get("metrics", {}).get("last_20pct", {})
         if s.get("abort_reason"):
             notes.append(f"abgebrochen: {s['abort_reason']}")
+        changes = config_changes(s, baseline)
+        if changes and len(changes) > 1:
+            notes.append(f"**Bündel aus {len(changes)} Änderungen** ({', '.join(changes)}): Ein Effekt ist keinem "
+                         f"einzelnen Wert zuzuordnen; nur bei schlechtem oder unklarem Ergebnis aufteilen (AUDIT.md §7.6)")
         d = s.get("duel_baseline")
         if d and d.get("goal_share_se") is not None:
             share, se = d["goal_share_a"], d["goal_share_se"]
@@ -146,6 +195,22 @@ def verdict_hints(experiments: list[dict], baseline: dict) -> str:
         if sps and spsb and abs(sps / spsb - 1) > 0.07:
             notes.append(f"SPS {sps / spsb - 1:+.1%} gegenüber Baseline (über der 7-%-Streuung)")
         out.append(f"* **{s['name']}**: " + ("; ".join(notes) if notes else "keine Auffälligkeiten"))
+    return "\n".join(out)
+
+
+def changes_section(experiments: list[dict], baseline: dict) -> str:
+    """Was jedes Experiment gegenüber der Baseline ändert (aus den Configs, nicht aus dem Namen)."""
+    out = ["", "## Änderungen gegenüber der Baseline (aus config.json)", ""]
+    for s in experiments:
+        if s is baseline:
+            continue
+        changes = config_changes(s, baseline)
+        if changes is None:
+            out.append(f"* **{s['name']}**: config.json fehlt, Änderungen unbekannt")
+            continue
+        kind = f"Bündel, {len(changes)} Werte" if len(changes) > 1 else f"{len(changes)} Wert"
+        detail = ", ".join(f"`{k}` {a} → {b}" for k, (a, b) in changes.items()) or "keine"
+        out.append(f"* **{s['name']}** ({kind}): {detail}")
     return "\n".join(out)
 
 
@@ -172,6 +237,7 @@ def main() -> int:
     md = "# Experiment-Vergleich (letztes Fünftel der Iterationen)\n\n"
     md += f"Baseline: `{baseline['_folder']}`\n\n"
     md += build_table(experiments, baseline) + "\n"
+    md += changes_section(experiments, baseline) + "\n"
     md += verdict_hints(experiments, baseline) + "\n"
     print(md)
     if a.out:

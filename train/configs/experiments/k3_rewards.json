@@ -1,5 +1,5 @@
 {
-  "_comment": "Stufe 3, Audit K3: Reward-Umgewichtung (goal/concede 50, dichte Terme runter, in_air 0). Einzige Aenderung gegenueber baseline.json (rewards-Block). RUNNING_STATS.json wird uebernommen, nicht zurueckgesetzt (AUDIT.md 7.3): Return-std 15,12 bleibt fest, der Critic schwingt sich neu ein (Avg Val Target ~10 -> ~3, Value Loss springt anfangs).",
+  "_comment": "Stufe 3, Audit K3: Reward-Umgewichtung als BUENDEL aus 7 Werten (goal und concede 10 -> 50, offensive_potential_krc 1,0 -> 0,3, dist_weighted_align_krc 0,5 -> 0,1, velocity_player_to_ball 0,1 -> 0,03, save_boost 0,3 -> 0,05, in_air 0,02 -> 0). Ein Effekt ist keinem einzelnen Wert zuzuordnen; compare.py markiert das Experiment als Buendel. Aufteilen nur, wenn das Ergebnis schlecht oder unklar ausfaellt (Review R11, AUDIT.md 7.6). RUNNING_STATS.json wird uebernommen, nicht zurueckgesetzt (AUDIT.md 7.3): Return-std 15,12 bleibt fest, der Critic schwingt sich neu ein (Avg Val Target ~10 -> ~3, Value Loss springt anfangs).",
   "env": {
     "tick_skip": 8,
     "max_players": 3,

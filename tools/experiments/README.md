@@ -9,7 +9,7 @@ Step-Zahl** wie der Kontrolllauf, und ändert gegenüber `baseline.json` genau *
 | `baseline.json` | keine (= `lucy_1v1.json` nach K1a/K1b, plus `env.seed_envs: true` wie in allen Experiment-Configs; Default ist false, Review R6) | Kontrolllauf |
 | `h2_ent_coef_0004.json` | `learner.ent_coef` 0,01 → 0,004 | H2 |
 | `h3_no_shuffle.json` | `env.shuffle_slots` → false | H3 |
-| `k3_rewards.json` | Reward-Block laut AUDIT.md K3 (goal/concede 50, dichte Terme runter, in_air 0) | K3 |
+| `k3_rewards.json` | **Bündel aus 7 Werten** laut AUDIT.md K3 (goal/concede 50, vier dichte Terme runter, in_air 0). Ein Effekt ist keinem einzelnen Wert zuzuordnen; `compare.py` markiert das. Aufteilen nur, wenn das Ergebnis schlecht oder unklar ist (Review R11) | K3 |
 | `zero_sum.json` (früher `team_spirit_01.json`) | `rewards.team_spirit` 0 → 0,1 **und** `goal`/`concede` 10 → 5. Im 1v1 ist τ wirkungslos: jedes τ > 0 ergibt `r_i − r_j` (Zero-Sum). Zero-Sum zählt Tore doppelt, deshalb halbiert: nach dem Wrapper bleibt ein Tor ±10 wie in der Baseline, gemessen wird nur der Zero-Sum-Effekt auf das Shaping. `Average Step/Episode Reward` sind hier konstant 0 → `raw_step_reward` (vor dem Wrapper) ansehen | optional, K3 zweiter Hebel (Review R10) |
 
 `RUNNING_STATS.json` wird bei allen Experimenten **übernommen** (Begründung AUDIT.md §7.3).

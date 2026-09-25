@@ -1620,3 +1620,18 @@ sie als aufräumbar.
 `sanity.json` (120 s, NoTouch 15 s) bleibt unverändert: Es ist der Vier-Minuten-Rauchtest, dessen
 Referenzwerte in `docs/phases.md` mit genau dieser Config entstanden sind; der lokale Smoke-Test
 vergleicht dagegen.
+
+### 7.6 Experiment-Design nach dem Review (25.09.2026, lokal)
+
+* **K3 ist ein Bündel** (Review R11): `k3_rewards.json` ändert **7 Werte** auf einmal (goal,
+  concede, `offensive_potential_krc`, `dist_weighted_align_krc`, `velocity_player_to_ball`,
+  `save_boost`, `in_air`). Das bleibt so, weil K3 als Gesamtumbau des Reward-Verhältnisses gedacht
+  ist; ein Ergebnis lässt sich aber keinem einzelnen Wert zuordnen. `compare.py` liest die
+  Änderungen aus den `config.json` der Läufe und markiert jedes Experiment mit mehr als einer
+  Änderung als **Bündel** (Tabelle, Abschnitt „Änderungen", Hinweise). Aufgeteilt wird nur, wenn
+  das Ergebnis schlecht oder unklar ausfällt.
+* **zero_sum statt team_spirit_01** (Review R10): Im 1v1 ist τ wirkungslos (`r_i − r_j`), Zero-Sum
+  zählt Tore doppelt, deshalb goal/concede 5. Auch das ist ein Bündel aus 3 Werten, aber mit
+  unverändertem Torwert ±10 nach dem Wrapper: gemessen wird nur der Zero-Sum-Effekt auf das
+  Shaping. `Average Step/Episode Reward` sind dort konstant 0, `raw_step_reward` zeigt das
+  Shaping-Niveau vor dem Wrapper.
