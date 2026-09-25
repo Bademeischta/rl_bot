@@ -30,7 +30,7 @@ Status-Werte: `offen` · `umgesetzt (VM-getestet)` · `umgesetzt (ungetestet, lo
 
 | ID | Stufe | Inhalt | Status | Commit | Test / Nachweis |
 |---|---|---|---|---|---|
-| H4 | 0 | Git-Commit + Tag, Git-Hash in `config_used.json` | teilweise: Commit `54105bf` existiert (vom Nutzer, nach dem Audit); Tag und Hash offen | — | Tag lokal setzen (`LOCAL_RUNBOOK.md`) |
+| H4 | 0 | Git-Commit + Tag, Git-Hash in `config_used.json` | Commit `54105bf` existiert (vom Nutzer); `config_used.json` traegt jetzt `_git` (Build-Hash, `-dirty`-Suffix) und `_started`; Tag `baseline-2.7G` **lokal** setzen (`LOCAL_RUNBOOK.md`) | Schritt 2a | Smoke-Lauf in der VM: `_git` = Build-Hash |
 | M8 | 1 | Metriken Episoden-Ende (`ep_end_goal`, `ep_end_timeout`, `ep_end_notouch`, `ep_end_time`, `ep_length_steps`, `scene_<name>_goal/_length`) | umgesetzt (VM-getestet) | M8 | `tests/cpp/test_metrics.cpp` (8 Tests), Linux-Build; `OnIteration` aggregiert jetzt alle `AccumAvg`-Schlüssel dynamisch |
 | H6 | 1 | Seed an eigene State-Setter und Obs-Shuffle (`env.seed_envs`, Default true; false = alter zeitgeseedeter Pfad) | umgesetzt (VM-getestet) | H6 | `Seed_*`-Tests, `OBS_Shuffle_mit_Seed_*`, `EnvFactory_reicht_Seed_*`. Nicht seedbar bleiben Upstream-Teile: `RandomState`, `Arena::ResetToRandomKickoff`, SkillTracker-Seitentausch |
 | M1 | 1 | `metrics.csv`: Kopfzeile aus Datei übernehmen, neue Spalten anhängen, `nan`/`inf` leer (N4), 12 signifikante Stellen | umgesetzt (VM-getestet) | M1 | `CSV_*`-Tests (7); Smoke-Lauf `train_bot` auf CPU in der VM mit Neustart (siehe Protokoll) |
@@ -43,10 +43,10 @@ Status-Werte: `offen` · `umgesetzt (VM-getestet)` · `umgesetzt (ungetestet, lo
 | M7 | 2 | `check_policy_compatible()` in `bot.py` (Obs-Größe und Aktionszahl gegen Policy); N1 toter Code entfernt | umgesetzt (VM-getestet) | M3/M7/M2 | 3 Tests in `tests/test_bot_logic.py` |
 | M2 | 2 | `requirements.txt` gepinnt (inkl. `rlbot`, `rlbot_flatbuffers`); `tools/local/check_python_versions.py` vergleicht installierte Versionen mit den Pins; `run_all_tests.ps1` verlangt mindestens 60 ausgefuehrte Python-Tests | umgesetzt; Pins ungeprueft gegen den PC (VM hat andere Versionen) | M3/M7/M2 | `tests/test_tools_checks.py`; **lokal**: `run_all_checks.ps1` Schritt 4 meldet Abweichungen |
 | K1b | 2 | Upstream-Patch `third_party/patches/rlgympppo_cpp_truncation.patch` (10 Dateien): `TerminalCondition::IsTruncation()`, `Gym::StepResult::truncated`, ThreadAgent `done && !truncated`, letzte Episoden-Obs in `nextStates`, GAE-Bootstrap mit `V(nextStates)` an jedem truncated Step; eigene `TimeoutCondition`/`NoTouchTruncation` melden Truncation; `tools/apply_patches.ps1` (idempotent, von `build.ps1` aufgerufen); CMake bricht ohne Patch ab | umgesetzt (VM-getestet) | K1b | Patch mit `git apply --check` auf dem reinen `ee4cc56` und nach dem GCC-Patch geprueft; 6 Tests `K1_*` (Spielzeit-/NoTouch-Timeout truncated, Tor nicht, Tor+Timeout im selben Schritt = Tor, GAE bootstrappt Truncation mit gamma*V(next) und Terminal mit 0); Smoke-Lauf: `Truncated Steps` und `ep_end_truncated` in metrics.csv |
-| H2 | 3 | `ent_coef` 0,004 — nur als Experiment-Config | offen | | |
+| H2 | 3 | `ent_coef` 0,004 — nur als Experiment-Config `train/configs/experiments/h2_ent_coef_0004.json` | vorbereitet (lokal ausfuehren) | Schritt 2b | `tests/test_experiment_configs.py` prueft: genau eine Aenderung gegen `baseline.json` |
 | H3 | 3 | Slot-Shuffle: Config-Schalter `env.shuffle_slots` (Default true = altes Verhalten); Experiment-Config folgt in Schritt 2 | Schalter umgesetzt (VM-getestet), Experiment vorbereitet | H6 | `OBS_Shuffle_Slot0_Anteil_ist_ein_Drittel` bestätigt die Audit-Aussage „ein Drittel"; `OBS_ohne_Shuffle_Gegner_immer_in_Slot0` |
-| K3 | 3 | Reward-Umgewichtung — nur als Experiment-Config | offen | | |
-| — | 3 | `team_spirit` > 0 — Experiment-Config | offen | | |
+| K3 | 3 | Reward-Umgewichtung laut AUDIT.md — nur als Experiment-Config `k3_rewards.json`; `RUNNING_STATS.json` wird uebernommen (AUDIT.md 7.3) | vorbereitet (lokal ausfuehren) | Schritt 2b | Config-Test; Abbruchkriterium Value Loss mit Aufwaermphase |
+| — | 3 | `team_spirit` 0,1 — Experiment-Config `team_spirit_01.json` | vorbereitet (lokal ausfuehren) | Schritt 2b | Config-Test |
 | H5 | 4 | `exp_buffer_iterations` konfigurierbar, Benchmark-Skript | offen | | |
 | M6 | 4 | Obs-Allokationen | nur als Nebeneffekt von H3 (Roadmap) | | |
 | N6 | 4 | AVX-512-Zweig | offen | | |

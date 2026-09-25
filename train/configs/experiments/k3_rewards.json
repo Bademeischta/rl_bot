@@ -1,0 +1,78 @@
+{
+  "_comment": "Stufe 3, Audit K3: Reward-Umgewichtung (goal/concede 50, dichte Terme runter, in_air 0). Einzige Aenderung gegenueber baseline.json (rewards-Block). RUNNING_STATS.json wird uebernommen, nicht zurueckgesetzt (AUDIT.md 7.3): Return-std 15,12 bleibt fest, der Critic schwingt sich neu ein (Avg Val Target ~10 -> ~3, Value Loss springt anfangs).",
+  "env": {
+    "tick_skip": 8,
+    "max_players": 3,
+    "action_stack_size": 5,
+    "no_touch_timeout_secs": 30.0,
+    "game_timeout_secs": 900.0,
+    "mode_mix": [
+      1.0,
+      0.0,
+      0.0
+    ]
+  },
+  "rewards": {
+    "goal": 50.0,
+    "concede": 50.0,
+    "demo": 0.0,
+    "demoed": 0.0,
+    "touch_ball_to_goal_accel": 1.0,
+    "offensive_potential_krc": 0.3,
+    "dist_weighted_align_krc": 0.1,
+    "velocity_player_to_ball": 0.03,
+    "save_boost": 0.05,
+    "in_air": 0.0,
+    "team_spirit": 0.0
+  },
+  "state_setters": {
+    "kickoff": 2.0,
+    "random": 2.0,
+    "aerial": 0.5,
+    "dribble": 0.5,
+    "wall_play": 0.5,
+    "recovery": 0.5,
+    "defense": 1.0
+  },
+  "learner": {
+    "num_threads": 16,
+    "num_games_per_thread": 64,
+    "collection_during_learn": false,
+    "device": "cuda",
+    "timestep_limit": 0,
+    "timesteps_per_iteration": 100000,
+    "timesteps_per_save": 25000000,
+    "checkpoints_to_keep": 10,
+    "checkpoint_folder": "runs/EXPERIMENT/checkpoints",
+    "policy_layer_sizes": [
+      512,
+      512,
+      512
+    ],
+    "critic_layer_sizes": [
+      512,
+      512,
+      512
+    ],
+    "ppo_epochs": 2,
+    "ppo_batch_size": 100000,
+    "ppo_mini_batch_size": 50000,
+    "ent_coef": 0.01,
+    "clip_range": 0.2,
+    "policy_lr": 0.0002,
+    "critic_lr": 0.0002,
+    "gae_lambda": 0.95,
+    "gae_gamma": 0.9954,
+    "random_seed": 123
+  },
+  "metrics": {
+    "send_metrics": false,
+    "project": "rlbot",
+    "group": "experiments",
+    "run": "k3_rewards",
+    "skill_tracker": true,
+    "skill_timesteps_per_version": 500000000,
+    "skill_max_versions": 20,
+    "skill_update_interval": 32
+  }
+}
