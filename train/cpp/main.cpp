@@ -12,8 +12,6 @@
 
 #include <RLGymPPO_CPP/Learner.h>
 
-#include <nlohmann/json.hpp>
-
 #include <chrono>
 #include <ctime>
 #include <filesystem>
@@ -105,15 +103,10 @@ int main(int argc, char** argv) {
 		std::filesystem::create_directories(runDir);
 		// Audit H4: Git-Hash des Builds und Startzeit mitschreiben, damit Checkpoint und Code
 		// verknüpft sind (-DRLBOT_GIT_HASH aus bench/cpp/build.ps1)
-		nlohmann::json used = nlohmann::json::parse(cfg.ToJSONString());
-		used["_git"] = RLBOT_GIT_HASH;
-		{
-			std::time_t now = std::time(nullptr);
-			char buf[32];
-			std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", std::localtime(&now));
-			used["_started"] = buf;
-		}
-		std::ofstream(runDir / "config_used.json") << used.dump(2);
+		std::time_t now = std::time(nullptr);
+		char started[32];
+		std::strftime(started, sizeof(started), "%Y-%m-%d %H:%M:%S", std::localtime(&now));
+		std::ofstream(runDir / "config_used.json") << cfg.ToUsedJSONString(RLBOT_GIT_HASH, started);
 		g_metricsCSV = RLbot::MetricsCSVWriter(runDir / "metrics.csv");
 	}
 

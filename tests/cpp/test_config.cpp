@@ -276,3 +276,28 @@ TEST(Config_exp_buffer_iterations_steuert_Puffergroesse) {
 
 	CHECK(LoadFails(R"({"learner": {"exp_buffer_iterations": 0}})"));
 }
+
+// --- config_used.json wieder als Config (Review-Befund R7) ----------------------
+
+TEST(Config_config_used_json_ist_wieder_als_Config_ladbar) {
+	// Genau der Inhalt, den main.cpp nach runs/<lauf>/config_used.json schreibt (mit _git/_started)
+	TrainConfig cfg = {};
+	cfg.entCoef = 0.004f;
+	cfg.seedEnvs = true;
+	cfg.gameTimeoutSecs = 900.f;
+	cfg.metricsRunName = "exp_test";
+	auto path = WriteTempConfig(cfg.ToUsedJSONString("abc1234-dirty", "2026-09-25 12:00:00"));
+	auto loaded = TrainConfig::FromFile(path.string());
+	std::filesystem::remove(path);
+	CHECK_NEAR(loaded.entCoef, 0.004, 1e-7);
+	CHECK(loaded.seedEnvs);
+	CHECK_EQ(loaded.metricsRunName, std::string("exp_test"));
+	CHECK_EQ(loaded.ToJSONString(), cfg.ToJSONString());
+}
+
+TEST(Config_Unterstrich_Felder_ueberall_erlaubt_andere_unbekannte_nicht) {
+	CHECK(!LoadFails(R"({"_git": "abc", "_started": "x", "env": {"_note": "a"}, "learner": {"_why": [1, 2]}})"));
+	CHECK(LoadFails(R"({"env": {"note": "a"}})"));
+	CHECK(LoadFails(R"({"git": "abc"})"));
+	CHECK(LoadFails(R"({"learner": {"ent_coeff": 0.01}})"));
+}

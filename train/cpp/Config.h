@@ -85,8 +85,12 @@ struct TrainConfig {
 	int skillUpdateInterval = 16;
 
 	// Lädt eine JSON-Datei; unbekannte Felder sind ein Fehler (Tippfehler sollen auffallen).
+	// Felder mit führendem "_" (_comment, _git, _started) werden auf jeder Ebene ignoriert.
 	static TrainConfig FromFile(const std::string& path);
 	std::string ToJSONString() const;
+	// Inhalt von config_used.json (Audit H4): ToJSONString() plus _git und _started. Mit
+	// FromFile wieder ladbar (Review-Befund R7), z. B. um einen Lauf exakt zu wiederholen.
+	std::string ToUsedJSONString(const std::string& gitHash, const std::string& started) const;
 };
 
 // Überträgt die Learner-Felder in die RLGymPPO-Config.
