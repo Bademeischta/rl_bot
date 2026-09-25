@@ -14,7 +14,9 @@
 #      und ...\checkpoints\<steps> (lädt der Trainer). Das Original bleibt unberührt; vorhandene
 #      Lauf-/Ergebnisordner und Zips werden NIE überschrieben
 #   3. Training bis Start-Steps + -Steps (learner.extra_steps), End-Checkpoint per save_on_exit;
-#      Abbruchkriterien aus tools\experiments\check_abort.py werden alle -PollSeconds geprüft
+#      Abbruchkriterien aus tools\experiments\check_abort.py werden alle -PollSeconds geprüft.
+#      Abbruch sauber über train_bot.exe --stop-file (Iteration zu Ende, End-Checkpoint schreiben);
+#      Stop-Process -Force nur als Notfall nach -StopTimeoutSeconds (Review-Befund R15)
 #   4. Ladder (TrueSkill, eval\ladder.py) und Duell Ende gegen Start (und gegen Baseline-Ende)
 #   5. alles nach results\exp_<name>_<datum>\ (summary.md/json, metrics.csv, Ladder, Duelle, Logs)
 #      und als results\exp_<name>_<datum>.zip
@@ -35,6 +37,8 @@ param(
     [int]$AbortWarmup = 100,
     [string]$Flavor = "cu128",
     [switch]$SkipLadder,
+    # So lange wartet der Runner nach dem Anlegen der Stop-Datei, bevor er den Trainer hart beendet
+    [int]$StopTimeoutSeconds = 600,
     # Nur Schritte 0-2 (Prüfen, Checkpoint kopieren), kein Training; für Tests
     [switch]$PrepareOnly,
     # Andere Wurzel für runs\ und results\ (Tests); Standard: Repo-Wurzel
@@ -46,6 +50,8 @@ $ErrorActionPreference = "Stop"
 $Root = (Resolve-Path "$PSScriptRoot\..\..").Path
 # Native Programme nur über Invoke-Native (Review-Befund R2: stderr unter PowerShell 5.1)
 . "$Root\tools\NativeCommand.ps1"
+# Stop-TrainerGracefully (Review-Befund R15)
+. "$Root\tools\experiments\TrainerControl.ps1"
 $Py = "$Root\.venv\Scripts\python.exe"
 $Build = "$Root\build\cpp_$Flavor"
 $Trainer = "$Build\train_bot.exe"
@@ -140,10 +146,14 @@ try {
 
     Write-Host "Training startet ($(Get-Date -Format 'HH:mm:ss')); Log: $RunDir\train.log"
     $trainStart = Get-Date
-    $proc = Start-Process -FilePath $Trainer -ArgumentList "`"$cfgPath`"" -WorkingDirectory $Root `
-        -RedirectStandardOutput "$RunDir\train.log" -RedirectStandardError "$RunDir\train.err" `
+    # --stop-file (R15): run_experiment beendet den Trainer über diese Datei, nicht per Kill
+    $stopFile = "$RunDir\STOP"
+    $proc = Start-Process -FilePath $Trainer -ArgumentList "`"$cfgPath`" --stop-file `"$stopFile`"" `
+        -WorkingDirectory $Root -RedirectStandardOutput "$RunDir\train.log" -RedirectStandardError "$RunDir\train.err" `
         -PassThru -NoNewWindow
+    $null = $proc.Handle   # PowerShell 5.1: ohne gecachtes Handle ist ExitCode nach dem Ende leer
     $abortReason = $null
+    $stopMode = $null
     $lastReport = Get-Date
     while (-not $proc.HasExited) {
         Start-Sleep -Seconds $PollSeconds
@@ -154,7 +164,9 @@ try {
         if ($code -eq 3) {
             $abortReason = ($out | Out-String).Trim()
             Write-Host "ABBRUCH durch check_abort.py:`n$abortReason" -ForegroundColor Red
-            Stop-Process -Id $proc.Id -Force
+            # Sauber über die Stop-Datei; Stop-Process -Force nur als Notfall nach dem Timeout (R15)
+            $stopMode = Stop-TrainerGracefully -Process $proc -StopFile $stopFile -TimeoutSeconds $StopTimeoutSeconds
+            if ($stopMode -eq "erzwungen") { $abortReason += " (Trainer musste nach $StopTimeoutSeconds s hart beendet werden)" }
             break
         }
         if ($code -eq 4) { Write-Host ($out | Out-String).Trim() -ForegroundColor Yellow }

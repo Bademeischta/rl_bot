@@ -1,7 +1,12 @@
 // Trainer: liest eine JSON-Config, baut die Environments und startet das PPO-Training.
 //
 //   train_bot.exe <config.json> [--collision-meshes <dir>] [--timestep-limit N] [--device cpu|cuda]
-//                 [--extra-steps N] [--save-on-exit]
+//                 [--extra-steps N] [--save-on-exit] [--stop-file <pfad>]
+//
+// --stop-file (Review-Befund R15): Sobald die Datei existiert, endet das Training nach der
+// laufenden Iteration regulär; mit save_on_exit wird danach der End-Checkpoint geschrieben.
+// So kann tools/experiments/run_experiment.ps1 einen Lauf abbrechen, ohne den Prozess mitten in
+// einem Checkpoint-Save zu töten.
 //
 // Die verwendete Config wird beim Start in den Run-Ordner kopiert (config_used.json, mit
 // Git-Hash des Builds und Startzeit), damit später nachvollziehbar ist, womit ein Checkpoint
@@ -56,15 +61,29 @@ static void OnStep(GameInst* gameInst, const Gym::StepResult& stepResult, Report
 	}
 }
 
+static std::filesystem::path g_stopFile;
+static bool g_stopRequested = false;
+
 static void OnIteration(Learner* learner, Report& allMetrics) {
 	RLbot::AggregateGameMetrics(learner->GetAllGameMetrics(), allMetrics);
 	g_metricsCSV.Append(allMetrics);
+
+	// Stop-Datei (R15): Die Learn()-Schleife prüft timestepLimit vor jeder Iteration, also endet
+	// sie nach dieser. Ein fälliger periodischer Save dieser Iteration läuft vorher noch.
+	std::error_code ec;
+	if (!g_stopRequested && !g_stopFile.empty() && std::filesystem::exists(g_stopFile, ec)) {
+		g_stopRequested = true;
+		learner->config.timestepLimit = learner->totalTimesteps;
+		RG_LOG("Stop-Datei " << g_stopFile << " gefunden: Training endet nach dieser Iteration bei "
+			<< learner->totalTimesteps << " Steps");
+	}
 }
 
 int main(int argc, char** argv) {
 	if (argc < 2) {
 		std::cerr << "usage: train_bot <config.json> [--collision-meshes <dir>] "
-		             "[--timestep-limit N] [--device cpu|cuda] [--extra-steps N] [--save-on-exit]\n";
+		             "[--timestep-limit N] [--device cpu|cuda] [--extra-steps N] [--save-on-exit] "
+		             "[--stop-file <pfad>]\n";
 		return 2;
 	}
 
@@ -86,7 +105,13 @@ int main(int argc, char** argv) {
 		else if (arg == "--device") deviceOverride = next();
 		else if (arg == "--extra-steps") extraStepsOverride = std::stoll(next());
 		else if (arg == "--save-on-exit") saveOnExitOverride = true;
+		else if (arg == "--stop-file") g_stopFile = next();
 		else { std::cerr << "Unbekanntes Argument: " << arg << "\n"; return 2; }
+	}
+	if (!g_stopFile.empty() && std::filesystem::exists(g_stopFile)) {
+		// Eine alte Stop-Datei würde den Lauf nach der ersten Iteration beenden
+		std::cerr << "Stop-Datei existiert schon: " << g_stopFile.string() << " (erst entfernen)\n";
+		return 2;
 	}
 
 	RLbot::TrainConfig cfg = RLbot::TrainConfig::FromFile(configPath);
