@@ -18,7 +18,7 @@ import summarize  # noqa: E402
 from metrics_util import has_non_finite, read_rows, window_mean  # noqa: E402
 
 COLUMNS = ["Cumulative Timesteps", "Timesteps Collected", "Overall Steps/Second", "Policy Entropy",
-           "Value Function Loss", "Mean KL Divergence", "Average Episode Reward", "Avg Advantage",
+           "Value Function Loss", "Mean KL Divergence", "Average Episode Reward", "Avg Advantage", "Avg Val Target",
            "SB3 Clip Fraction", "ep_end_goal", "ep_end_timeout", "Truncated Steps", "Skill Rating 1v1"]
 
 
@@ -29,6 +29,7 @@ def write_metrics(path: Path, n: int, **overrides):
         row = {"Cumulative Timesteps": 2_700_000_000 + (i + 1) * 100_000, "Timesteps Collected": 100_000,
                "Overall Steps/Second": 68_000, "Policy Entropy": 3.58, "Value Function Loss": 10.0,
                "Mean KL Divergence": 0.0027, "Average Episode Reward": 2049.0, "Avg Advantage": 0.4,
+               "Avg Val Target": 10.0,
                "SB3 Clip Fraction": 0.0245, "ep_end_goal": 0.3, "ep_end_timeout": 0.7,
                "Truncated Steps": 1050, "Skill Rating 1v1": 1930}
         for k, f in overrides.items():
@@ -60,12 +61,33 @@ def test_window_mean_uses_last_fraction(tmp_path):
     assert window_mean(read_rows(p), "Policy Entropy") == pytest.approx(2.0)
 
 
-def test_has_non_finite_ignores_empty_fields(tmp_path):
+def test_has_non_finite_flags_nan_inf_and_empty_fields(tmp_path):
+    """Review-Befund R5: leere Felder zählen wie nan/inf (der Trainer schrieb nan früher leer)."""
     p = tmp_path / "metrics.csv"
-    write_metrics(p, 3, **{"Value Function Loss": lambda i: "" if i == 1 else 1.0})
+    for bad in ("", "nan", "inf", "-inf", "-nan(ind)"):
+        write_metrics(p, 3, **{"Value Function Loss": lambda i, bad=bad: bad if i == 1 else 1.0})
+        assert has_non_finite(read_rows(p), ["Value Function Loss"]) == ["Value Function Loss"], bad
+    write_metrics(p, 3)
     assert has_non_finite(read_rows(p), ["Value Function Loss"]) == []
-    write_metrics(p, 3, **{"Value Function Loss": lambda i: "nan" if i == 1 else 1.0})
-    assert has_non_finite(read_rows(p), ["Value Function Loss"]) == ["Value Function Loss"]
+
+
+def test_columns_added_later_are_not_flagged_in_older_rows(tmp_path):
+    """Ältere Zeilen sind kürzer, wenn eine Spalte später dazukam (M1): das ist kein Fehler."""
+    p = tmp_path / "metrics.csv"
+    p.write_text('"Cumulative Timesteps","A","B"\n100,1\n200,2,3\n', encoding="utf-8")
+    rows = read_rows(p)
+    assert rows[0]["B"] is None
+    assert has_non_finite(rows, ["B"]) == []
+
+
+def test_half_written_last_line_is_ignored(tmp_path):
+    """check_abort liest, während der Trainer schreibt: eine Zeile ohne Zeilenende zählt nicht."""
+    p = tmp_path / "metrics.csv"
+    p.write_text('"Cumulative Timesteps","Policy Entropy","Value Function Loss"\n100,3.5,0.2\n200,3.4,',
+                 encoding="utf-8")
+    rows = read_rows(p)
+    assert len(rows) == 1
+    assert has_non_finite(rows, ["Value Function Loss"]) == []
 
 
 # --- check_abort ---------------------------------------------------------------
@@ -82,7 +104,25 @@ def test_nan_aborts_immediately(tmp_path):
     write_metrics(p, 5, **{"Policy Entropy": lambda i: "nan" if i == 4 else 3.5})
     code, msgs = check_abort.evaluate(read_rows(p))
     assert code == check_abort.ABORT
-    assert "nan/inf" in msgs[0] and "Policy Entropy" in msgs[0]
+    assert "nan/inf/leer" in msgs[0] and "Policy Entropy" in msgs[0]
+
+
+@pytest.mark.parametrize("key", check_abort.NAN_KEYS)
+def test_empty_field_in_a_learning_metric_aborts(tmp_path, key):
+    p = tmp_path / "metrics.csv"
+    write_metrics(p, 5, **{key: lambda i: "" if i == 2 else 0.5})
+    code, msgs = check_abort.evaluate(read_rows(p))
+    assert code == check_abort.ABORT, msgs
+    assert key in msgs[0]
+
+
+def test_nan_episode_reward_does_not_abort_but_is_counted(tmp_path):
+    """Nutzerentscheidung zu R5: nan im Episoden-Reward = keine Episode beendet, kein Abbruch."""
+    p = tmp_path / "metrics.csv"
+    write_metrics(p, 40, **{"Average Episode Reward": lambda i: "nan" if i in (5, 31) else 2000.0})
+    code, msgs = check_abort.evaluate(read_rows(p))
+    assert code == check_abort.OK, msgs
+    assert summarize.summarize_metrics(read_rows(p))["ep_reward_nan_iterations"] == 2
 
 
 def test_value_loss_explosion_aborts_only_after_warmup(tmp_path):
@@ -201,3 +241,53 @@ def test_compare_requires_summary(tmp_path):
     (tmp_path / "leer").mkdir()
     with pytest.raises(SystemExit):
         compare.load_experiment(tmp_path / "leer")
+
+
+# --- R5 End-to-End: echte CSV aus dem C++-Writer -> check_abort.py ----------------------------
+
+import os  # noqa: E402
+import subprocess  # noqa: E402
+
+BUILD = Path(os.environ.get("RLBOT_BUILD_DIR", str(ROOT / "build" / "cpp_cu128")))
+WRITER = BUILD / ("write_metrics_csv.exe" if os.name == "nt" else "write_metrics_csv")
+needs_writer = pytest.mark.skipif(not WRITER.exists(), reason=f"{WRITER} fehlt (bench\cpp\build.ps1)")
+
+
+def _cpp_csv(path: Path, iterations: int, *extra: str) -> None:
+    r = subprocess.run([str(WRITER), str(path), str(iterations), *extra], capture_output=True, text=True)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def _check_abort_cli(path: Path) -> subprocess.CompletedProcess:
+    return subprocess.run([sys.executable, str(ROOT / "tools" / "experiments" / "check_abort.py"), str(path)],
+                          capture_output=True, text=True)
+
+
+@needs_writer
+@pytest.mark.parametrize("value", ["nan", "inf", "-inf"])
+def test_cpp_writer_nan_triggers_check_abort(tmp_path, value):
+    p = tmp_path / "metrics.csv"
+    _cpp_csv(p, 30)
+    assert _check_abort_cli(p).returncode == check_abort.OK
+    _cpp_csv(p2 := tmp_path / "bad.csv", 30, "--set", "17", "Policy Entropy", value)
+    assert value in p2.read_text(encoding="utf-8").splitlines()[18]   # wörtlich geschrieben
+    r = _check_abort_cli(p2)
+    assert r.returncode == check_abort.ABORT, r.stdout + r.stderr
+    assert "Policy Entropy" in r.stdout
+
+
+@needs_writer
+def test_cpp_writer_missing_key_is_empty_and_triggers_check_abort(tmp_path):
+    p = tmp_path / "metrics.csv"
+    _cpp_csv(p, 30, "--drop", "12", "Value Function Loss")
+    r = _check_abort_cli(p)
+    assert r.returncode == check_abort.ABORT, r.stdout + r.stderr
+    assert "Value Function Loss" in r.stdout
+
+
+@needs_writer
+def test_cpp_writer_nan_episode_reward_does_not_abort(tmp_path):
+    p = tmp_path / "metrics.csv"
+    _cpp_csv(p, 30, "--set", "9", "Average Episode Reward", "nan")
+    r = _check_abort_cli(p)
+    assert r.returncode == check_abort.OK, r.stdout + r.stderr

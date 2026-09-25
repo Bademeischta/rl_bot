@@ -126,8 +126,11 @@ std::vector<std::string> MetricsCSVWriter::ParseHeader(const std::string& line) 
 }
 
 std::string MetricsCSVWriter::FormatValue(double value) {
-	if (!std::isfinite(value))
-		return {};
+	// Wörtlich statt leer (Review R5), und plattformunabhängig (MSVC schreibt sonst "-nan(ind)")
+	if (std::isnan(value))
+		return "nan";
+	if (std::isinf(value))
+		return value > 0 ? "inf" : "-inf";
 	std::ostringstream s;
 	s << std::setprecision(12) << value;
 	return s.str();

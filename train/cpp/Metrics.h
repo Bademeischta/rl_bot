@@ -68,7 +68,9 @@ void AggregateGameMetrics(const std::vector<RLGPC::Report>& gameReports, RLGPC::
 //  - taucht ein neuer Schlüssel auf (z. B. "Skill Rating 2v2" nach der ersten Eval), wird er
 //    hinten angehängt und die Kopfzeile in Zeile 1 einmal neu geschrieben; ältere Zeilen
 //    bleiben kürzer, was CSV-Leser als leere Felder lesen
-//  - nicht-endliche Werte (nan, inf) werden als leeres Feld geschrieben
+//  - nicht-endliche Werte werden wörtlich als nan, inf, -inf geschrieben (Review-Befund R5:
+//    vorher als leeres Feld, das tools/experiments/check_abort.py nicht als Abbruch erkannte).
+//    Ein leeres Feld heißt nur noch: Schlüssel fehlte in dieser Iteration.
 //  - Zahlen mit 12 signifikanten Stellen, damit "Cumulative Timesteps" exakt bleibt
 class MetricsCSVWriter {
 public:

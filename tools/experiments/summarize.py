@@ -17,7 +17,7 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from metrics_util import KEY_COLUMNS, column, mean, read_rows, window_mean  # noqa: E402
+from metrics_util import KEY_COLUMNS, column, count_bad, mean, read_rows, window_mean  # noqa: E402
 
 
 def running_stats(checkpoint: Path | None) -> dict:
@@ -50,6 +50,8 @@ def summarize_metrics(rows: list[dict[str, str]]) -> dict:
         first[short] = mean(column(rows[:max(20, len(rows) // 5)], key))
     out["last_20pct"] = {k: (None if math.isnan(v) else v) for k, v in last.items()}
     out["first_20pct"] = {k: (None if math.isnan(v) else v) for k, v in first.items()}
+    # Kein Abbruchgrund (check_abort.py), aber sichtbar: Iterationen ohne beendete Episode
+    out["ep_reward_nan_iterations"] = count_bad(rows, "Average Episode Reward")
     return out
 
 
@@ -82,7 +84,9 @@ def to_markdown(s: dict) -> str:
     m = s.get("metrics", {})
     lines += ["## Verlauf", "",
               f"Iterationen: {m.get('iterations')}, Steps im Lauf: {fmt(m.get('steps_run'), 0)}, "
-              f"Wall-Clock: {fmt(s.get('wall_seconds'), 0)} s", ""]
+              f"Wall-Clock: {fmt(s.get('wall_seconds'), 0)} s, "
+              f"Iterationen ohne beendete Episode (Average Episode Reward nan/leer): "
+              f"{m.get('ep_reward_nan_iterations', '-')}", ""]
     if m.get("last_20pct"):
         lines += ["| Größe | erstes Fünftel | letztes Fünftel |", "|---|---|---|"]
         for _, short in KEY_COLUMNS:

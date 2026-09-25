@@ -255,12 +255,25 @@ TEST(CSV_neuer_Schluessel_wird_hinten_angehaengt_und_Kopfzeile_neu_geschrieben) 
 	std::filesystem::remove(p);
 }
 
-TEST(CSV_nan_und_inf_werden_leer_geschrieben) {
+TEST(CSV_nan_und_inf_werden_woertlich_geschrieben) {
+	// Review-Befund R5: leer geschrieben erkannte check_abort.py ein NaN nie
 	auto p = TempCSV("nan");
 	MetricsCSVWriter w(p);
-	Report r; r["A"] = NAN; r["B"] = INFINITY; r["C"] = -0.5;
+	Report r; r["A"] = NAN; r["B"] = INFINITY; r["C"] = -0.5; r["D"] = -INFINITY;
 	w.Append(r);
-	CHECK_EQ(ReadLines(p)[1], std::string(",,-0.5"));
+	CHECK_EQ(ReadLines(p)[1], std::string("nan,inf,-0.5,-inf"));
+	CHECK_EQ(MetricsCSVWriter::FormatValue(-NAN), std::string("nan"));
+	std::filesystem::remove(p);
+}
+
+TEST(CSV_fehlender_Schluessel_bleibt_leeres_Feld) {
+	auto p = TempCSV("missing");
+	MetricsCSVWriter w(p);
+	Report r1; r1["A"] = 1; r1["B"] = 2;
+	w.Append(r1);
+	Report r2; r2["A"] = 3;
+	w.Append(r2);
+	CHECK_EQ(ReadLines(p)[2], std::string("3,"));
 	std::filesystem::remove(p);
 }
 

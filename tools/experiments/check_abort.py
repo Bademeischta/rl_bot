@@ -7,8 +7,12 @@ Die Schwellen sind bewusst weit gewählt: Ein Experiment kostet lokal rund 25-40
 Fehlalarm kostet mehr als ein schlechter Lauf. Begründung je Kriterium in tools/experiments/README.md.
 
 Kriterien (alle auf metrics.csv, das pro Iteration = ~100k Steps eine Zeile bekommt):
-  1. NaN/Inf in Entropie, Value Loss, KL, Episoden-Reward oder Advantage -> sofort abbrechen.
-     Einmal vergiftet, ist der Rest des Laufs wertlos.
+  1. nan, inf oder leeres Feld in Entropie, Value Loss, KL, Advantage oder Val Target -> sofort
+     abbrechen. Einmal vergiftet, ist der Rest des Laufs wertlos. (Review-Befund R5: Der Trainer
+     schreibt nan/inf jetzt wörtlich; vorher als leeres Feld, und leere Felder wurden hier
+     übersprungen, ein NaN-Lauf lief also bis zum Ende.) "Average Episode Reward" ist bewusst
+     nicht dabei: Dort heißt nan nur "in dieser Iteration endete keine Episode" (im Hauptlauf
+     2x, 31 bzw. 77 Iterationen nach einem Neustart); summarize.py zählt diese Iterationen.
   2. Explodierender Value Loss: Median der letzten 20 Iterationen > VALUE_LOSS_FACTOR (10) mal
      Median des Referenzfensters (Iterationen warmup .. warmup+100 desselben Laufs) UND absolut
      über VALUE_LOSS_ABS_MIN (100). Erst nach der Aufwärmphase (Default 100 Iterationen), weil
@@ -37,7 +41,7 @@ ENTROPY_WARN = 2.5
 WINDOW = 20
 
 NAN_KEYS = ["Policy Entropy", "Value Function Loss", "Mean KL Divergence",
-            "Average Episode Reward", "Avg Advantage"]
+            "Avg Advantage", "Avg Val Target"]
 
 ABORT, WARN, OK = 3, 4, 0
 
@@ -51,7 +55,7 @@ def evaluate(rows: list[dict[str, str]], warmup: int = 100, baseline_sps: float 
 
     bad = has_non_finite(rows, NAN_KEYS)
     if bad:
-        return ABORT, [f"ABBRUCH: nan/inf in {', '.join(bad)} (Iteration {len(rows)})"]
+        return ABORT, [f"ABBRUCH: nan/inf/leer in {', '.join(bad)} (Iteration {len(rows)})"]
 
     code = OK
     n = len(rows)

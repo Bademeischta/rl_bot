@@ -80,6 +80,11 @@ set_target_properties(dump_obs PROPERTIES CXX_STANDARD 20)
 target_include_directories(dump_obs PRIVATE "${JSON_INCLUDE}")
 target_link_libraries(dump_obs PRIVATE rlbot_env)
 
+# --- metrics.csv mit dem echten Writer, für den End-to-End-Test der Abbruchkriterien (Review R5) ---
+add_executable(write_metrics_csv tools/cpp/write_metrics_csv.cpp train/cpp/Metrics.cpp)
+set_target_properties(write_metrics_csv PROPERTIES CXX_STANDARD 20)
+target_link_libraries(write_metrics_csv PRIVATE rlbot_env RLGymPPO_CPP)
+
 # --- Policy-Dump: prüft, dass die Python-Inferenz im Deployment identisch rechnet ---
 add_executable(dump_policy_actions tools/cpp/dump_policy_actions.cpp)
 set_target_properties(dump_policy_actions PROPERTIES CXX_STANDARD 20)

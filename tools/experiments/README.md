@@ -51,7 +51,7 @@ ein schlechter Lauf. Alle Fenster sind Iterationen (1 Iteration ≈ 100.000 Step
 
 | Kriterium | Schwelle | Begründung |
 |---|---|---|
-| NaN/Inf in Entropie, Value Loss, KL, Episoden-Reward, Advantage | sofort | Einmal vergiftet, ist der Rest des Laufs wertlos; kein legitimer Zustand erzeugt NaN |
+| `nan`, `inf` oder leeres Feld in Entropie, Value Loss, KL, Advantage, Val Target | sofort | Einmal vergiftet, ist der Rest des Laufs wertlos; kein legitimer Zustand erzeugt NaN. Der Trainer schreibt nan/inf wörtlich, ein leeres Feld heißt „Schlüssel fehlte" (Review R5). **Nicht** dabei: `Average Episode Reward` – dort heißt nan nur „keine Episode beendet" (kommt nach Neustarts vor); `summary.md` zählt diese Iterationen |
 | Explodierender Value Loss | Median der letzten 20 Iterationen > **10 ×** Median des Referenzfensters (Iteration 100–200 desselben Laufs) **und** absolut > 100; erst ab Iteration 220 | K3 lässt den Critic absichtlich neu einschwingen (Val Target ~10 → ~3), deshalb Aufwärmphase und Referenz aus dem eigenen Lauf statt aus der Baseline. Normale Drift über 1.000 Iterationen liegt weit unter Faktor 2; Faktor 10 ist Divergenz |
 | SPS-Einbruch | Mittel „Overall Steps/Second" der letzten 20 Iterationen < **40 %** der Referenz (Iteration 20–120, oder Baseline-SPS) | Messstreuung bis 7 %, thermisches Drosseln rund 30 % (`docs/phase0_results.md`); unter 40 % läuft etwas anderes (CPU-Fallback, Fremdprozess, Swap) und das Step-Budget misst Unsinn |
 | Entropie-Kollaps | Policy Entropy < **2,5** → nur **Warnung** | Schwelle aus AUDIT.md H2 („Weg zurück billig"); das Ergebnis bleibt auswertbar, deshalb kein Abbruch |

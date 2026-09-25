@@ -6,6 +6,7 @@ der Standardbibliothek, damit es auch in einem nackten Python läuft.
 from __future__ import annotations
 
 import csv
+import io
 import math
 from pathlib import Path
 
@@ -42,9 +43,15 @@ KEY_COLUMNS = [
 
 
 def read_rows(path: Path) -> list[dict[str, str]]:
-    """Liest metrics.csv. Wiederholte Kopfzeilen (Läufe vor Audit M1) werden übersprungen."""
-    with Path(path).open(encoding="utf-8", newline="") as f:
-        rows = list(csv.DictReader(f))
+    """Liest metrics.csv. Wiederholte Kopfzeilen (Läufe vor Audit M1) werden übersprungen.
+
+    Eine letzte Zeile ohne Zeilenende wird ignoriert: check_abort.py liest die Datei, während der
+    Trainer sie schreibt, und eine halb geschriebene Zeile hätte sonst leere Felder (Review R5).
+    """
+    text = Path(path).read_text(encoding="utf-8-sig")
+    if text and not text.endswith("\n"):
+        text = text[: text.rfind("\n") + 1]
+    rows = list(csv.DictReader(io.StringIO(text, newline="")))
     return [r for r in rows if r.get("Cumulative Timesteps") not in (None, "", "Cumulative Timesteps")]
 
 
@@ -84,16 +91,25 @@ def window_mean(rows: list[dict[str, str]], key: str, fraction: float = 0.2, min
     return mean(column(rows[-n:], key))
 
 
+def is_bad_value(raw) -> bool:
+    """nan, inf und leere Felder (Review-Befund R5).
+
+    Der Trainer schreibt nicht-endliche Werte wörtlich als nan/inf/-inf (Metrics.cpp); ein leeres
+    Feld heißt, dass der Schlüssel in dieser Iteration fehlte, und zählt ebenfalls. None (Spalte gab
+    es beim Schreiben der Zeile noch nicht, ältere Zeilen sind kürzer) zählt nicht.
+    """
+    if raw is None:
+        return False
+    if raw.strip() == "":
+        return True
+    return not math.isfinite(to_float(raw))
+
+
 def has_non_finite(rows: list[dict[str, str]], keys: list[str]) -> list[str]:
-    """Spalten, in denen ein Wert nan/inf ist (leere Felder zählen nicht, siehe M1/N4)."""
-    bad = []
-    for key in keys:
-        for r in rows:
-            raw = r.get(key)
-            if raw in (None, ""):
-                continue
-            v = to_float(raw)
-            if not math.isfinite(v):
-                bad.append(key)
-                break
-    return bad
+    """Spalten, in denen mindestens ein Wert nan, inf oder leer ist (siehe is_bad_value)."""
+    return [key for key in keys if any(is_bad_value(r.get(key)) for r in rows)]
+
+
+def count_bad(rows: list[dict[str, str]], key: str) -> int:
+    """Wie viele Iterationen in einer Spalte nan, inf oder leer sind."""
+    return sum(1 for r in rows if is_bad_value(r.get(key)))
