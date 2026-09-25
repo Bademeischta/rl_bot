@@ -222,3 +222,29 @@ TEST(Config_shuffle_slots_und_seed_envs_sind_lesbar_und_roundtrip_fest) {
 	CHECK(!cfg2.shuffleSlots);
 	CHECK(!cfg2.seedEnvs);
 }
+
+// --- Experiment-Optionen (Stufe 3): extra_steps, save_on_exit ------------------
+
+TEST(Config_extra_steps_und_save_on_exit_Default_ist_aus) {
+	auto path = WriteTempConfig("{}");
+	auto cfg = TrainConfig::FromFile(path.string());
+	std::filesystem::remove(path);
+	CHECK_EQ((int)cfg.extraSteps, 0);
+	CHECK(!cfg.saveOnExit);
+}
+
+TEST(Config_extra_steps_und_save_on_exit_lesbar_und_geprueft) {
+	auto path = WriteTempConfig(R"({"learner": {"extra_steps": 100000000, "save_on_exit": true}})");
+	auto cfg = TrainConfig::FromFile(path.string());
+	std::filesystem::remove(path);
+	CHECK_EQ(cfg.extraSteps, (int64_t)100000000);
+	CHECK(cfg.saveOnExit);
+
+	auto path2 = WriteTempConfig(cfg.ToJSONString());
+	auto cfg2 = TrainConfig::FromFile(path2.string());
+	std::filesystem::remove(path2);
+	CHECK_EQ(cfg2.extraSteps, (int64_t)100000000);
+	CHECK(cfg2.saveOnExit);
+
+	CHECK(LoadFails(R"({"learner": {"extra_steps": -5}})"));
+}

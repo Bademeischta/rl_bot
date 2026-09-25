@@ -102,6 +102,8 @@ TrainConfig TrainConfig::FromFile(const std::string& path) {
 			READ(l, seen, cfg.collectionDuringLearn, "collection_during_learn");
 			READ(l, seen, cfg.device, "device");
 			READ(l, seen, cfg.timestepLimit, "timestep_limit");
+			READ(l, seen, cfg.extraSteps, "extra_steps");
+			READ(l, seen, cfg.saveOnExit, "save_on_exit");
 			READ(l, seen, cfg.timestepsPerIteration, "timesteps_per_iteration");
 			READ(l, seen, cfg.timestepsPerSave, "timesteps_per_save");
 			READ(l, seen, cfg.checkpointsToKeep, "checkpoints_to_keep");
@@ -156,6 +158,8 @@ TrainConfig TrainConfig::FromFile(const std::string& path) {
 		RG_ERR_CLOSE("learner.ppo_mini_batch_size darf nicht größer als ppo_batch_size sein");
 	if (cfg.device != "cuda" && cfg.device != "cpu" && cfg.device != "auto")
 		RG_ERR_CLOSE("learner.device muss cuda, cpu oder auto sein");
+	if (cfg.extraSteps < 0)
+		RG_ERR_CLOSE("learner.extra_steps darf nicht negativ sein");
 
 	return cfg;
 }
@@ -187,7 +191,8 @@ std::string TrainConfig::ToJSONString() const {
 	j["learner"] = {
 		{ "num_threads", numThreads }, { "num_games_per_thread", numGamesPerThread },
 		{ "collection_during_learn", collectionDuringLearn }, { "device", device },
-		{ "timestep_limit", timestepLimit }, { "timesteps_per_iteration", timestepsPerIteration },
+		{ "timestep_limit", timestepLimit }, { "extra_steps", extraSteps }, { "save_on_exit", saveOnExit },
+		{ "timesteps_per_iteration", timestepsPerIteration },
 		{ "timesteps_per_save", timestepsPerSave }, { "checkpoints_to_keep", checkpointsToKeep },
 		{ "checkpoint_folder", checkpointFolder },
 		{ "policy_layer_sizes", policyLayerSizes }, { "critic_layer_sizes", criticLayerSizes },

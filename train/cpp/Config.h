@@ -36,7 +36,13 @@ struct TrainConfig {
 	int numGamesPerThread = 64;
 	bool collectionDuringLearn = false;
 	std::string device = "cuda";       // "cuda" | "cpu" | "auto"
-	int64_t timestepLimit = 0;         // 0 = unbegrenzt
+	int64_t timestepLimit = 0;         // 0 = unbegrenzt (absolute Step-Zahl)
+	// Step-Budget RELATIV zum geladenen Checkpoint (für Experimente, Stufe 3): Lauf endet bei
+	// Checkpoint-Steps + extra_steps. 0 = aus (nur timestep_limit zählt, bisheriges Verhalten).
+	int64_t extraSteps = 0;
+	// Am Ende eines begrenzten Laufs noch einen Checkpoint schreiben, falls der letzte Save
+	// nicht genau auf dem Endstand liegt. false = bisheriges Verhalten (kein End-Save).
+	bool saveOnExit = false;
 	int64_t timestepsPerIteration = 100000;
 	int64_t timestepsPerSave = 25000000;   // Bauplan §2: 25 Mio.
 	int checkpointsToKeep = 10;

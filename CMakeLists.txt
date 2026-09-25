@@ -36,7 +36,10 @@ target_include_directories(rlbot_env PUBLIC "${CMAKE_SOURCE_DIR}")
 target_link_libraries(rlbot_env PUBLIC RLGymSim_CPP)
 
 # --- Trainer ---
+# Git-Hash des Builds landet in config_used.json (Audit H4); bench/cpp/build.ps1 setzt -DRLBOT_GIT_HASH
+set(RLBOT_GIT_HASH "unbekannt" CACHE STRING "git rev-parse --short HEAD zum Build-Zeitpunkt")
 add_executable(train_bot train/cpp/main.cpp train/cpp/Config.cpp train/cpp/EnvFactory.cpp train/cpp/Metrics.cpp)
+target_compile_definitions(train_bot PRIVATE RLBOT_GIT_HASH="${RLBOT_GIT_HASH}")
 set_target_properties(train_bot PROPERTIES CXX_STANDARD 20)
 target_include_directories(train_bot PRIVATE "${JSON_INCLUDE}")
 target_link_libraries(train_bot PRIVATE rlbot_env RLGymPPO_CPP)
