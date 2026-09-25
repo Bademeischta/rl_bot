@@ -23,12 +23,16 @@ Deployment in Python über RLBot v5.
 ## Einrichtung
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python -m pip install torch --index-url https://download.pytorch.org/whl/cu128
+.\.venv\Scripts\python -m pip install torch==2.11.0+cu128 --index-url https://download.pytorch.org/whl/cu128
 .\.venv\Scripts\python -m pip install -r requirements.txt
 .\.venv\Scripts\python -m pip install git+https://github.com/AechPro/rlgym-ppo
 Copy-Item .venv\Lib\site-packages\rlgym\rocket_league\sim\collision_meshes collision_meshes -Recurse
 .\.venv\Scripts\python tools\audit.py
+.\.venv\Scripts\python tools\local\check_python_versions.py   # installierte Versionen gegen die Pins
 ```
+
+`requirements.txt` ist auf den Stand vom 24.09.2026 gepinnt (Audit M2); `rlbot` und
+`rlbot_flatbuffers` für Phase 6 sind enthalten.
 
 libtorch (CPU und cu128) nach `third_party/libtorch_cpu` bzw. `third_party/libtorch_cu128`
 entpacken (URLs in `third_party/PINNED.md`), dann:
@@ -60,6 +64,15 @@ Dann `deploy/rlbot/bot.toml` im RLBot-Launcher laden.
 ```powershell
 powershell -ExecutionPolicy Bypass -File tools\run_all_tests.ps1 -Repeat 2
 ```
+
+Die Golden-Fixtures (`tests/fixtures/obs_golden.json`) werden dabei **nicht** überschrieben,
+sondern numerisch gegen einen frischen Dump geprüft (`tools/check_golden.py`). Weicht der Dump
+ab, hat sich das Obs-Layout geändert und alle Checkpoints wären inkompatibel; bewusst
+aktualisieren nur mit `tools\update_golden.ps1`.
+
+## Audit und Roadmap
+Befunde, Roadmap und Herkunft aller Messwerte: [AUDIT.md](AUDIT.md). Umsetzungsstand:
+[AUDIT_PROGRESS.md](AUDIT_PROGRESS.md). Was lokal auszuführen ist: [LOCAL_RUNBOOK.md](LOCAL_RUNBOOK.md).
 
 ## Phase-0-Ergebnis (23.09.2026)
 **RLGymPPO_CPP mit cu128-libtorch auf der GPU**, `numThreads=16`, `numGamesPerThread=64`:

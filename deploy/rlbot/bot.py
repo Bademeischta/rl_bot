@@ -30,7 +30,7 @@ from rlbot_flatbuffers import ControllerState, GamePacket, MatchPhase  # noqa: E
 from deploy.action_table import LOOKUP_TABLE  # noqa: E402
 from deploy.packet_adapter import build_pad_index_map, view_from_packet  # noqa: E402
 from deploy.policy import load_policy  # noqa: E402
-from env.obs_python import build_obs  # noqa: E402
+from env.obs_python import build_obs, obs_size  # noqa: E402
 
 TICK_SKIP = 8
 # Beobachtungslatenz des Trainings in Ticks (Gym::actionDelay = tickSkip - 1)
@@ -99,6 +99,26 @@ def _is_continuous(packet: GamePacket) -> bool:
     return phase is None or phase in CONTINUOUS_PHASES
 
 
+def check_policy_compatible(policy, max_players: int = MAX_PLAYERS,
+                            action_stack: int = ACTION_STACK) -> None:
+    """Audit M7: Policy-Eingabe/-Ausgabe müssen zum Obs-Builder und zur Aktionstabelle passen.
+
+    Sonst fällt ein Checkpoint mit anderem max_players/action_stack_size erst beim ersten
+    matmul im laufenden Spiel auf.
+    """
+    expected_obs = obs_size(max_players, action_stack)
+    if policy.meta.obs_size != expected_obs:
+        raise ValueError(
+            f"Policy erwartet Obs-Größe {policy.meta.obs_size}, der Obs-Builder liefert "
+            f"{expected_obs} (MAX_PLAYERS={max_players}, ACTION_STACK={action_stack}). "
+            f"Passen die Konstanten in deploy/rlbot/bot.py zur Trainings-Config "
+            f"(env.max_players / env.action_stack_size)? Quelle: {policy.meta.source or 'policy.pt'}")
+    if policy.meta.action_count != len(LOOKUP_TABLE):
+        raise ValueError(
+            f"Policy hat {policy.meta.action_count} Aktionen, die Aktionstabelle {len(LOOKUP_TABLE)}. "
+            f"Quelle: {policy.meta.source or 'policy.pt'}")
+
+
 class RLbotAgent(Bot):
     def initialize(self):
         policy_path = Path(__file__).parent / "policy.pt"
@@ -108,6 +128,7 @@ class RLbotAgent(Bot):
                 f"  python tools/export_policy.py runs/<lauf>/checkpoints --out {policy_path}"
             )
         self.policy = load_policy(policy_path)
+        check_policy_compatible(self.policy)
         self.logger.info(f"Policy geladen: {self.policy.meta.layer_sizes}, "
                          f"Obs {self.policy.meta.obs_size}, Aktionen {self.policy.meta.action_count}")
 

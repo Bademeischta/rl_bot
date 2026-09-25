@@ -250,3 +250,31 @@ def test_frame_jump_backwards_restarts_the_buffer():
 def test_empty_buffer_raises():
     with pytest.raises(LookupError):
         PacketBuffer(7).delayed(0)
+
+
+# --- Obs-Größenprüfung (Audit M7) -------------------------------------------
+
+def make_policy(obs: int, actions: int):
+    seq = _build_sequential(obs, actions, [8])
+    return Policy(seq, PolicyMeta(obs_size=obs, action_count=actions, layer_sizes=[8], source="x.pt"))
+
+
+def test_matching_policy_passes_check():
+    from deploy.rlbot.bot import check_policy_compatible
+    check_policy_compatible(make_policy(obs_size(3, 5), len(LOOKUP_TABLE)))
+
+
+def test_wrong_obs_size_is_rejected_with_clear_message():
+    from deploy.rlbot.bot import check_policy_compatible
+    wrong = make_policy(obs_size(3, 3), len(LOOKUP_TABLE))   # action_stack_size 3 statt 5
+    with pytest.raises(ValueError) as err:
+        check_policy_compatible(wrong)
+    msg = str(err.value)
+    assert str(obs_size(3, 3)) in msg and "257" in msg
+    assert "action_stack_size" in msg and "x.pt" in msg
+
+
+def test_wrong_action_count_is_rejected():
+    from deploy.rlbot.bot import check_policy_compatible
+    with pytest.raises(ValueError, match="Aktionen"):
+        check_policy_compatible(make_policy(obs_size(3, 5), 45))
