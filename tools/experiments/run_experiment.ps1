@@ -183,10 +183,14 @@ try {
     Write-Host "Training beendet nach $wall s"
 
     # --- 4. Ladder und Duelle --------------------------------------------------------
-    $ckpts = Get-ChildItem "$RunDir\checkpoints" -Directory | Where-Object { $_.Name -match '^\d+$' } |
-        Sort-Object { [long]$_.Name }
-    $endCkpt = $ckpts | Select-Object -Last 1
-    Write-Host "End-Checkpoint: $($endCkpt.FullName) ($($ckpts.Count) Checkpoints)"
+    # End-Checkpoint nur ein nachweislich vollständiger (Review-Befund R16): alle Dateien, intakte
+    # Archive, RUNNING_STATS.json passend, Policy lädt. Ein halb geschriebener neuester Ordner
+    # (Notfall-Kill mitten im Save) wird mit Grund verworfen und der nächstältere genommen.
+    $ckpts = Get-ChildItem "$RunDir\checkpoints" -Directory | Where-Object { $_.Name -match '^\d+$' }
+    $endPath = Invoke-Native $Py @("$Root\tools\experiments\pick_checkpoint.py", "$RunDir\checkpoints") -NoThrow
+    if ($LASTEXITCODE -ne 0 -or -not $endPath) { Fail "Kein vollstaendiger Checkpoint in $RunDir\checkpoints" }
+    $endCkpt = Get-Item ("$endPath".Trim())
+    Write-Host "End-Checkpoint (vollstaendig geprueft): $($endCkpt.FullName) ($($ckpts.Count) Checkpoint-Ordner)"
     if ([long]$endCkpt.Name -eq $startSteps) { Write-Host "WARNUNG: kein neuer Checkpoint entstanden" -ForegroundColor Yellow }
 
     $duelStart = "$ResDir\duel_end_vs_start.json"

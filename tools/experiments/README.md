@@ -42,11 +42,16 @@ rund 25 Minuten plus Ladder/Duelle (wenige Minuten); die echte Dauer steht in `s
 (`wall_seconds`) — **lokal nachmessen**, siehe AUDIT.md §0.
 
 Was `run_experiment.ps1` macht: Speicherplatz prüfen → Checkpoint (inkl. `RUNNING_STATS.json`)
-nach `runs\exp_<name>_<datum>\checkpoints\` **kopieren** (Original unberührt, vorhandene Ordner
-werden nie überschrieben) → Training mit `learner.extra_steps` und `save_on_exit` → Ladder
-(`eval\ladder.py`, TrueSkill, `ratings.json` im Lauf-Ordner) und Duelle Ende-gegen-Start sowie
+zweimal **kopieren** und per Hash prüfen: `runs\exp_<name>_<datum>\start\<steps>` (Referenz fürs
+Duell, außerhalb der Checkpoint-Rotation, R14) und `…\checkpoints\<steps>` (lädt der Trainer);
+Original unberührt, vorhandene Ordner und Zips werden nie überschrieben → Training mit
+`learner.extra_steps` und `save_on_exit`; ein Abbruch läuft über `train_bot.exe --stop-file`
+(Iteration zu Ende, End-Checkpoint schreiben), `Stop-Process -Force` nur als Notfall nach
+`-StopTimeoutSeconds` (R15) → End-Checkpoint = neuester **vollständiger** (`pick_checkpoint.py`:
+alle Dateien, intakte Archive, `RUNNING_STATS.json` passt, Policy lädt; R16) → Ladder
+(`eval\ladder.py`, nur innerhalb des Laufs) und Duelle Ende-gegen-Start sowie
 Ende-gegen-Baseline-Ende (`duel.exe`, 100 Spiele) → `results\exp_<name>_<datum>\` mit
-`summary.md`/`summary.json`, `metrics.csv`, Ladder, Duellen, Logs → `results\exp_<name>_<datum>.zip`.
+`summary.md`/`summary.json`, `metrics.csv`, Duellen, Logs → `results\exp_<name>_<datum>.zip`.
 
 ## Abbruchkriterien (`check_abort.py`, alle 30 s auf `metrics.csv`)
 

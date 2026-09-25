@@ -122,3 +122,71 @@ def test_stop_trainer_gracefully_waits_and_forces_only_after_the_timeout(tmp_pat
     line = next(l for l in r.stdout.splitlines() if l.startswith("R2="))
     assert "R2=erzwungen" in line and "ALIVE2=False" in line
     assert int(line.rsplit("SECS=", 1)[1]) >= 3            # erst nach dem Timeout hart beendet
+
+
+# --- R16: nur ein nachweislich vollständiger End-Checkpoint --------------------------------
+
+REAL_CKPTS = ROOT / "runs" / "lucy_1v1" / "checkpoints"
+
+
+def _newest_real() -> Path | None:
+    if not REAL_CKPTS.exists():
+        return None
+    c = [p for p in REAL_CKPTS.iterdir() if p.name.isdigit() and (p / "PPO_POLICY.lt").exists()]
+    return max(c, key=lambda p: int(p.name)) if c else None
+
+
+def _copy_as(src: Path, dst: Path) -> Path:
+    shutil.copytree(src, dst)
+    stats = json.loads((dst / "RUNNING_STATS.json").read_text(encoding="utf-8"))
+    stats["cumulative_timesteps"] = int(dst.name)
+    (dst / "RUNNING_STATS.json").write_text(json.dumps(stats), encoding="utf-8")
+    return dst
+
+
+@pytest.mark.skipif(_newest_real() is None, reason="kein echter Checkpoint in runs/lucy_1v1")
+def test_pick_checkpoint_skips_incomplete_newer_checkpoints(tmp_path):
+    """Echte Checkpoint-Dateien (Kopie, Original nur gelesen); neuere Ordner simulieren einen
+    Abbruch mitten im Save. Gewählt wird der neueste vollständige, nicht der höchste Ordner."""
+    sys.path.insert(0, str(ROOT / "tools" / "experiments"))
+    from pick_checkpoint import pick_latest_complete
+
+    src = _newest_real()
+    base = int(src.name)
+    ck = tmp_path / "checkpoints"
+    ck.mkdir()
+    shutil.copytree(src, ck / src.name)
+    good_newer = _copy_as(src, ck / str(base + 100))
+    truncated = _copy_as(src, ck / str(base + 300))                  # Optimizer halb geschrieben
+    data = (truncated / "PPO_POLICY_OPTIM.lt").read_bytes()
+    (truncated / "PPO_POLICY_OPTIM.lt").write_bytes(data[: len(data) // 2])
+    no_stats = _copy_as(src, ck / str(base + 200))                   # RUNNING_STATS fehlt
+    (no_stats / "RUNNING_STATS.json").unlink()
+    wrong_steps = _copy_as(src, ck / str(base + 400))                # Ordnername passt nicht
+    (wrong_steps / "RUNNING_STATS.json").write_text(json.dumps({"cumulative_timesteps": 1}), encoding="utf-8")
+    empty_policy = _copy_as(src, ck / str(base + 500))
+    (empty_policy / "PPO_POLICY.lt").write_bytes(b"")
+
+    chosen, rejected = pick_latest_complete(ck)
+    assert chosen == good_newer
+    reasons = "\n".join(rejected)
+    for name in (empty_policy.name, wrong_steps.name, truncated.name, no_stats.name):
+        assert name in reasons
+    assert "kein intaktes Archiv" in reasons and "fehlt" in reasons and "passt nicht" in reasons
+
+    r = subprocess.run([sys.executable, str(ROOT / "tools" / "experiments" / "pick_checkpoint.py"), str(ck)],
+                       capture_output=True, text=True, encoding="utf-8", errors="replace",
+                       env={**os.environ, "PYTHONIOENCODING": "utf-8"})
+    assert r.returncode == 0 and r.stdout.strip() == str(good_newer)
+    assert "verworfen" in r.stderr
+
+
+def test_pick_checkpoint_fails_without_any_complete_checkpoint(tmp_path):
+    ck = tmp_path / "checkpoints"
+    (ck / "100").mkdir(parents=True)
+    (ck / "100" / "PPO_POLICY.lt").write_bytes(b"PK")
+    r = subprocess.run([sys.executable, str(ROOT / "tools" / "experiments" / "pick_checkpoint.py"), str(ck)],
+                       capture_output=True, text=True, encoding="utf-8", errors="replace",
+                       env={**os.environ, "PYTHONIOENCODING": "utf-8"})
+    assert r.returncode == 1
+    assert "kein vollständiger Checkpoint" in r.stderr
