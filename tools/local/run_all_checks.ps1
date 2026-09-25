@@ -157,6 +157,10 @@ try {
         Copy-Item "$smokeRun\config_used.json" -Destination "$Res\smoke_config_used.json"
         Invoke-Native $Py @("$Root\tools\experiments\check_abort.py", "$smokeRun\metrics.csv", '--warmup', 5) -MergeStdErr -NoThrow | ForEach-Object { Write-Host $_ }
         if ($LASTEXITCODE -eq 3) { throw "Abbruchkriterium im Smoke-Lauf verletzt (nan/inf/leer?)" }
+        # K1b-Diagnose (Review R4): Timeouts müssen vom letzten Zustand vor dem Reset bootstrappen
+        Invoke-Native $Py @("$Root\tools\local\check_k1b.py", "$smokeRun\metrics.csv") -MergeStdErr -NoThrow |
+            Tee-Object -FilePath "$Res\k1b_diagnose.txt" | ForEach-Object { Write-Host $_ }
+        if ($LASTEXITCODE -ne 0) { throw "K1b-Diagnose nicht bestanden (Exit $LASTEXITCODE, siehe k1b_diagnose.txt)" }
         $sumOut = Invoke-Native $Py @("$Root\tools\experiments\summarize.py", '--run', $smokeRun, '--out', "$Res\smoke", '--name', 'local_check_sanity') -MergeStdErr
         $sumOut | Select-Object -First 30 | ForEach-Object { Write-Host $_ }
         $ckpts = Get-ChildItem "$smokeRun\checkpoints" -Directory | Measure-Object

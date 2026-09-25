@@ -408,3 +408,36 @@ def test_compare_expands_the_glob_pattern_itself_like_under_powershell(tmp_path)
     r = subprocess.run([sys.executable, str(ROOT / "tools" / "experiments" / "compare.py"),
                         str(tmp_path / "gibtsnicht_*")], capture_output=True, text=True, encoding="utf-8", env=env)
     assert r.returncode != 0 and "trifft keinen" in r.stderr
+
+
+# --- R4 Nachtrag: K1b-Diagnose im Smoke-Lauf (echte CSV aus dem C++-Writer) -------------------
+
+def _check_k1b(path: Path) -> subprocess.CompletedProcess:
+    return subprocess.run([sys.executable, str(ROOT / "tools" / "local" / "check_k1b.py"), str(path)],
+                          capture_output=True, text=True, encoding="utf-8", errors="replace",
+                          env={**os.environ, "PYTHONIOENCODING": "utf-8"})
+
+
+@needs_writer
+def test_check_k1b_passes_only_when_timeouts_bootstrap_from_the_final_obs(tmp_path):
+    ok = tmp_path / "ok.csv"
+    _cpp_csv(ok, 10, "--set", "0", "Timeout Truncations", "0",
+             *[x for i in range(1, 10) for x in ("--set", str(i), "Timeout Truncations", "64",
+                                                 "--set", str(i), "Trunc Bootstrap Reset Share", "0",
+                                                 "--set", str(i), "Trunc Bootstrap V Diff", "0.3")])
+    r = _check_k1b(ok)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "576" in r.stdout and "OK" in r.stdout
+
+    bad = tmp_path / "bad.csv"
+    _cpp_csv(bad, 5, *[x for i in range(5) for x in ("--set", str(i), "Timeout Truncations", "64",
+                                                     "--set", str(i), "Trunc Bootstrap Reset Share", "1")])
+    assert _check_k1b(bad).returncode == 1
+
+    none = tmp_path / "none.csv"
+    _cpp_csv(none, 5, *[x for i in range(5) for x in ("--set", str(i), "Timeout Truncations", "0")])
+    assert _check_k1b(none).returncode == 2
+
+    old = tmp_path / "old.csv"                            # Trainer ohne Diagnose-Spalten
+    _cpp_csv(old, 5)
+    assert _check_k1b(old).returncode == 1
