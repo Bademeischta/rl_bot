@@ -198,3 +198,27 @@ TEST(ModusMix_trifft_kleine_Anteile_auch_bei_wenigen_Envs) {
 	CHECK_GT(counts[2], 0);
 	CHECK_NEAR(counts[1] / 100.0, 0.75, 0.05);
 }
+
+// --- Schalter aus dem Audit (H3 shuffle_slots, H6 seed_envs) ----------------
+
+TEST(Config_shuffle_slots_und_seed_envs_haben_altes_Verhalten_als_Default) {
+	auto path = WriteTempConfig("{}");
+	auto cfg = TrainConfig::FromFile(path.string());
+	std::filesystem::remove(path);
+	CHECK(cfg.shuffleSlots);
+	CHECK(cfg.seedEnvs);
+}
+
+TEST(Config_shuffle_slots_und_seed_envs_sind_lesbar_und_roundtrip_fest) {
+	auto path = WriteTempConfig(R"({"env": {"shuffle_slots": false, "seed_envs": false}})");
+	auto cfg = TrainConfig::FromFile(path.string());
+	std::filesystem::remove(path);
+	CHECK(!cfg.shuffleSlots);
+	CHECK(!cfg.seedEnvs);
+
+	auto path2 = WriteTempConfig(cfg.ToJSONString());
+	auto cfg2 = TrainConfig::FromFile(path2.string());
+	std::filesystem::remove(path2);
+	CHECK(!cfg2.shuffleSlots);
+	CHECK(!cfg2.seedEnvs);
+}

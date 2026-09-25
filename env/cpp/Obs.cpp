@@ -77,7 +77,7 @@ FList StackedPaddedOBS::BuildOBS(const PlayerData& player, const GameState& stat
 		while ((int)list.size() < target)
 			list.push_back(FList(PLAYER_FEATURES, 0.f));
 		if (shuffle)
-			std::shuffle(list.begin(), list.end(), ::Math::GetRandEngine());
+			ShuffleSlots(list);
 	}
 
 	for (auto& teammate : teammates)
@@ -87,6 +87,13 @@ FList StackedPaddedOBS::BuildOBS(const PlayerData& player, const GameState& stat
 
 	RG_ASSERT((int)result.size() == GetOBSSize());
 	return result;
+}
+
+void StackedPaddedOBS::ShuffleSlots(FList2& list) {
+	if (shuffleSeed >= 0)
+		std::shuffle(list.begin(), list.end(), rng);
+	else
+		std::shuffle(list.begin(), list.end(), ::Math::GetRandEngine());
 }
 
 } // namespace RLbot

@@ -21,6 +21,12 @@ struct TrainConfig {
 	float gameTimeoutSecs = 300.f;
 	// Anteile der Modi 1v1 / 2v2 / 3v3 an den Environments (werden normiert)
 	float modeMix[3] = { 1.f, 0.f, 0.f };
+	// Mitspieler-/Gegner-Slots im Obs bei jedem Schritt mischen (Audit H3). true = bisheriges
+	// Verhalten; false ist als Experiment gedacht (train/configs/experiments/h3_no_shuffle.json).
+	bool shuffleSlots = true;
+	// Eigene State-Setter und den Slot-Shuffle aus learner.random_seed + Env-Index seeden
+	// (Audit H6). false = RocketSims zeitgeseedeter Engine wie vor dem Audit.
+	bool seedEnvs = true;
 
 	RewardWeights rewards = {};
 	StateSetterWeights states = {};

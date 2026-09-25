@@ -44,6 +44,7 @@ add_executable(rlbot_tests
     tests/cpp/test_state_setters.cpp
     tests/cpp/test_config.cpp
     tests/cpp/test_metrics.cpp
+    tests/cpp/test_env.cpp
     train/cpp/Config.cpp
     train/cpp/EnvFactory.cpp
     train/cpp/Metrics.cpp

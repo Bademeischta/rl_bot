@@ -260,3 +260,65 @@ TEST(OBS_Orange_sieht_gespiegelte_Welt) {
 	for (size_t i = 0; i < blue.size(); i++)
 		CHECK_NEAR(orange[i], blue[i], 1e-5);
 }
+
+// --- Seeds und Slot-Anteile (Audit H3/H6) ----------------------------------
+
+static std::vector<float> OpponentSlotX(const FList& vec) {
+	int P = StackedPaddedOBS::PLAYER_FEATURES;
+	int opps = StackedPaddedOBS::BALL_FEATURES + CommonValues::BOOST_LOCATIONS_AMOUNT + P + 5 * 8 + 2 * P;
+	std::vector<float> xs;
+	for (int slot = 0; slot < 3; slot++)
+		xs.push_back(vec[opps + slot * P]);
+	return xs;
+}
+
+TEST(OBS_Shuffle_mit_Seed_ist_reproduzierbar) {
+	auto state = MakeMatch(3);
+	Action empty = {};
+	StackedPaddedOBS a(3, 5, true, Vec(1 / CommonValues::SIDE_WALL_X, 1 / CommonValues::BACK_WALL_Y, 1 / CommonValues::CEILING_Z),
+	                   1 / CommonValues::CAR_MAX_SPEED, 1 / CommonValues::CAR_MAX_ANG_VEL, 0.1f, 99);
+	StackedPaddedOBS b(3, 5, true, Vec(1 / CommonValues::SIDE_WALL_X, 1 / CommonValues::BACK_WALL_Y, 1 / CommonValues::CEILING_Z),
+	                   1 / CommonValues::CAR_MAX_SPEED, 1 / CommonValues::CAR_MAX_ANG_VEL, 0.1f, 99);
+	a.Reset(state);
+	b.Reset(state);
+	int permutations = 0;
+	std::vector<float> first;
+	for (int i = 0; i < 30; i++) {
+		auto xa = OpponentSlotX(a.BuildOBS(state.players[0], state, empty));
+		auto xb = OpponentSlotX(b.BuildOBS(state.players[0], state, empty));
+		for (int s = 0; s < 3; s++)
+			CHECK_NEAR(xa[s], xb[s], 1e-9);
+		if (i == 0) first = xa;
+		else permutations += (xa != first);
+	}
+	CHECK_GT(permutations, 5);   // es wird tatsächlich gemischt, nicht nur kopiert
+}
+
+TEST(OBS_Shuffle_Slot0_Anteil_ist_ein_Drittel) {
+	// Audit H3: "Slot 0 war im Training in einem Drittel der Fälle belegt" - hier nachgemessen.
+	auto state = MakeMatch(1);   // ein echter Gegner, zwei leere Slots
+	Action empty = {};
+	StackedPaddedOBS obs(3, 5, true, Vec(1 / CommonValues::SIDE_WALL_X, 1 / CommonValues::BACK_WALL_Y, 1 / CommonValues::CEILING_Z),
+	                     1 / CommonValues::CAR_MAX_SPEED, 1 / CommonValues::CAR_MAX_ANG_VEL, 0.1f, 7);
+	obs.Reset(state);
+	const int N = 6000;
+	int slot0Filled = 0;
+	for (int i = 0; i < N; i++) {
+		auto xs = OpponentSlotX(obs.BuildOBS(state.players[0], state, empty));
+		slot0Filled += std::abs(xs[0]) > 1e-9;
+	}
+	CHECK_NEAR(slot0Filled / (double)N, 1.0 / 3.0, 0.03);
+}
+
+TEST(OBS_ohne_Shuffle_Gegner_immer_in_Slot0) {
+	auto state = MakeMatch(1);
+	Action empty = {};
+	StackedPaddedOBS obs(3, 5, false);
+	obs.Reset(state);
+	for (int i = 0; i < 50; i++) {
+		auto xs = OpponentSlotX(obs.BuildOBS(state.players[0], state, empty));
+		CHECK(std::abs(xs[0]) > 1e-9);
+		CHECK_NEAR(xs[1], 0.0, 1e-9);
+		CHECK_NEAR(xs[2], 0.0, 1e-9);
+	}
+}

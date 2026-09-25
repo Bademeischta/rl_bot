@@ -5,6 +5,7 @@
 #include "env/cpp/StateSetters.h"
 
 #include <map>
+#include <set>
 
 using namespace RLGSC;
 using namespace RLbot;
@@ -170,4 +171,84 @@ TEST(WeightedStateSetter_mit_nur_einer_Szene) {
 		CHECK_GT(state.ball.pos.z, 600);
 	}
 	delete arena;
+}
+
+// --- Seeds (Audit H6) ----------------------------------------------------
+
+static std::vector<Vec> BallPositions(WeightedStateSetter& setter, Arena* arena, int n) {
+	std::vector<Vec> out;
+	for (int i = 0; i < n; i++)
+		out.push_back(setter.ResetState(arena).ball.pos);
+	return out;
+}
+
+TEST(Seed_gleicher_Seed_gibt_gleiche_Szenenfolge_und_Zustaende) {
+	if (!g_arenaReady) return;
+	Arena* arena = MakeArena(1);
+
+	// Nur die eigenen Szenen: kickoff und random ziehen aus RocketSims globalem Engine
+	StateSetterWeights w = {};
+	w.kickoff = 0; w.random = 0;
+	w.aerial = 1; w.dribble = 1; w.wallPlay = 1; w.recovery = 1; w.defense = 1;
+
+	WeightedStateSetter a(w, 4711), b(w, 4711);
+	CHECK_EQ(a.seed, (int64_t)4711);
+	for (int i = 0; i < 40; i++) {
+		auto sa = a.ResetState(arena);
+		auto sb = b.ResetState(arena);
+		CHECK_EQ(a.lastPicked, b.lastPicked);
+		CHECK_NEAR(sa.ball.pos.x, sb.ball.pos.x, 1e-6);
+		CHECK_NEAR(sa.ball.pos.y, sb.ball.pos.y, 1e-6);
+		CHECK_NEAR(sa.ball.pos.z, sb.ball.pos.z, 1e-6);
+		CHECK_NEAR(sa.ball.vel.x, sb.ball.vel.x, 1e-6);
+		for (size_t p = 0; p < sa.players.size(); p++) {
+			CHECK_NEAR(sa.players[p].phys.pos.x, sb.players[p].phys.pos.x, 1e-6);
+			CHECK_NEAR(sa.players[p].phys.pos.y, sb.players[p].phys.pos.y, 1e-6);
+			CHECK_NEAR(sa.players[p].boostFraction, sb.players[p].boostFraction, 1e-6);
+		}
+	}
+	delete arena;
+}
+
+TEST(Seed_verschiedene_Seeds_geben_verschiedene_Zustaende) {
+	if (!g_arenaReady) return;
+	Arena* arena = MakeArena(1);
+	StateSetterWeights w = {};
+	w.kickoff = 0; w.random = 0; w.aerial = 1;
+
+	WeightedStateSetter a(w, 1), b(w, 2);
+	auto pa = BallPositions(a, arena, 10);
+	auto pb = BallPositions(b, arena, 10);
+	int different = 0;
+	for (int i = 0; i < 10; i++)
+		different += std::abs(pa[i].x - pb[i].x) > 1e-3;
+	CHECK_GT(different, 8);
+	delete arena;
+}
+
+TEST(Seed_ungeseedet_bleibt_alter_Pfad) {
+	if (!g_arenaReady) return;
+	Arena* arena = MakeArena(1);
+	StateSetterWeights w = {};
+	w.kickoff = 0; w.random = 0; w.aerial = 1;
+
+	WeightedStateSetter a(w), b(w);
+	CHECK_EQ(a.seed, (int64_t)-1);
+	auto pa = BallPositions(a, arena, 10);
+	auto pb = BallPositions(b, arena, 10);
+	int different = 0;
+	for (int i = 0; i < 10; i++)
+		different += std::abs(pa[i].x - pb[i].x) > 1e-3;
+	CHECK_GT(different, 8);   // globaler Engine: zwei Setter laufen nicht synchron
+	delete arena;
+}
+
+TEST(Seed_Mischung_trennt_benachbarte_Envs_und_Stroeme) {
+	std::set<uint64_t> seen;
+	for (int env = 0; env < 64; env++)
+		for (int stream = 0; stream < 2; stream++)
+			seen.insert(SeedForEnv(123, env, stream));
+	CHECK_EQ((int)seen.size(), 128);
+	CHECK(SeedForEnv(123, 0, 0) != SeedForEnv(124, 0, 0));
+	CHECK_EQ(SeedForEnv(123, 5, 1), SeedForEnv(123, 5, 1));
 }

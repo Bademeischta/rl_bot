@@ -44,6 +44,8 @@ TrainConfig TrainConfig::FromFile(const std::string& path) {
 			READ(e, seen, cfg.actionStackSize, "action_stack_size");
 			READ(e, seen, cfg.noTouchTimeoutSecs, "no_touch_timeout_secs");
 			READ(e, seen, cfg.gameTimeoutSecs, "game_timeout_secs");
+			READ(e, seen, cfg.shuffleSlots, "shuffle_slots");
+			READ(e, seen, cfg.seedEnvs, "seed_envs");
 			seen.insert("mode_mix");
 			if (e.contains("mode_mix")) {
 				auto mix = e.at("mode_mix").get<std::vector<float>>();
@@ -165,6 +167,7 @@ std::string TrainConfig::ToJSONString() const {
 		{ "action_stack_size", actionStackSize },
 		{ "no_touch_timeout_secs", noTouchTimeoutSecs }, { "game_timeout_secs", gameTimeoutSecs },
 		{ "mode_mix", { modeMix[0], modeMix[1], modeMix[2] } },
+		{ "shuffle_slots", shuffleSlots }, { "seed_envs", seedEnvs },
 	};
 	j["rewards"] = {
 		{ "goal", rewards.goal }, { "concede", rewards.concede },
