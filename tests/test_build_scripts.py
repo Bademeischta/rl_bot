@@ -90,6 +90,9 @@ def test_invoke_native_ignores_stderr_and_decides_by_exit_code(tmp_path):
         "Write-Output \"RUECKGABE=$out\"\n"
         "$merged = Invoke-Native $py @('-c', $code, '0') -MergeStdErr\n"
         "Write-Output \"MERGED=$($merged -join '|')\"\n"
+        "$leer = 'import sys; sys.stderr.write(''a'' + chr(10) + chr(10) + ''b'' + chr(10))'\n"
+        "$lines = Invoke-Native $py @('-c', $leer) -MergeStdErr\n"
+        "Write-Output \"LEER=$($lines -join '|')\"\n"
         "Invoke-Native $py @('-c', $code, '3') -NoThrow -Quiet | Out-Null\n"
         "Write-Output \"NOTHROW=$LASTEXITCODE\"\n"
         "try { Invoke-Native $py @('-c', $code, '3') -Quiet | Out-Null; Write-Output 'KEIN_ABBRUCH' }\n"
@@ -100,6 +103,7 @@ def test_invoke_native_ignores_stderr_and_decides_by_exit_code(tmp_path):
     assert "RUECKGABE=stdout-zeile" in r.stdout          # stderr nicht im Rückgabewert
     merged = next(line for line in r.stdout.splitlines() if line.startswith("MERGED="))
     assert sorted(merged[len("MERGED="):].split("|")) == ["stdout-zeile", "warnung"]  # -MergeStdErr: als Text dabei
+    assert "LEER=a||b" in r.stdout                        # leere stderr-Zeile bleibt leer
     assert "NOTHROW=3" in r.stdout
     assert "ABBRUCH=True" in r.stdout
 

@@ -40,7 +40,9 @@ function Invoke-Native {
     try {
         & $Exe @ArgumentList 2>&1 | ForEach-Object {
             if ($_ -is [System.Management.Automation.ErrorRecord]) {
-                $line = $_.ToString()
+                # Exception.Message statt ToString(): eine leere stderr-Zeile liefert sonst den
+                # Typnamen "System.Management.Automation.RemoteException"
+                $line = $_.Exception.Message
                 if ($MergeStdErr) { $line }
                 elseif (-not $Quiet) { Write-Host $line }
             } else {
