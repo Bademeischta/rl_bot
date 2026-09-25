@@ -5,23 +5,30 @@ Grundlage ist `AUDIT.md` (Befunde K1–N10, Roadmap Stufen 0–4). Dieses Dokume
 Roadmap-Punkt fortgeschrieben.
 
 Branch: `claude/rlbot-audit-roadmap-c8t7nl` (abgezweigt von `main` @ `54105bf`).
-Regel: ein Commit pro Roadmap-Punkt, ID in der Commit-Message.
+Regel: ein Commit pro Roadmap-Punkt, ID in der Commit-Message (`git log --oneline main..`).
 
 ## Arbeitsumgebung der Umsetzung (25.09.2026)
 
 Cloud-Session auf einer Linux-VM (4 Kerne, 15 GB RAM, keine GPU, kein Windows, kein Rocket League,
-kein `runs/`-Ordner). Alles, was Hardware braucht, ist als lokales Paket vorbereitet
-(`LOCAL_RUNBOOK.md`, `tools/local/`, `tools/experiments/`).
+kein `runs/`-Ordner mit echten Checkpoints). Alles, was Hardware braucht, ist als lokales Paket
+vorbereitet (`LOCAL_RUNBOOK.md`, `tools/local/`, `tools/experiments/`).
 
-Was in der VM läuft:
+Was in der VM geprüft wurde (Stand nach dem letzten Commit):
 
-| Prüfung | Stand | Ergebnis |
-|---|---|---|
-| Python-Tests (`.venv`, numpy 1.26.4, torch 2.14.0+cpu, rlgym 2.0.1, rlbot 2.0.0b55, rlbot_flatbuffers 0.19.0) | vor allen Änderungen | 51 bestanden, 3 übersprungen (Policy-Parität braucht `runs/*/checkpoints`) |
-| Upstream-Klon `RLGymPPO_CPP @ ee4cc56` inkl. Submodule | vorhanden unter `third_party/` (gitignored) | Patches lassen sich mit `git apply --check` prüfen |
-| C++-Build unter Linux (GCC 13, CPU-libtorch aus dem pip-Wheel, Python 3.11-Header) | siehe Protokoll unten | Upstream braucht zwei GCC-Kompatibilitätsänderungen (Timer.h, gradscaler.hpp), siehe `third_party/patches/rlgympppo_cpp_gcc_compat.patch` |
+| Prüfung | Ergebnis |
+|---|---|
+| Python-Tests (`.venv`: numpy 1.26.4, torch 2.14.0+cpu, rlgym 2.0.1, rlbot 2.0.0b55, rlbot_flatbuffers 0.19.0, trueskill 0.4.5) | **97 bestanden, 3 übersprungen** (Policy-Parität braucht `runs/lucy_1v1`); mit `RLBOT_PARITY_RUN` auf einen VM-Smoke-Checkpoint auch diese 3 grün |
+| C++-Build unter Linux (GCC 13, CPU-libtorch aus dem pip-Wheel, Python-3.11-Header) mit beiden Upstream-Patches | alle Targets gebaut (`train_bot`, `rlbot_tests`, `dump_obs`, `dump_policy_actions`, `duel`, `bench_cpp_sps`) |
+| C++-Tests (`rlbot_tests collision_meshes`, Meshes aus dem `rlgym`-Wheel) | **75 bestanden, 0 fehlgeschlagen** (vor dem Audit 39) |
+| Upstream-Patches | `git apply --check` auf dem reinen `ee4cc56` und nach dem GCC-Patch; Idempotenz-Erkennung (`--reverse --check`) |
+| Golden-Fixtures | Linux-`dump_obs` gegen die Windows-Referenz: 120 Obs-Vektoren, größte Abweichung 9,5e-7 (deshalb prüft M3 numerisch, nicht per Hash) |
+| Smoke-Trainingsläufe `train_bot` auf CPU (2×2 Spiele, Netz 32×32, wenige tausend Steps) | Neustart aus Checkpoint, `metrics.csv` mit einer Kopfzeile, `ep_end_*`/`scene_*`/`Truncated Steps`, `extra_steps`, `save_on_exit`, `_git` in `config_used.json` |
+| `duel` + `eval/ladder.py`, `tools/local/deploy_smoke.py`, `tools/local/inspect_run.py`, `tools/check_golden.py`, `tools/local/check_python_versions.py` | auf den VM-Smoke-Checkpoints ausgeführt |
+| PowerShell-Skripte (alle 8 `*.ps1`) | mit PowerShell 7.4 (Linux) nur **geparst**: keine Syntaxfehler; **nie ausgeführt** (Windows-Pfade, `.exe`) |
 
-**Keine Performance-Zahl aus dieser VM wird als Messwert verwendet.**
+**Nicht in der VM prüfbar** (alles im `LOCAL_RUNBOOK.md`): MSVC-Build mit cu128, die Patches unter
+MSVC, Laufzeit der Skripte, jede Zahl zu SPS/Dauer, Ladder-Nullmessung, Experimente, echte
+Deployment-Latenz, RLBot-Spiel. **Keine Performance-Zahl aus dieser VM wird als Messwert verwendet.**
 
 ## Statustabelle
 
@@ -30,56 +37,75 @@ Status-Werte: `offen` · `umgesetzt (VM-getestet)` · `umgesetzt (ungetestet, lo
 
 | ID | Stufe | Inhalt | Status | Commit | Test / Nachweis |
 |---|---|---|---|---|---|
-| H4 | 0 | Git-Commit + Tag, Git-Hash in `config_used.json` | Commit `54105bf` existiert (vom Nutzer); `config_used.json` traegt jetzt `_git` (Build-Hash, `-dirty`-Suffix) und `_started`; Tag `baseline-2.7G` **lokal** setzen (`LOCAL_RUNBOOK.md`) | Schritt 2a | Smoke-Lauf in der VM: `_git` = Build-Hash |
-| M8 | 1 | Metriken Episoden-Ende (`ep_end_goal`, `ep_end_timeout`, `ep_end_notouch`, `ep_end_time`, `ep_length_steps`, `scene_<name>_goal/_length`) | umgesetzt (VM-getestet) | M8 | `tests/cpp/test_metrics.cpp` (8 Tests), Linux-Build; `OnIteration` aggregiert jetzt alle `AccumAvg`-Schlüssel dynamisch |
-| H6 | 1 | Seed an eigene State-Setter und Obs-Shuffle (`env.seed_envs`, Default true; false = alter zeitgeseedeter Pfad) | umgesetzt (VM-getestet) | H6 | `Seed_*`-Tests, `OBS_Shuffle_mit_Seed_*`, `EnvFactory_reicht_Seed_*`. Nicht seedbar bleiben Upstream-Teile: `RandomState`, `Arena::ResetToRandomKickoff`, SkillTracker-Seitentausch |
-| M1 | 1 | `metrics.csv`: Kopfzeile aus Datei übernehmen, neue Spalten anhängen, `nan`/`inf` leer (N4), 12 signifikante Stellen | umgesetzt (VM-getestet) | M1 | `CSV_*`-Tests (7); Smoke-Lauf `train_bot` auf CPU in der VM mit Neustart (siehe Protokoll) |
-| K2 | 1 | `duel.cpp` nutzt die Obs aus `gym.Reset()`/`result.obs` statt `BuildOBS` doppelt | umgesetzt (VM-getestet) | K2 | Linux-`duel` auf Smoke-Checkpoints gelaufen; `EnvFactory_Env_laeuft_100_Schritte_*` prüft, dass der Stack pro Step um genau eine Aktion wandert. Ladder-Nullmessung über die 10 echten Checkpoints: **lokal** (`LOCAL_RUNBOOK.md`) |
-| M4 | 1 | Rating-Schlüssel `<lauf>/<steps>`, `ratings.json` je Lauf | umgesetzt (VM-getestet) | K2 | `test_rating_key_*`, `test_default_ratings_path_is_per_run`; `ladder.py --run` in der VM mit Linux-`duel` |
-| M5 | 1 | `watch.py --run`, `test_policy_parity` nur Hauptlauf, numerisch sortiert; Build-Ordner/Lauf per `RLBOT_BUILD_DIR`/`RLBOT_PARITY_RUN` überschreibbar | umgesetzt (VM-getestet) | K2 | `test_latest_checkpoint_is_numeric_and_per_run`; Policy-Paritätstests in der VM gegen Linux-`dump_policy_actions` und Smoke-Checkpoint grün |
-| K1a | 2 | `game_timeout_secs` 900 in `lucy_1v1.json` und `lucy_multimode.json`; `sanity.json` bleibt bei 120 s (Rauchtest, siehe AUDIT.md 7.5) | umgesetzt | K1a | Wirkung lokal mit `ep_end_time` (M8) pruefen: Anteil muss deutlich unter den geschaetzten 1/3 fallen |
-| H1 | 2 | `PacketBuffer` in `deploy/rlbot/bot.py`: Entscheidung auf dem Paket von vor 7 Ticks; Replay/Countdown/Pause leeren Puffer und Aktions-Stack (wie ein Reset im Training) | umgesetzt (VM-getestet) | H1 | 10 neue Tests in `tests/test_bot_logic.py`: Delay 7 nach Aufwaermen, erste Entscheidung Delay 0, verpasste Ticks, grosse Luecke, Tor-Replay/Kickoff, Pause, Duplikate, Frame-Ruecksprung. Latenz im echten Spiel: **lokal** (Deployment-Smoke-Test) |
-| M3 | 2 | `run_all_tests.ps1` schreibt den Dump in eine Temp-Datei und vergleicht numerisch (`tools/check_golden.py`, Toleranz 1e-5); Referenz nur noch bewusst per `tools/update_golden.ps1` | umgesetzt (VM-getestet) | M3/M7/M2 | `tests/test_tools_checks.py`; Linux-Dump gegen die Windows-Referenz: 120 Obs innerhalb 9,5e-7 (deshalb numerisch statt Hash) |
-| M7 | 2 | `check_policy_compatible()` in `bot.py` (Obs-Größe und Aktionszahl gegen Policy); N1 toter Code entfernt | umgesetzt (VM-getestet) | M3/M7/M2 | 3 Tests in `tests/test_bot_logic.py` |
-| M2 | 2 | `requirements.txt` gepinnt (inkl. `rlbot`, `rlbot_flatbuffers`); `tools/local/check_python_versions.py` vergleicht installierte Versionen mit den Pins; `run_all_tests.ps1` verlangt mindestens 60 ausgefuehrte Python-Tests | umgesetzt; Pins ungeprueft gegen den PC (VM hat andere Versionen) | M3/M7/M2 | `tests/test_tools_checks.py`; **lokal**: `run_all_checks.ps1` Schritt 4 meldet Abweichungen |
-| K1b | 2 | Upstream-Patch `third_party/patches/rlgympppo_cpp_truncation.patch` (10 Dateien): `TerminalCondition::IsTruncation()`, `Gym::StepResult::truncated`, ThreadAgent `done && !truncated`, letzte Episoden-Obs in `nextStates`, GAE-Bootstrap mit `V(nextStates)` an jedem truncated Step; eigene `TimeoutCondition`/`NoTouchTruncation` melden Truncation; `tools/apply_patches.ps1` (idempotent, von `build.ps1` aufgerufen); CMake bricht ohne Patch ab | umgesetzt (VM-getestet) | K1b | Patch mit `git apply --check` auf dem reinen `ee4cc56` und nach dem GCC-Patch geprueft; 6 Tests `K1_*` (Spielzeit-/NoTouch-Timeout truncated, Tor nicht, Tor+Timeout im selben Schritt = Tor, GAE bootstrappt Truncation mit gamma*V(next) und Terminal mit 0); Smoke-Lauf: `Truncated Steps` und `ep_end_truncated` in metrics.csv |
-| H2 | 3 | `ent_coef` 0,004 — nur als Experiment-Config `train/configs/experiments/h2_ent_coef_0004.json` | vorbereitet (lokal ausfuehren) | Schritt 2b | `tests/test_experiment_configs.py` prueft: genau eine Aenderung gegen `baseline.json` |
-| H3 | 3 | Slot-Shuffle: Config-Schalter `env.shuffle_slots` (Default true = altes Verhalten); Experiment-Config folgt in Schritt 2 | Schalter umgesetzt (VM-getestet), Experiment vorbereitet | H6 | `OBS_Shuffle_Slot0_Anteil_ist_ein_Drittel` bestätigt die Audit-Aussage „ein Drittel"; `OBS_ohne_Shuffle_Gegner_immer_in_Slot0` |
-| K3 | 3 | Reward-Umgewichtung laut AUDIT.md — nur als Experiment-Config `k3_rewards.json`; `RUNNING_STATS.json` wird uebernommen (AUDIT.md 7.3) | vorbereitet (lokal ausfuehren) | Schritt 2b | Config-Test; Abbruchkriterium Value Loss mit Aufwaermphase |
-| — | 3 | `team_spirit` 0,1 — Experiment-Config `team_spirit_01.json` | vorbereitet (lokal ausfuehren) | Schritt 2b | Config-Test |
-| H5 | 4 | `learner.exp_buffer_iterations` (Default 3 = bisher hartkodiert), in `config_used.json` sichtbar; Configs `h5_updates6_epochs2_buf3` / `h5_updates3_epochs1_buf3` / `h5_updates2_epochs2_buf1`; `tools/experiments/bench_expbuffer.ps1` misst SPS und Lernkurve mit Wiederholungen | Option umgesetzt (VM-getestet), Benchmark vorbereitet (lokal ausfuehren) | Schritt 3 | Config-Tests; `+10 %` bleibt bis zur lokalen Messung eine Schaetzung (AUDIT.md 0) |
-| M6 | 4 | Obs-Allokationen | offen — H3 wurde als Schalter umgesetzt, nicht als Umbau auf Slot-Permutation; damit gibt es den Nebeneffekt nicht. Bewusst nicht angefasst (einstelliger Prozentbereich, Roadmap: nur als Nebeneffekt) | — | — |
-| N6 | 4 | AVX-512-Zweig | **verworfen**: Messung stammt lokal vom Ryzen 7 8700F (3 gg. 3 Laeufe, -0,8 % in der Streuung), kein Benchmark-Skript; Build-Ordner/Logs liegen ausserhalb des Repos und bleiben liegen (keine Loeschungen) | — | AUDIT.md 7.4 |
-| M9 | — | KRC `r <= 0` → `r < 0` | nicht in der Roadmap; offen | | |
-| N2/N3/N5/N7/N8/N9/N10 | — | Niedrig-Punkte außerhalb der Roadmap | offen | | |
+| H4 | 0 | Git-Commit + Tag, Git-Hash in `config_used.json` | Commit `54105bf` existiert (vom Nutzer, nach dem Audit); `config_used.json` trägt jetzt `_git` (Build-Hash, `-dirty`-Suffix) und `_started`; **Tag `baseline-2.7G` lokal setzen** (Runbook Schritt 0) | Schritt 2a | VM-Smoke-Lauf: `_git` = Build-Hash |
+| M8 | 1 | Metriken `ep_end_goal`, `ep_end_timeout`, `ep_end_notouch`, `ep_end_time`, `ep_end_truncated`, `ep_length_steps`, `scene_<name>_goal/_length` | umgesetzt (VM-getestet) | M8 | `tests/cpp/test_metrics.cpp` (8); `OnIteration` aggregiert alle `AccumAvg`-Schlüssel dynamisch |
+| H6 | 1 | Seed an eigene State-Setter und Obs-Shuffle (`env.seed_envs`, Default true; false = alter zeitgeseedeter Pfad) | umgesetzt (VM-getestet) | H6 | `Seed_*`, `OBS_Shuffle_mit_Seed_*`, `EnvFactory_reicht_Seed_*`. Nicht seedbar bleiben Upstream-Teile: `RandomState`, `Arena::ResetToRandomKickoff`, SkillTracker-Seitentausch |
+| M1 | 1 | `metrics.csv`: Kopfzeile aus Datei übernehmen, neue Spalten anhängen, `nan`/`inf` leer (N4), 12 signifikante Stellen | umgesetzt (VM-getestet) | M1 | `CSV_*`-Tests (7); Smoke-Lauf mit Neustart |
+| K2 | 1 | `duel.cpp` nutzt `gym.Reset()`/`result.obs` statt `BuildOBS` doppelt | umgesetzt (VM-getestet) | K2 | Linux-`duel` auf Smoke-Checkpoints; `EnvFactory_Env_laeuft_100_Schritte_*` (Stack wandert um genau eine Aktion). **Ladder-Nullmessung lokal** (Runbook Schritt 2) |
+| M4 | 1 | Rating-Schlüssel `<lauf>/<steps>`, `ratings.json` je Lauf | umgesetzt (VM-getestet) | K2 | `test_rating_key_*`; `ladder.py --run` in der VM |
+| M5 | 1 | `watch.py --run`, Policy-Paritätstest nur Hauptlauf, numerisch sortiert; `RLBOT_BUILD_DIR`/`RLBOT_PARITY_RUN` | umgesetzt (VM-getestet) | K2 | `test_latest_checkpoint_*`; Paritätstests gegen Linux-Binary grün |
+| K1a | 2 | `game_timeout_secs` 900 in `lucy_1v1.json` und `lucy_multimode.json`; `sanity.json` bleibt 120 s (AUDIT.md 7.5) | umgesetzt | K1a | Wirkung lokal über `ep_end_time` (M8) |
+| H1 | 2 | `PacketBuffer` in `deploy/rlbot/bot.py`: Entscheidung auf dem Paket von vor 7 Ticks; Replay/Countdown/Pause leeren Puffer und Aktions-Stack (wie ein Reset im Training) | umgesetzt (VM-getestet) | H1 | 10 Tests (`tests/test_bot_logic.py`): Delay 7, erste Entscheidung Delay 0, verpasste Ticks, große Lücke, Tor-Replay/Kickoff, Pause, Duplikate, Rücksprung. Echte Latenz: **lokal** |
+| M3 | 2 | Golden-Fixtures werden nur noch geprüft (`tools/check_golden.py`, Toleranz 1e-5), Referenz bewusst per `tools/update_golden.ps1` | umgesetzt (VM-getestet) | M3/M7/M2 | `tests/test_tools_checks.py` |
+| M7 | 2 | `check_policy_compatible()` in `bot.py`; N1 toter Code entfernt | umgesetzt (VM-getestet) | M3/M7/M2 | 3 Tests |
+| M2 | 2 | `requirements.txt` gepinnt (inkl. `rlbot`, `rlbot_flatbuffers`); `tools/local/check_python_versions.py`; `run_all_tests.ps1` verlangt ≥ 60 ausgeführte Python-Tests | umgesetzt; **Pins ungeprüft gegen den PC** | M3/M7/M2 | Runbook Schritt 1.4 meldet Abweichungen |
+| K1b | 2 | Upstream-Patch `rlgympppo_cpp_truncation.patch`: `IsTruncation()`, `StepResult::truncated`, ThreadAgent, letzte Episoden-Obs in `nextStates`, GAE-Bootstrap mit `V(nextStates)`; `apply_patches.ps1` in `build.ps1`; CMake bricht ohne Patch ab | umgesetzt (VM-getestet, **MSVC ungetestet**) | K1b | 6 `K1_*`-Tests inkl. GAE-Nachweis (Timeout bootstrappt γ·V(next), Tor 0); Smoke-Lauf mit `Truncated Steps` |
+| H2 | 3 | `ent_coef` 0,004 — Experiment-Config `h2_ent_coef_0004.json` | vorbereitet (lokal ausführen) | Schritt 2b | `tests/test_experiment_configs.py`: genau eine Änderung |
+| H3 | 3 | Schalter `env.shuffle_slots` (Default true = bisher); Experiment `h3_no_shuffle.json` | Schalter umgesetzt (VM-getestet), Experiment vorbereitet | H6, 2b | `OBS_Shuffle_Slot0_Anteil_ist_ein_Drittel` bestätigt die Audit-Aussage „ein Drittel" |
+| K3 | 3 | Reward-Umgewichtung laut AUDIT.md — Experiment `k3_rewards.json`; `RUNNING_STATS.json` wird übernommen (AUDIT.md 7.3) | vorbereitet (lokal ausführen) | Schritt 2b | Config-Test; Abbruchkriterium mit Aufwärmphase |
+| — | 3 | `team_spirit` 0,1 — Experiment `team_spirit_01.json` | vorbereitet (lokal ausführen) | Schritt 2b | Config-Test |
+| — | 3 | Trainer-Optionen `extra_steps`, `save_on_exit` (Defaults = bisher); `run_experiment.ps1`, `check_abort.py`, `summarize.py`, `compare.py` | umgesetzt (Optionen VM-getestet; Runner nur Syntax) | Schritt 2a/2b | 19 + 6 Tests |
+| H5 | 4 | `learner.exp_buffer_iterations` (Default 3), Configs 6/3/2 Updates, `bench_expbuffer.ps1` | Option umgesetzt (VM-getestet), Benchmark vorbereitet (lokal) | H5 | Config-Tests; „+10 %" bleibt Schätzung bis zur lokalen Messung |
+| M6 | 4 | Obs-Allokationen | offen — H3 wurde als Schalter, nicht als Slot-Permutations-Umbau umgesetzt; Roadmap sieht M6 nur als Nebeneffekt vor | — | — |
+| N6 | 4 | AVX-512-Zweig | **verworfen**: lokal auf dem Ryzen gemessen (3 gg. 3, −0,8 % in der Streuung), kein Benchmark-Skript; Ordner/Logs bleiben liegen | — | AUDIT.md 7.4 |
+| N5 | — | `PINNED.md` | erledigt mit K1b (Patch-Tabelle, Verweis auf `bench/cpp/CMakeLists.txt` entfernt) | K1b | — |
+| N10 | — | Test mit echtem Trainings-Env | erledigt mit H6 (`EnvFactory_Env_laeuft_100_Schritte_*`) | H6 | — |
+| M9, N2, N3, N7, N8, N9 | — | nicht in der Roadmap | offen (bewusst nicht angefasst) | — | — |
 
-## Widersprüche AUDIT.md ↔ Code (Stand vor Umsetzung)
+## Widersprüche AUDIT.md ↔ Code
 
-1. **H4 ist teilweise überholt.** Das Audit sagt „kein einziger Commit". Im Repo liegt der Commit
-   `54105bf` vom 24.09.2026 mit dem gesamten Code, `.gitignore` enthält `rlviser.exe` und
-   `settings.txt`. Offen bleiben nur Tag und Git-Hash in `config_used.json`.
-2. **N5:** `third_party/PINNED.md` verweist auf `bench/cpp/CMakeLists.txt` (existiert nicht) und
-   sagt „Patches am Upstream-Code: keine" — bestätigt; wird mit K1b aktualisiert.
-3. **AUDIT_PROGRESS.md** wurde in der Aufgabenstellung als vorhanden bezeichnet, lag aber weder im
-   Repo noch im Upload. Diese Datei ist neu.
-4. Alle anderen Zeilen-/Dateiverweise im Audit wurden gegen den Code geprüft und stimmen
-   (K1, K2, H1, H2, H3, H5, H6, M1–M9). Die Upstream-Verweise (`Gym.cpp:41/81–86/92`,
-   `Match.cpp:32–38`, `ThreadAgent.cpp:139–141`, `ThreadAgentManager.cpp:55`,
-   `TorchFuncs.cpp:24,36`, `PPOLearnerConfig.h:13`, `Math.cpp:59–64`) stimmen mit `ee4cc56`.
+1. **H4 überholt:** Das Audit sagt „kein einziger Commit". Im Repo liegt `54105bf` (24.09.2026)
+   mit dem gesamten Code, `.gitignore` enthält `rlviser.exe` und `settings.txt`. Offen blieb der
+   Tag (lokal) und der Git-Hash in `config_used.json` (umgesetzt).
+2. **N5:** `third_party/PINNED.md` verwies auf das nicht existierende `bench/cpp/CMakeLists.txt`
+   und sagte „Patches am Upstream-Code: keine" — korrigiert.
+3. **AUDIT_PROGRESS.md** wurde in der Aufgabenstellung als vorhanden bezeichnet, lag aber weder
+   im Repo noch im Upload. Diese Datei ist neu.
+4. **Neuer Upstream-Befund** (AUDIT.md 7.2): Bootstrapping an Sammelblock-Grenzen benutzte den
+   Wert des nächsten Listeneintrags (anderes Spiel). Mit dem K1-Patch behoben.
+5. Alle anderen Zeilen-/Dateiverweise im Audit stimmen mit dem Code und dem Upstream `ee4cc56`.
+
+## Was nicht getestet werden konnte (ehrliche Liste)
+
+* Alle `*.ps1` (Build, Tests, Experimente, Prüfpaket): in der VM nur per PowerShell-Parser auf
+  Syntax geprüft, nie ausgeführt. Erste Ausführung = Runbook Schritt 1.
+* MSVC-Build mit beiden Upstream-Patches und dem neuen `rlbot_tests`-Link gegen libtorch
+  (`RG_IMEXPORT` an `ComputeGAE`).
+* Wirkung von K1b, K1a, H6 auf das Lernen; alle SPS-/Dauerangaben.
+* `requirements.txt`-Pins gegen die tatsächliche Installation.
+* H1 im echten Spiel (RLBot-Paketfolge, Phasenwechsel).
 
 ## Arbeitsprotokoll
 
 * 25.09.2026 — Session gestartet. AUDIT.md aus dem Upload ins Repo übernommen, Herkunftstabelle
-  (§0) ergänzt. Python-Tests in der VM: 51 bestanden, 3 übersprungen. Upstream geklont, Linux-Build
-  gestartet.
-
-* 25.09.2026 — M8, H6/H3-Schalter, M1 umgesetzt. Smoke-Lauf `train_bot` auf CPU in der VM (2 Threads x 2 Spiele, Netz 32x32, 2.500 + 2.500 Steps mit Neustart aus dem Checkpoint): metrics.csv hat genau eine Kopfzeile, Spalten `ep_end_*`, `ep_length_steps`, `scene_*` sind da, spaeter auftauchende Schluessel (`scene_aerial_*`) wurden hinten angehaengt. Keine Leistungszahlen aus diesem Lauf verwendet.
+  (§0) ergänzt. Python-Tests in der VM: 51 bestanden, 3 übersprungen. Upstream geklont
+  (`ee4cc56`), Linux-CPU-Build nach zwei GCC-Fixes (Patch) komplett, 39 C++-Tests grün.
+* 25.09.2026 — Stufe 1 (M8, H6/H3-Schalter, M1, K2/M4/M5) und Stufe 2 (K1a, H1, M3/M7/M2, K1b)
+  umgesetzt, je ein Commit. Smoke-Läufe `train_bot` auf CPU: Neustart, Kopfzeile, Metriken,
+  Truncation, `extra_steps`, `save_on_exit`.
+* 25.09.2026 — Schritt 2 (Experiment-Configs, Runner, Abbruchkriterien, compare), Schritt 3 (H5,
+  N6/M6 dokumentiert), Schritt 4 (`run_all_checks.ps1`, Deployment-Smoke, Runbook). Stand:
+  75 C++-Tests, 97 Python-Tests grün in der VM; alle PowerShell-Skripte syntaktisch geparst.
 
 ## Übernahme für eine neue Session
 
-1. `AUDIT.md` §0 (Herkunft) und §6 (Roadmap) lesen, dann diese Statustabelle.
+1. `AUDIT.md` §0 (Herkunft), §6 (Roadmap) und §7 (Nachtrag) lesen, dann die Statustabelle oben.
 2. `git log --oneline main..` zeigt die Commits pro Roadmap-Punkt.
-3. Offene Punkte stehen oben mit Status `offen`; alles mit `lokal` im Status braucht den
-   Trainings-PC (siehe `LOCAL_RUNBOOK.md`).
-4. Wenn lokale Ergebnisse (`results/*.zip`) vorliegen: `python tools/experiments/compare.py`
-   ausführen und AUDIT.md §7 mit den echten Zahlen fortschreiben.
+3. Offene Punkte: alles mit `lokal` im Status braucht den Trainings-PC (`LOCAL_RUNBOOK.md`).
+4. Wenn lokale Ergebnisse (`results/*.zip`, `results/compare.md`) vorliegen: pro Experiment
+   entscheiden (behalten / verwerfen / nachmessen) nach AUDIT.md §6 Stufe 3, dann AUDIT.md §7
+   und die Roadmap mit den echten Zahlen fortschreiben; erst danach Stufe 4 (`bench_expbuffer.ps1`).
+5. Linux-Entwicklung: `cmake -S . -B build/cpp_linux -G Ninja -DCMAKE_BUILD_TYPE=Release
+   -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_PREFIX_PATH=<venv>/lib/python3.11/site-packages/torch/share/cmake`
+   nach `git -C third_party/RLGymPPO_CPP apply` beider Patches; Meshes aus
+   `<venv>/lib/python3.11/site-packages/rlgym/rocket_league/sim/collision_meshes` nach `collision_meshes/`.
