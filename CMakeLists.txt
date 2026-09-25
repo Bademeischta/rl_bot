@@ -15,6 +15,16 @@ add_subdirectory("${UPSTREAM}" "${CMAKE_BINARY_DIR}/RLGymPPO_CPP")
 
 set(JSON_INCLUDE "${UPSTREAM}/libsrc/json")
 
+# Upstream-Patches müssen angewendet sein (tools/apply_patches.ps1, siehe third_party/PINNED.md).
+# Der K1-Patch definiert RLGSC_HAS_TRUNCATION in Gym.h; ohne ihn wären Timeouts weiter Terminals.
+file(READ "${UPSTREAM}/RLGymSim_CPP/src/RLGymSim_CPP/Gym.h" RLBOT_GYM_H)
+if(NOT RLBOT_GYM_H MATCHES "RLGSC_HAS_TRUNCATION")
+    message(FATAL_ERROR "Upstream-Patch fehlt: third_party/patches/rlgympppo_cpp_truncation.patch ist nicht angewendet. "
+                        "Ausfuehren: powershell -File tools\\apply_patches.ps1 (oder git apply, siehe third_party/PINNED.md)")
+endif()
+
+find_package(Torch REQUIRED)
+
 # --- Environment-Bausteine (Rewards, Obs, State-Setter) ---
 add_library(rlbot_env STATIC
     env/cpp/Rewards.cpp
@@ -50,8 +60,9 @@ add_executable(rlbot_tests
     train/cpp/Metrics.cpp
 )
 set_target_properties(rlbot_tests PROPERTIES CXX_STANDARD 20)
-target_include_directories(rlbot_tests PRIVATE "${JSON_INCLUDE}")
-target_link_libraries(rlbot_tests PRIVATE rlbot_env RLGymPPO_CPP)
+# src/private für den GAE-Test (TorchFuncs::ComputeGAE, per K1-Patch exportiert)
+target_include_directories(rlbot_tests PRIVATE "${JSON_INCLUDE}" "${UPSTREAM}/src" "${UPSTREAM}/src/private")
+target_link_libraries(rlbot_tests PRIVATE rlbot_env RLGymPPO_CPP "${TORCH_LIBRARIES}")
 
 # --- Obs-Dump für den Paritätstest gegen die Python-Implementierung ---
 add_executable(dump_obs tools/cpp/dump_obs.cpp)
@@ -60,7 +71,6 @@ target_include_directories(dump_obs PRIVATE "${JSON_INCLUDE}")
 target_link_libraries(dump_obs PRIVATE rlbot_env)
 
 # --- Policy-Dump: prüft, dass die Python-Inferenz im Deployment identisch rechnet ---
-find_package(Torch REQUIRED)
 add_executable(dump_policy_actions tools/cpp/dump_policy_actions.cpp)
 set_target_properties(dump_policy_actions PROPERTIES CXX_STANDARD 20)
 target_include_directories(dump_policy_actions PRIVATE "${JSON_INCLUDE}")

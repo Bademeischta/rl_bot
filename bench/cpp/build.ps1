@@ -22,6 +22,10 @@ $env:PATH = "$CMakeBin\CMake\bin;$CMakeBin\Ninja;$env:PATH"
 
 $Torch = "$Root\third_party\libtorch_$Flavor\libtorch"
 if (-not (Test-Path $Torch)) { throw "libtorch fehlt: $Torch (siehe third_party\PINNED.md)" }
+
+# Upstream-Patches (Audit K1 Truncation, GCC-Kompatibilität) anwenden, idempotent.
+& powershell -ExecutionPolicy Bypass -File "$Root\tools\apply_patches.ps1"
+if ($LASTEXITCODE) { throw "Upstream-Patches konnten nicht angewendet werden (tools\apply_patches.ps1)" }
 $Build = "$Root\build\cpp_$Flavor$BuildSuffix"
 $Py = (& "$Root\.venv\Scripts\python.exe" -c "import sys; print(sys.base_prefix)").Trim()
 

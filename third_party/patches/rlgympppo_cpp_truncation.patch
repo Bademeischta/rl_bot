@@ -1,0 +1,278 @@
+diff --git a/RLGymPPO_CPP/RLGymSim_CPP/src/RLGymSim_CPP/Envs/Match.cpp b/RLGymPPO_CPP/RLGymSim_CPP/src/RLGymSim_CPP/Envs/Match.cpp
+index cf8c7d8..09cfc26 100644
+--- a/RLGymPPO_CPP/RLGymSim_CPP/src/RLGymSim_CPP/Envs/Match.cpp
++++ b/RLGymPPO_CPP/RLGymSim_CPP/src/RLGymSim_CPP/Envs/Match.cpp
+@@ -29,12 +29,22 @@ namespace RLGSC {
+ 		return rewardFn->GetAllRewards(state, prevActions, done);
+ 	}
+ 
+-	bool Match::IsDone(const GameState& state) {
+-		for (auto& cond : terminalConditions)
+-			if (cond->IsTerminal(state))
+-				return true;
++	bool Match::IsDone(const GameState& state, bool* outTruncated) {
++		// RLbot patch (truncation): evaluate every condition so that a real terminal condition
++		// (goal) wins over a truncation (timeout) firing in the same step.
++		bool done = false;
++		bool anyTermination = false;
++		for (auto& cond : terminalConditions) {
++			if (cond->IsTerminal(state)) {
++				done = true;
++				if (!cond->IsTruncation())
++					anyTermination = true;
++			}
++		}
+ 
+-		return false;
++		if (outTruncated)
++			*outTruncated = done && !anyTermination;
++		return done;
+ 	}
+ 
+ 	ScoreLine Match::GetScoreLine(const GameState& state) {
+diff --git a/RLGymPPO_CPP/RLGymSim_CPP/src/RLGymSim_CPP/Envs/Match.h b/RLGymPPO_CPP/RLGymSim_CPP/src/RLGymSim_CPP/Envs/Match.h
+index 3564992..b101bd1 100644
+--- a/RLGymPPO_CPP/RLGymSim_CPP/src/RLGymSim_CPP/Envs/Match.h
++++ b/RLGymPPO_CPP/RLGymSim_CPP/src/RLGymSim_CPP/Envs/Match.h
+@@ -48,7 +48,9 @@ namespace RLGSC {
+ 		void EpisodeReset(const GameState& initialState);
+ 		FList2 BuildObservations(const GameState& state);
+ 		FList GetRewards(const GameState& state, bool done);
+-		bool IsDone(const GameState& state);
++		// RLbot patch (truncation): outTruncated is set to true when the episode ended ONLY
++		// because of truncation conditions (see TerminalCondition::IsTruncation).
++		bool IsDone(const GameState& state, bool* outTruncated = nullptr);
+ 		ScoreLine GetScoreLine(const GameState& state);
+ 		ActionSet ParseActions(const ActionParser::Input& actionsData, const GameState& gameState);
+ 		GameState ResetState(Arena* arena);
+diff --git a/RLGymPPO_CPP/RLGymSim_CPP/src/RLGymSim_CPP/Gym.cpp b/RLGymPPO_CPP/RLGymSim_CPP/src/RLGymSim_CPP/Gym.cpp
+index 50f688b..d59d626 100644
+--- a/RLGymPPO_CPP/RLGymSim_CPP/src/RLGymSim_CPP/Gym.cpp
++++ b/RLGymPPO_CPP/RLGymSim_CPP/src/RLGymSim_CPP/Gym.cpp
+@@ -89,7 +89,8 @@ namespace RLGSC {
+ 		}
+ 
+ 		FList2 obs = match->BuildObservations(state);
+-		bool done = match->IsDone(state);
++		bool truncated = false;
++		bool done = match->IsDone(state, &truncated);
+ 		FList rewards = match->GetRewards(state, done);
+ 		prevState = state;
+ 
+@@ -97,7 +98,8 @@ namespace RLGSC {
+ 			obs,
+ 			rewards,
+ 			done,
+-			state
++			state,
++			truncated
+ 		};
+ 	}
+ }
+\ No newline at end of file
+diff --git a/RLGymPPO_CPP/RLGymSim_CPP/src/RLGymSim_CPP/Gym.h b/RLGymPPO_CPP/RLGymSim_CPP/src/RLGymSim_CPP/Gym.h
+index 311d3da..5ca71fd 100644
+--- a/RLGymPPO_CPP/RLGymSim_CPP/src/RLGymSim_CPP/Gym.h
++++ b/RLGymPPO_CPP/RLGymSim_CPP/src/RLGymSim_CPP/Gym.h
+@@ -1,6 +1,9 @@
+ #pragma once
+ #include "Envs/Match.h"
+ 
++// RLbot patch (truncation) applied: Gym::StepResult carries a truncated flag.
++#define RLGSC_HAS_TRUNCATION 1
++
+ namespace RLGSC {
+ 	class Gym {
+ 	public:
+@@ -26,6 +29,9 @@ namespace RLGSC {
+ 			FList reward;
+ 			bool done;
+ 			GameState state;
++			// RLbot patch (truncation): done, but only because of a truncation condition.
++			// Kept last so existing aggregate initializers stay valid.
++			bool truncated = false;
+ 		};
+ 		virtual StepResult Step(const ActionParser::Input& actionsData);
+ 
+diff --git a/RLGymPPO_CPP/RLGymSim_CPP/src/RLGymSim_CPP/Utils/TerminalConditions/TerminalCondition.h b/RLGymPPO_CPP/RLGymSim_CPP/src/RLGymSim_CPP/Utils/TerminalConditions/TerminalCondition.h
+index 91bcad2..a5aa473 100644
+--- a/RLGymPPO_CPP/RLGymSim_CPP/src/RLGymSim_CPP/Utils/TerminalConditions/TerminalCondition.h
++++ b/RLGymPPO_CPP/RLGymSim_CPP/src/RLGymSim_CPP/Utils/TerminalConditions/TerminalCondition.h
+@@ -6,5 +6,11 @@ namespace RLGSC {
+ 	public:
+ 		virtual void Reset(const GameState& initialState) {};
+ 		virtual bool IsTerminal(const GameState& currentState) = 0;
++
++		// RLbot patch (truncation): true if this condition ends the episode without the
++		// environment actually being terminal (time limits, no-touch timeouts). The learner then
++		// bootstraps the value of the final state instead of treating it as a terminal state.
++		// Terminal conditions like GoalScoreCondition keep the default (false).
++		virtual bool IsTruncation() const { return false; }
+ 	};
+ }
+\ No newline at end of file
+diff --git a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/ThreadAgent.cpp b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/ThreadAgent.cpp
+index 478d2b9..04f4c25 100644
+--- a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/ThreadAgent.cpp
++++ b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/ThreadAgent.cpp
+@@ -136,12 +136,21 @@ void _RunFunc(ThreadAgent* ta) {
+ 
+ 				auto& stepResult = stepResults[i];
+ 
+-				float done = (float)stepResult.done;
+-				float truncated = (float)false;
++				// RLbot patch (truncation): a timeout is not a terminal state. Store it as
++				// truncated (bootstrap from the final observation) instead of done.
++				float done = (float)(stepResult.done && !stepResult.truncated);
++				float truncated = (float)stepResult.truncated;
+ 
+ 				auto tDone = torch::tensor(done);
+ 				auto tTruncated = torch::tensor(truncated);
+ 
++				// For finished episodes, nextObsTensor already holds the RESET observation of
++				// the next episode (GameInst::Step resets the gym). The GAE needs the last
++				// observation of the finished episode to bootstrap a truncation correctly.
++				torch::Tensor finalObsTensor;
++				if (stepResult.done)
++					finalObsTensor = FLIST2_TO_TENSOR(stepResult.obs);
++
+ 				for (int j = 0; j < numPlayers; j++) {
+ 					ta->trajectories[i][j].AppendSingleStep(
+ 						{
+@@ -154,7 +163,7 @@ void _RunFunc(ThreadAgent* ta) {
+ 							torch::Tensor(),
+ #endif
+ 
+-							nextObsTensor[playerOffset + j],
++							stepResult.done ? finalObsTensor[j] : nextObsTensor[playerOffset + j],
+ 							tDone,
+ 							tTruncated
+ 						}
+diff --git a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/ThreadAgentManager.cpp b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/ThreadAgentManager.cpp
+index 9b128f6..f824903 100644
+--- a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/ThreadAgentManager.cpp
++++ b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/ThreadAgentManager.cpp
+@@ -52,7 +52,10 @@ RLGPC::GameTrajectory RLGPC::ThreadAgentManager::CollectTimesteps(uint64_t amoun
+ 						// The GAE needs to know when the environment state stops being continuous
+ 						// This happens either because the environment reset (i.e. goal scored), called "done",
+ 						//	or the data got cut short, called "truncated"
+-						traj.data.truncateds[traj.size - 1] = (traj.data.dones[traj.size - 1].item<float>() == 0);
++						// RLbot patch (truncation): OR instead of assignment, so a truncation already
++						// marked by the environment (timeout) is kept.
++						if (traj.data.dones[traj.size - 1].item<float>() == 0)
++							traj.data.truncateds[traj.size - 1] = 1.f;
+ 						trajs.push_back(traj);
+ 						totalTimesteps += traj.size;
+ 						traj.Clear();
+diff --git a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Util/TorchFuncs.cpp b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Util/TorchFuncs.cpp
+index 71eb714..4e20560 100644
+--- a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Util/TorchFuncs.cpp
++++ b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Util/TorchFuncs.cpp
+@@ -5,10 +5,13 @@
+ void RLGPC::TorchFuncs::ComputeGAE(
+ 	const FList& rews, const FList& dones, const FList& truncated, const FList& values, 
+ 	torch::Tensor& outAdvantages, torch::Tensor& outValues, FList& outReturns, 
+-	float gamma, float lambda, float returnStd, float clipRange
++	float gamma, float lambda, float returnStd, float clipRange,
++	const FList& truncNextValues
+ ) {
+ 	auto next_values = FList(values.begin() + 1, values.end());
+ 	auto& terminal = dones;
++	bool useTruncNext = !truncNextValues.empty();
++	assert(!useTruncNext || truncNextValues.size() == rews.size());
+ 
+ 	float returnScale = 1 / returnStd;
+ 	if (isnan(returnScale))
+@@ -33,7 +36,10 @@ void RLGPC::TorchFuncs::ComputeGAE(
+ 			norm_rew = rews[step];
+ 		}
+ 
+-		float pred_ret = norm_rew + gamma * next_values[step] * done;
++		// RLbot patch (truncation): bootstrap a truncated step from the value of its own
++		// next state, not from the next entry of the concatenated trajectory list.
++		float nextValue = (useTruncNext && truncated[step] > 0.5f) ? truncNextValues[step] : next_values[step];
++		float pred_ret = norm_rew + gamma * nextValue * done;
+ 		float delta = pred_ret - values[step];
+ 		float ret = rews[step] + lastReturn * gamma * done * trunc;
+ 		returns[step] = ret;
+diff --git a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Util/TorchFuncs.h b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Util/TorchFuncs.h
+index 2a2ce17..e0b1c88 100644
+--- a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Util/TorchFuncs.h
++++ b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Util/TorchFuncs.h
+@@ -6,10 +6,15 @@
+ namespace RLGPC {
+ 	// https://github.com/AechPro/rlgym-ppo/blob/main/rlgym_ppo/util/torch_functions.py
+ 	namespace TorchFuncs {
+-		void ComputeGAE(
++		// RLbot patch (truncation): truncNextValues[i] is the value of nextStates[i] and is used
++		// as the bootstrap value at every step where truncated[i] != 0 (instead of values[i + 1],
++		// which belongs to the next episode or even to another game's trajectory). Pass an
++		// empty list for the original behaviour. Exported so that tests can call it.
++		RG_IMEXPORT void ComputeGAE(
+ 			const FList& rews, const FList& dones, const FList& truncated, const FList& values,
+ 			torch::Tensor& outAdvantages, torch::Tensor& outValues, FList& outReturns,
+-			float gamma = 0.99f, float lambda = 0.95f, float returnStd = 0, float clipRange = 10
++			float gamma = 0.99f, float lambda = 0.95f, float returnStd = 0, float clipRange = 10,
++			const FList& truncNextValues = {}
+ 		);
+ 
+ 		// torch::cat({a, b}, 0) but returns b.clone() if a is undefined
+diff --git a/RLGymPPO_CPP/src/public/RLGymPPO_CPP/Learner.cpp b/RLGymPPO_CPP/src/public/RLGymPPO_CPP/Learner.cpp
+index 923de67..4c95adb 100644
+--- a/RLGymPPO_CPP/src/public/RLGymPPO_CPP/Learner.cpp
++++ b/RLGymPPO_CPP/src/public/RLGymPPO_CPP/Learner.cpp
+@@ -651,13 +651,43 @@ void RLGPC::Learner::AddNewExperience(GameTrajectory& gameTraj, Report& report)
+ 	
+ 	float retStd = (config.standardizeReturns ? returnStats.GetSTD()[0] : 1);
+ 
++	// RLbot patch (truncation): value of the next state at every truncated step, so that
++	// timeouts (and the boundaries between concatenated game trajectories) bootstrap from the
++	// correct state instead of from the next entry in the list.
++	FList truncatedList = TENSOR_TO_FLIST(trajData.truncateds);
++	FList truncNextValues;
++	{
++		std::vector<int64_t> truncIdx;
++		for (size_t i = 0; i < truncatedList.size(); i++)
++			if (truncatedList[i] > 0.5f)
++				truncIdx.push_back((int64_t)i);
++
++		if (!truncIdx.empty()) {
++			truncNextValues = FList(count, 0.f);
++			auto idxTensor = torch::tensor(truncIdx);
++			auto truncStates = trajData.nextStates.index_select(0, idxTensor);
++			auto truncValsTensor = torch::zeros({ (int64_t)truncIdx.size() });
++			for (int64_t i = 0; i < (int64_t)truncIdx.size(); i += ppo->config.miniBatchSize) {
++				int64_t end = RS_MIN(i + ppo->config.miniBatchSize, (int64_t)truncIdx.size());
++				auto part = ppo->valueNet->Forward(truncStates.slice(0, i, end).to(ppo->device, true, true)).cpu().flatten();
++				truncValsTensor.slice(0, i, end).copy_(part, true);
++			}
++			FList truncVals = TENSOR_TO_FLIST(truncValsTensor);
++			for (size_t k = 0; k < truncIdx.size(); k++)
++				truncNextValues[truncIdx[k]] = truncVals[k];
++			report["Truncated Steps"] = (int64_t)truncIdx.size();
++		} else {
++			report["Truncated Steps"] = 0;
++		}
++	}
++
+ 	// Compute GAE stuff
+ 	torch::Tensor advantages, valueTargets;
+ 	FList returns;
+ 	TorchFuncs::ComputeGAE(
+ 		TENSOR_TO_FLIST(trajData.rewards),
+ 		TENSOR_TO_FLIST(trajData.dones),
+-		TENSOR_TO_FLIST(trajData.truncateds),
++		truncatedList,
+ 		valPreds,
+ 		advantages,
+ 		valueTargets,
+@@ -665,7 +695,8 @@ void RLGPC::Learner::AddNewExperience(GameTrajectory& gameTraj, Report& report)
+ 		config.gaeGamma,
+ 		config.gaeLambda,
+ 		retStd,
+-		config.rewardClipRange
++		config.rewardClipRange,
++		truncNextValues
+ 	);
+ 
+ 	float avgRet = 0;

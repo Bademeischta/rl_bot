@@ -45,7 +45,7 @@ int EnvFactory::TeamSizeForIndex(int index) const {
 static std::vector<TerminalCondition*> MakeTerminalConditions(const TrainConfig& cfg) {
 	int ticksPerStep = cfg.tickSkip;
 	return {
-		new NoTouchCondition((int)(cfg.noTouchTimeoutSecs * 120 / ticksPerStep)),
+		new NoTouchTruncation((int)(cfg.noTouchTimeoutSecs * 120 / ticksPerStep)),
 		new TimeoutCondition((int)(cfg.gameTimeoutSecs * 120 / ticksPerStep)),
 		new GoalScoreCondition(),
 	};

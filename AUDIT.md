@@ -1533,6 +1533,19 @@ Mechanismus, den K1 für Timeouts braucht. Der K1-Patch behebt beides auf einmal
 `truncated`-Step wird mit `V(nextStates[step])` gebootstrapt, und `ThreadAgent` legt für beendete
 Episoden die **letzte Beobachtung der Episode** (nicht die Reset-Beobachtung) in `nextStates` ab.
 
+### 7.2a Umsetzung K1 (Stand 25.09.2026)
+
+Der Patch `third_party/patches/rlgympppo_cpp_truncation.patch` setzt die im Befund skizzierte
+Lösung um, mit zwei Ergänzungen gegenüber der Skizze: (1) `Match::IsDone` wertet **alle**
+Bedingungen aus, damit ein Tor im selben Schritt wie ein Timeout als Tor zählt; (2) der
+`ThreadAgent` legt für beendete Episoden die letzte Beobachtung der Episode in `nextStates` ab
+und die GAE bootstrappt an jedem `truncated`-Step mit `V(nextStates[step])` — ohne (2) würde
+ein Timeout mit dem Wert der Reset-Beobachtung der **nächsten** Episode bootstrappen (siehe
+7.2). Neue Report-Größe `Truncated Steps` (Timeouts + Blockgrenzen, erwartet ~1.024 + Timeouts
+pro Iteration). Geprüft in der VM per C++-Tests und Smoke-Lauf; die Wirkung auf das Lernen ist
+**lokal** zu messen (Baseline-Experiment enthält den Patch, Vergleich gegen den alten
+`metrics.csv`-Verlauf über `ep_end_time`, `Avg Val Target`).
+
 ### 7.3 Entscheidung zu K3 und `RUNNING_STATS.json` (Return-std 15,12)
 
 **Entscheidung: übernehmen, nicht zurücksetzen.** Begründung:
