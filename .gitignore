@@ -4,6 +4,8 @@ __pycache__/
 .pytest_cache/
 
 runs/
+# Ergebnisse der lokalen Pruefskripte (run_all_checks, run_experiment); run_all_checks verlangt ein sauberes Arbeitsverzeichnis
+results/
 checkpoints/
 build/
 wandb/

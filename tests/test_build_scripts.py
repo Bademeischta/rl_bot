@@ -283,3 +283,49 @@ def test_run_experiment_keeps_the_start_checkpoint_outside_the_rotation(tmp_path
     # Original unverändert
     assert {f.name: hashlib.sha256(f.read_bytes()).hexdigest() for f in src.iterdir() if f.is_file()} == before
     assert "start" in r.stdout and "Rotation" in r.stdout
+
+
+# --- R18: run_all_checks.ps1 ---------------------------------------------------------------
+
+def _read_log(path: Path) -> str:
+    """Tee-Object unter PowerShell 5.1 schreibt UTF-16 (BOM FF FE), Set-Content -Encoding UTF8 mit BOM."""
+    raw = path.read_bytes()
+    return raw.decode("utf-16") if raw[:2] in (b"\xff\xfe", b"\xfe\xff") else raw.decode("utf-8-sig")
+
+
+@needs_ps51
+def test_run_all_checks_skips_dependent_steps_and_names_results_with_seconds(tmp_path):
+    """Echtes Skript mit einem Build-Fehler (-Flavor ohne Binaries): Tests, Smoke und
+    Deployment-Smoke dürfen dann nicht laufen (keine Tests auf alten Binaries); Git-Stand gibt
+    Branch und Hash aus statt einen festen Branch zu verlangen; Ergebnisordner mit Sekunden."""
+    import re
+    r = _ps("-File", str(ROOT / "tools" / "local" / "run_all_checks.ps1"), "-Flavor", "nichtda", "-SkipBuild",
+            "-Repeat", "1", "-ResultsRoot", str(tmp_path))
+    assert r.returncode == 1, r.stdout + r.stderr
+    dirs = [d for d in tmp_path.iterdir() if d.is_dir()]
+    assert len(dirs) == 1 and re.fullmatch(r"local_check_\d{4}-\d{2}-\d{2}_\d{6}", dirs[0].name), dirs
+    assert (tmp_path / f"{dirs[0].name}.zip").exists()
+    res = dirs[0]
+    git = _read_log(res / "git.txt")
+    assert "Branch: " in git and re.search(r"Hash: [0-9a-f]{40}", git)
+    rows = {}
+    for line in _read_log(res / "SUMMARY.md").splitlines():
+        cells = [c.strip() for c in line.split("|")]
+        if len(cells) >= 3 and cells[1][:1].isdigit():
+            rows[cells[1].split()[0]] = cells[2]
+    if "Uncommittet: nichts" in git:
+        assert rows["1"].startswith("OK"), rows
+        assert rows["2"].startswith("FEHLER") and "fehlt" in rows["2"], rows
+    else:
+        assert rows["1"].startswith("FEHLER") and "nicht sauber" in rows["1"], rows
+        assert rows["2"].startswith("uebersprungen wegen Schritt 1"), rows
+    for step in ("3", "5", "6"):
+        assert rows[step].startswith("uebersprungen wegen Schritt"), (step, rows)
+    assert rows["4"].startswith("OK"), rows
+    assert not (res / "tests.log").exists()          # kein Testlauf auf alten/fehlenden Binaries
+
+
+def test_results_folder_is_ignored_by_git():
+    """run_all_checks verlangt ein sauberes Arbeitsverzeichnis; results/ darf es nicht verschmutzen."""
+    r = _git("check-ignore", "-q", "results/local_check_x/SUMMARY.md")
+    assert r.returncode == 0
