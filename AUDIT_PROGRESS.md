@@ -34,6 +34,7 @@ Befundliste aus dem Auftrag.
 | R16 | `run_experiment.ps1`: End-Checkpoint ohne Vollständigkeitsprüfung | offen | |
 | R17 | Runbook-Vergleichsbefehl verlässt sich auf Glob-Expansion der Shell | offen | |
 | R18 | `run_all_checks.ps1`: harte Branch-Prüfung, Folgeschritte auf alten Binaries, Ergebnisordner überschreibbar | offen | |
+| R19 | Nebenbefund (lokal, mit OK des Nutzers): geseedete Szenen verteilten ihre Zufallszahlen in Hash-Reihenfolge von `arena->_cars` (`unordered_set`, adressabhängig) auf die Autos; gleicher Seed ≠ gleiche Startzustände, `EnvFactory_reicht_Seed_…` flackerte (1 von 5) | behoben: Szenen iterieren nach Car-ID, Dribble-Ballführer zieht der geseedete RNG (weiter gleichverteilt); Test ordnet Spieler nach Car-ID zu | `Seed_gleicher_Seed_gibt_gleiche_Autozustaende_unabhaengig_von_der_Speicherreihenfolge` (40 Arenen, beide Reihenfolgen); beide Tests ohne Fix rot, mit Fix 3× grün |
 
 Nebenbefund bei der Bestandsaufnahme: Der Hauptlauf `runs/lucy_1v1` wurde nach dem Audit mit dem
 **alten** Binary (ohne K1b, `game_timeout_secs` 300) bis 3.907.335.040 Steps weitertrainiert; der

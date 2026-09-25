@@ -3,6 +3,8 @@
 #include <RLGymSim_CPP/Math.h>
 #include <RLGymSim_CPP/Utils/StateSetters/RandomState.h>
 
+#include <algorithm>
+
 namespace RLbot {
 
 using RLGSC::CommonValues::BALL_RADIUS;
@@ -31,6 +33,15 @@ int SceneSetter::RandSign() const {
 	return RandF(0, 1) > 0.5f ? 1 : -1;
 }
 
+// Autos in fester Reihenfolge (Car-ID). arena->_cars ist ein std::unordered_set<Car*>: Die
+// Reihenfolge hängt von den Speicheradressen ab, damit verteilte ein geseedeter Setter seine
+// Zufallszahlen bei jedem Lauf anders auf die Autos (Nebenbefund R19 zu Audit H6).
+static std::vector<Car*> CarsById(Arena* arena) {
+	std::vector<Car*> cars(arena->_cars.begin(), arena->_cars.end());
+	std::sort(cars.begin(), cars.end(), [](const Car* a, const Car* b) { return a->id < b->id; });
+	return cars;
+}
+
 // Autos sauber am Boden absetzen, mit Blick auf einen Zielpunkt.
 static void PlaceOnGround(Car* car, Vec pos, Vec lookAt, float boost) {
 	CarState cs = {};
@@ -56,7 +67,7 @@ GameState AerialSetter::ResetState(Arena* arena) {
 	bs.vel = Vec(RandF(-600, 600), RandF(-600, 600), RandF(-200, 700));
 	arena->ball->SetState(bs);
 
-	for (Car* car : arena->_cars) {
+	for (Car* car : CarsById(arena)) {
 		Vec pos = bs.pos + Vec(RandF(-1800, 1800), RandF(-1800, 1800), 0);
 		pos.x = RS_CLAMP(pos.x, -3800.f, 3800.f);
 		pos.y = RS_CLAMP(pos.y, -4800.f, 4800.f);
@@ -76,9 +87,13 @@ GameState DribbleSetter::ResetState(Arena* arena) {
 	bs.vel = ballVel;
 	arena->ball->SetState(bs);
 
-	bool first = true;
-	for (Car* car : arena->_cars) {
-		if (first) {
+	// Ballführer zufällig aus dem (geseedeten) RNG; vorher war es das erste Auto in
+	// Hash-Reihenfolge, also adressabhängig. Die Verteilung bleibt gleich (jedes Auto gleich oft).
+	auto cars = CarsById(arena);
+	int carrier = std::min((int)cars.size() - 1, (int)RandF(0, (float)cars.size()));
+	for (int i = 0; i < (int)cars.size(); i++) {
+		Car* car = cars[i];
+		if (i == carrier) {
 			// Direkt hinter dem Ball, gleiche Richtung: Carry-Start
 			Vec offsetDir = ballVel.Length() > 50 ? ballVel.Normalized() : Vec(0, 1, 0);
 			CarState cs = {};
@@ -88,7 +103,6 @@ GameState DribbleSetter::ResetState(Arena* arena) {
 			cs.rotMat = Angle(std::atan2(offsetDir.y, offsetDir.x), 0, 0).ToRotMat();
 			cs.boost = RandF(30, 100);
 			car->SetState(cs);
-			first = false;
 		} else {
 			Vec pos = Vec(RandF(-3500, 3500), RandF(-4500, 4500), 17);
 			PlaceOnGround(car, pos, ballPos, RandF(20, 100));
@@ -106,7 +120,7 @@ GameState WallPlaySetter::ResetState(Arena* arena) {
 	bs.vel = Vec(side * RandF(0, 500), RandF(-500, 500), RandF(-300, 300));
 	arena->ball->SetState(bs);
 
-	for (Car* car : arena->_cars) {
+	for (Car* car : CarsById(arena)) {
 		Vec pos = Vec(side * RandF(2200, 3600), bs.pos.y + RandF(-1500, 1500), 17);
 		pos.y = RS_CLAMP(pos.y, -4800.f, 4800.f);
 		PlaceOnGround(car, pos, bs.pos, RandF(40, 100));
@@ -122,7 +136,7 @@ GameState RecoverySetter::ResetState(Arena* arena) {
 	bs.vel = Vec(RandF(-800, 800), RandF(-800, 800), RandF(-200, 400));
 	arena->ball->SetState(bs);
 
-	for (Car* car : arena->_cars) {
+	for (Car* car : CarsById(arena)) {
 		CarState cs = {};
 		cs.pos = Vec(RandF(-3500, 3500), RandF(-4500, 4500), RandF(300, 1600));
 		cs.vel = Vec(RandF(-1200, 1200), RandF(-1200, 1200), RandF(-600, 600));
@@ -144,7 +158,7 @@ GameState DefenseSetter::ResetState(Arena* arena) {
 	bs.vel = (target - bs.pos).Normalized() * RandF(1200, 2600);
 	arena->ball->SetState(bs);
 
-	for (Car* car : arena->_cars) {
+	for (Car* car : CarsById(arena)) {
 		if (car->team == Team::BLUE) {
 			Vec pos = Vec(RandF(-1200, 1200), RandF(-4600, -3000), 17);
 			PlaceOnGround(car, pos, bs.pos, RandF(20, 80));

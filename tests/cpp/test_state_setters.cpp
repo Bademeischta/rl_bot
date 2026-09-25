@@ -252,3 +252,58 @@ TEST(Seed_Mischung_trennt_benachbarte_Envs_und_Stroeme) {
 	CHECK(SeedForEnv(123, 0, 0) != SeedForEnv(124, 0, 0));
 	CHECK_EQ(SeedForEnv(123, 5, 1), SeedForEnv(123, 5, 1));
 }
+
+// Nebenbefund R19 zu H6: arena->_cars ist ein std::unordered_set<Car*>, die Iterationsreihenfolge
+// hängt von den Speicheradressen ab. Gleicher Seed muss trotzdem jedem Auto (per Car-ID) denselben
+// Zustand geben, sonst sind geseedete Läufe im 1v1 nicht reproduzierbar.
+TEST(Seed_gleicher_Seed_gibt_gleiche_Autozustaende_unabhaengig_von_der_Speicherreihenfolge) {
+	if (!g_arenaReady) return;
+	StateSetterWeights w = {};
+	w.kickoff = 0; w.random = 0;
+	w.aerial = 1; w.dribble = 1; w.wallPlay = 1; w.recovery = 1; w.defense = 1;
+
+	// Viele Arenen mit Füllallokationen dazwischen, damit die Autos an verschiedenen Adressen
+	// landen und beide Iterationsreihenfolgen vorkommen.
+	std::vector<Arena*> arenas;
+	std::vector<std::vector<char>> padding;
+	int lowIdFirst = 0, highIdFirst = 0;
+	for (int i = 0; i < 40; i++) {
+		padding.emplace_back(64 + 97 * i);
+		Arena* a = Arena::Create(GameMode::SOCCAR);
+		a->AddCar(Team::BLUE);
+		padding.emplace_back(32 + 211 * i);
+		a->AddCar(Team::ORANGE);
+		uint32_t minId = UINT32_MAX;
+		for (Car* c : a->_cars) minId = RS_MIN(minId, c->id);
+		((*a->_cars.begin())->id == minId ? lowIdFirst : highIdFirst)++;
+		arenas.push_back(a);
+	}
+	// Voraussetzung des Tests: beide Reihenfolgen kommen tatsächlich vor
+	CHECK_GT(lowIdFirst, 0);
+	CHECK_GT(highIdFirst, 0);
+
+	auto carStates = [&](Arena* arena) {
+		WeightedStateSetter setter(w, 4711);
+		std::vector<std::map<uint32_t, CarState>> seq;
+		for (int r = 0; r < 12; r++) {
+			setter.ResetState(arena);
+			std::map<uint32_t, CarState> byId;
+			for (Car* c : arena->_cars) byId[c->id] = c->GetState();
+			seq.push_back(byId);
+		}
+		return seq;
+	};
+	auto ref = carStates(arenas[0]);
+	for (size_t k = 1; k < arenas.size(); k++) {
+		auto seq = carStates(arenas[k]);
+		for (size_t r = 0; r < seq.size(); r++) {
+			for (auto& [id, cs] : ref[r]) {
+				const CarState& other = seq[r].at(id);
+				if ((cs.pos - other.pos).Length() > 1e-3f || std::abs(cs.boost - other.boost) > 1e-3f)
+					FAIL_AT("Arena " << k << ", Reset " << r << ", Car-ID " << id
+					        << ": anderer Zustand bei gleichem Seed (Reihenfolge von arena->_cars)");
+			}
+		}
+	}
+	for (Arena* a : arenas) delete a;
+}

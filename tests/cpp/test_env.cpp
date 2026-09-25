@@ -46,12 +46,20 @@ TEST(EnvFactory_reicht_Seed_und_Shuffle_an_Env_weiter) {
 	auto* s1b = dynamic_cast<WeightedStateSetter*>(e1b.match->stateSetter);
 	CHECK(s1b->seed != s1->seed);
 
-	// Gleicher Seed -> gleicher Startzustand (nur eigene Szenen aktiv)
+	// Gleicher Seed -> gleicher Startzustand (nur eigene Szenen aktiv). Die Spieler-Reihenfolge
+	// folgt arena->_cars (unordered_set, adressabhängig), deshalb nach Car-ID zuordnen (R19).
 	auto obs1 = e1.gym->Reset();
 	auto obs2 = e2.gym->Reset();
 	CHECK_EQ(obs1.size(), obs2.size());
-	for (size_t i = 0; i < obs1[0].size(); i++)
-		CHECK_NEAR(obs1[0][i], obs2[0][i], 1e-6);
+	auto& players1 = e1.gym->prevState.players;
+	auto& players2 = e2.gym->prevState.players;
+	for (size_t p = 0; p < players1.size(); p++) {
+		size_t q = 0;
+		while (q < players2.size() && players2[q].carId != players1[p].carId) q++;
+		CHECK(q < players2.size());
+		for (size_t i = 0; i < obs1[p].size(); i++)
+			CHECK_NEAR(obs1[p][i], obs2[q][i], 1e-6);
+	}
 
 	cfg.seedEnvs = false;
 	EnvFactory f3(cfg);
