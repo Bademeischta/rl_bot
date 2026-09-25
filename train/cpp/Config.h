@@ -51,6 +51,11 @@ struct TrainConfig {
 	std::vector<int> policyLayerSizes = { 512, 512, 512 };
 	std::vector<int> criticLayerSizes = { 512, 512, 512 };
 	int ppoEpochs = 2;
+	// Größe des Experience-Puffers in Iterationen (Audit H5): Puffer = timesteps_per_iteration
+	// mal dieser Faktor. Mit ppo_batch_size = timesteps_per_iteration ergibt das
+	// exp_buffer_iterations Batches pro Epoche, also ppo_epochs * exp_buffer_iterations
+	// Gradientenschritte pro Iteration (Default 3 * 2 = 6, wie bisher hartkodiert).
+	int expBufferIterations = 3;
 	int64_t ppoBatchSize = 100000;
 	int64_t ppoMiniBatchSize = 50000;
 	float entCoef = 0.01f;

@@ -47,9 +47,9 @@ Status-Werte: `offen` · `umgesetzt (VM-getestet)` · `umgesetzt (ungetestet, lo
 | H3 | 3 | Slot-Shuffle: Config-Schalter `env.shuffle_slots` (Default true = altes Verhalten); Experiment-Config folgt in Schritt 2 | Schalter umgesetzt (VM-getestet), Experiment vorbereitet | H6 | `OBS_Shuffle_Slot0_Anteil_ist_ein_Drittel` bestätigt die Audit-Aussage „ein Drittel"; `OBS_ohne_Shuffle_Gegner_immer_in_Slot0` |
 | K3 | 3 | Reward-Umgewichtung laut AUDIT.md — nur als Experiment-Config `k3_rewards.json`; `RUNNING_STATS.json` wird uebernommen (AUDIT.md 7.3) | vorbereitet (lokal ausfuehren) | Schritt 2b | Config-Test; Abbruchkriterium Value Loss mit Aufwaermphase |
 | — | 3 | `team_spirit` 0,1 — Experiment-Config `team_spirit_01.json` | vorbereitet (lokal ausfuehren) | Schritt 2b | Config-Test |
-| H5 | 4 | `exp_buffer_iterations` konfigurierbar, Benchmark-Skript | offen | | |
-| M6 | 4 | Obs-Allokationen | nur als Nebeneffekt von H3 (Roadmap) | | |
-| N6 | 4 | AVX-512-Zweig | offen | | |
+| H5 | 4 | `learner.exp_buffer_iterations` (Default 3 = bisher hartkodiert), in `config_used.json` sichtbar; Configs `h5_updates6_epochs2_buf3` / `h5_updates3_epochs1_buf3` / `h5_updates2_epochs2_buf1`; `tools/experiments/bench_expbuffer.ps1` misst SPS und Lernkurve mit Wiederholungen | Option umgesetzt (VM-getestet), Benchmark vorbereitet (lokal ausfuehren) | Schritt 3 | Config-Tests; `+10 %` bleibt bis zur lokalen Messung eine Schaetzung (AUDIT.md 0) |
+| M6 | 4 | Obs-Allokationen | offen — H3 wurde als Schalter umgesetzt, nicht als Umbau auf Slot-Permutation; damit gibt es den Nebeneffekt nicht. Bewusst nicht angefasst (einstelliger Prozentbereich, Roadmap: nur als Nebeneffekt) | — | — |
+| N6 | 4 | AVX-512-Zweig | **verworfen**: Messung stammt lokal vom Ryzen 7 8700F (3 gg. 3 Laeufe, -0,8 % in der Streuung), kein Benchmark-Skript; Build-Ordner/Logs liegen ausserhalb des Repos und bleiben liegen (keine Loeschungen) | — | AUDIT.md 7.4 |
 | M9 | — | KRC `r <= 0` → `r < 0` | nicht in der Roadmap; offen | | |
 | N2/N3/N5/N7/N8/N9/N10 | — | Niedrig-Punkte außerhalb der Roadmap | offen | | |
 

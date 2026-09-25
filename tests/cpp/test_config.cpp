@@ -248,3 +248,28 @@ TEST(Config_extra_steps_und_save_on_exit_lesbar_und_geprueft) {
 
 	CHECK(LoadFails(R"({"learner": {"extra_steps": -5}})"));
 }
+
+// --- exp_buffer_iterations (Audit H5) ------------------------------------------
+
+TEST(Config_exp_buffer_iterations_Default_3_wie_bisher) {
+	auto path = WriteTempConfig("{}");
+	auto cfg = TrainConfig::FromFile(path.string());
+	std::filesystem::remove(path);
+	CHECK_EQ(cfg.expBufferIterations, 3);
+	CHECK_EQ((int)MakeLearnerConfig(cfg).expBufferSize, (int)(cfg.timestepsPerIteration * 3));
+}
+
+TEST(Config_exp_buffer_iterations_steuert_Puffergroesse) {
+	auto path = WriteTempConfig(R"({"learner": {"exp_buffer_iterations": 1, "timesteps_per_iteration": 50000}})");
+	auto cfg = TrainConfig::FromFile(path.string());
+	std::filesystem::remove(path);
+	CHECK_EQ(cfg.expBufferIterations, 1);
+	CHECK_EQ((int)MakeLearnerConfig(cfg).expBufferSize, 50000);
+
+	auto path2 = WriteTempConfig(cfg.ToJSONString());
+	auto cfg2 = TrainConfig::FromFile(path2.string());
+	std::filesystem::remove(path2);
+	CHECK_EQ(cfg2.expBufferIterations, 1);
+
+	CHECK(LoadFails(R"({"learner": {"exp_buffer_iterations": 0}})"));
+}

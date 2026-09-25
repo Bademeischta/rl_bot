@@ -111,6 +111,7 @@ TrainConfig TrainConfig::FromFile(const std::string& path) {
 			READ(l, seen, cfg.policyLayerSizes, "policy_layer_sizes");
 			READ(l, seen, cfg.criticLayerSizes, "critic_layer_sizes");
 			READ(l, seen, cfg.ppoEpochs, "ppo_epochs");
+			READ(l, seen, cfg.expBufferIterations, "exp_buffer_iterations");
 			READ(l, seen, cfg.ppoBatchSize, "ppo_batch_size");
 			READ(l, seen, cfg.ppoMiniBatchSize, "ppo_mini_batch_size");
 			READ(l, seen, cfg.entCoef, "ent_coef");
@@ -160,6 +161,8 @@ TrainConfig TrainConfig::FromFile(const std::string& path) {
 		RG_ERR_CLOSE("learner.device muss cuda, cpu oder auto sein");
 	if (cfg.extraSteps < 0)
 		RG_ERR_CLOSE("learner.extra_steps darf nicht negativ sein");
+	if (cfg.expBufferIterations < 1)
+		RG_ERR_CLOSE("learner.exp_buffer_iterations muss >= 1 sein");
 
 	return cfg;
 }
@@ -196,7 +199,8 @@ std::string TrainConfig::ToJSONString() const {
 		{ "timesteps_per_save", timestepsPerSave }, { "checkpoints_to_keep", checkpointsToKeep },
 		{ "checkpoint_folder", checkpointFolder },
 		{ "policy_layer_sizes", policyLayerSizes }, { "critic_layer_sizes", criticLayerSizes },
-		{ "ppo_epochs", ppoEpochs }, { "ppo_batch_size", ppoBatchSize },
+		{ "ppo_epochs", ppoEpochs }, { "exp_buffer_iterations", expBufferIterations },
+		{ "ppo_batch_size", ppoBatchSize },
 		{ "ppo_mini_batch_size", ppoMiniBatchSize }, { "ent_coef", entCoef },
 		{ "clip_range", clipRange }, { "policy_lr", policyLR }, { "critic_lr", criticLR },
 		{ "gae_lambda", gaeLambda }, { "gae_gamma", gaeGamma }, { "random_seed", randomSeed },
@@ -228,7 +232,7 @@ RLGPC::LearnerConfig MakeLearnerConfig(const TrainConfig& cfg) {
 	lc.randomSeed = cfg.randomSeed;
 	lc.gaeLambda = cfg.gaeLambda;
 	lc.gaeGamma = cfg.gaeGamma;
-	lc.expBufferSize = cfg.timestepsPerIteration * 3;
+	lc.expBufferSize = cfg.timestepsPerIteration * cfg.expBufferIterations;
 
 	lc.ppo.policyLayerSizes = cfg.policyLayerSizes;
 	lc.ppo.criticLayerSizes = cfg.criticLayerSizes;

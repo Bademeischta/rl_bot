@@ -67,3 +67,24 @@ def test_all_experiments_keep_obs_layout_and_actions():
         cfg = flatten(json.loads(path.read_text(encoding="utf-8")))
         assert cfg["env.max_players"] == 3 and cfg["env.action_stack_size"] == 5, path.name
         assert cfg["learner.checkpoint_folder"] == "runs/EXPERIMENT/checkpoints", path.name
+
+
+# --- Stufe 4, H5: Gradientenschritte pro Iteration ------------------------------
+
+H5_EXPECTED = {
+    "h5_updates6_epochs2_buf3": (2, 3),
+    "h5_updates3_epochs1_buf3": (1, 3),
+    "h5_updates2_epochs2_buf1": (2, 1),
+}
+
+
+@pytest.mark.parametrize("name,expected", list(H5_EXPECTED.items()))
+def test_h5_configs_change_only_epochs_and_buffer(name, expected):
+    cfg = load(name)
+    d = diff(load("baseline"), cfg)
+    assert set(d) <= {"learner.ppo_epochs", "learner.exp_buffer_iterations"}, d
+    assert (cfg["learner.ppo_epochs"], cfg["learner.exp_buffer_iterations"]) == expected
+    # Batch = Iteration: Gradientenschritte je Iteration = epochs * buffer
+    assert cfg["learner.ppo_batch_size"] == cfg["learner.timesteps_per_iteration"]
+    updates = expected[0] * expected[1]
+    assert str(updates) in name
