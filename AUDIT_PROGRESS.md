@@ -17,7 +17,7 @@ Befundliste aus dem Auftrag.
 | ID | Befund | Status | Test (schlägt ohne Fix fehl) |
 |---|---|---|---|
 | R1 | Patches mit CRLF (autocrlf) → `git apply` scheitert am gepinnten Commit | behoben | `tests/test_build_scripts.py` (LF im Arbeitsverzeichnis, `check-attr`, frischer Checkout + `git apply`) |
-| R2 | PowerShell 5.1: stderr nativer Befehle wird mit `ErrorActionPreference=Stop` zum Abbruch | offen | |
+| R2 | PowerShell 5.1: stderr nativer Befehle wird mit `ErrorActionPreference=Stop` zum Abbruch | behoben: `tools/NativeCommand.ps1` (`Invoke-Native`), alle 8 Skripte umgestellt (44 Aufrufe) | `test_invoke_native_*` (stderr + Exit-Code unter 5.1), `test_apply_patches_ps1_runs_under_ps51_on_a_fresh_checkout` (echtes Skript, frischer Klon), AST-Lint `tests/ps_lint_native_calls.ps1` |
 | R3 | `.ps1` ohne BOM: Umlaute/typografische Zeichen brechen unter 5.1 die Syntax | offen | |
 | R4 | K1b: Timeout-Bootstrap mit der Reset-Obs statt der letzten Obs der Episode | offen | |
 | R5 | NaN wird als leeres Feld geschrieben, `check_abort` ignoriert leere Felder | offen | |

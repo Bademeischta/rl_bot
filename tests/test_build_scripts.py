@@ -60,3 +60,78 @@ def test_patches_apply_to_a_fresh_checkout_of_the_pinned_commit(tmp_path):
     for name in UPSTREAM_PATCHES:
         r = _git("apply", "--check", "--reverse", str(PATCH_DIR / name), cwd=clone)
         assert r.returncode == 0, f"{name}: {r.stderr}"
+
+
+# --- B2 / R2: native Programme unter Windows PowerShell 5.1 ----------------------------------
+
+POWERSHELL = shutil.which("powershell.exe") or shutil.which("powershell")
+needs_ps51 = pytest.mark.skipif(POWERSHELL is None, reason="Windows PowerShell 5.1 nicht vorhanden")
+PS_SCRIPTS = sorted(p for p in ROOT.rglob("*.ps1")
+                    if not any(part in (".venv", "third_party", "build", "runs", "results") for part in p.parts))
+
+
+def _ps(*args: str, cwd: Path = ROOT) -> subprocess.CompletedProcess:
+    return subprocess.run([POWERSHELL, "-NoProfile", "-ExecutionPolicy", "Bypass", *args],
+                          cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+
+
+@needs_ps51
+def test_invoke_native_ignores_stderr_and_decides_by_exit_code(tmp_path):
+    """git/cmake/python schreiben Warnungen nach stderr; das darf unter 'Stop' kein Abbruch sein."""
+    import sys
+    script = tmp_path / "probe.ps1"
+    script.write_text(
+        "$ErrorActionPreference = 'Stop'\n"
+        f". '{ROOT / 'tools' / 'NativeCommand.ps1'}'\n"
+        f"$py = '{sys.executable}'\n"
+        # keine doppelten Anführungszeichen im Argument: 5.1 reicht sie nicht escaped weiter
+        "$code = 'import sys; print(''stdout-zeile''); print(''warnung'', file=sys.stderr); sys.exit(int(sys.argv[1]))'\n"
+        "$out = Invoke-Native $py @('-c', $code, '0')\n"
+        "Write-Output \"RUECKGABE=$out\"\n"
+        "$merged = Invoke-Native $py @('-c', $code, '0') -MergeStdErr\n"
+        "Write-Output \"MERGED=$($merged -join '|')\"\n"
+        "Invoke-Native $py @('-c', $code, '3') -NoThrow -Quiet | Out-Null\n"
+        "Write-Output \"NOTHROW=$LASTEXITCODE\"\n"
+        "try { Invoke-Native $py @('-c', $code, '3') -Quiet | Out-Null; Write-Output 'KEIN_ABBRUCH' }\n"
+        "catch { Write-Output \"ABBRUCH=$($_.Exception.Message -match 'Exit-Code 3')\" }\n",
+        encoding="ascii")
+    r = _ps("-File", str(script))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "RUECKGABE=stdout-zeile" in r.stdout          # stderr nicht im Rückgabewert
+    merged = next(line for line in r.stdout.splitlines() if line.startswith("MERGED="))
+    assert sorted(merged[len("MERGED="):].split("|")) == ["stdout-zeile", "warnung"]  # -MergeStdErr: als Text dabei
+    assert "NOTHROW=3" in r.stdout
+    assert "ABBRUCH=True" in r.stdout
+
+
+@needs_ps51
+@needs_git
+@pytest.mark.skipif(not (UPSTREAM / ".git").exists(), reason="third_party/RLGymPPO_CPP fehlt")
+def test_apply_patches_ps1_runs_under_ps51_on_a_fresh_checkout(tmp_path):
+    """Der echte Pfad: apply_patches.ps1 auf einem ungepatchten Klon. Vorher brach 5.1 beim ersten
+    'git apply --check --reverse' ab (stderr "patch failed" -> NativeCommandError)."""
+    clone = tmp_path / "upstream"
+    assert _git("clone", "-q", "--shared", "--no-checkout", str(UPSTREAM), str(clone)).returncode == 0
+    assert _git("checkout", "-q", PINNED, cwd=clone).returncode == 0
+    script = str(ROOT / "tools" / "apply_patches.ps1")
+
+    r = _ps("-File", script, "-Check", "-Repo", str(clone))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert r.stdout.count("[anwendbar, nicht angewendet]") == 2, r.stdout
+
+    r = _ps("-File", script, "-Repo", str(clone))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert r.stdout.count("[angewendet]") == 2, r.stdout
+
+    r = _ps("-File", script, "-Repo", str(clone))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert r.stdout.count("[bereits angewendet]") == 2, r.stdout
+
+
+@needs_ps51
+def test_no_script_calls_native_programs_directly():
+    """Jeder Aufruf von git/cmake/python/*.exe/... läuft über Invoke-Native (AST-Lint unter 5.1)."""
+    scripts = [str(p) for p in PS_SCRIPTS if p.name not in ("NativeCommand.ps1", "ps_lint_native_calls.ps1")]
+    assert scripts
+    r = _ps("-File", str(ROOT / "tests" / "ps_lint_native_calls.ps1"), *scripts)
+    assert r.returncode == 0, "direkte native Aufrufe:\n" + r.stdout + r.stderr

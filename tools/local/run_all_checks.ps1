@@ -26,6 +26,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 $Root = (Resolve-Path "$PSScriptRoot\..\..").Path
+# Native Programme nur über Invoke-Native (Review-Befund R2: stderr unter PowerShell 5.1)
+. "$Root\tools\NativeCommand.ps1"
 $Py = "$Root\.venv\Scripts\python.exe"
 $Build = "$Root\build\cpp_$Flavor"
 $Date = Get-Date -Format "yyyy-MM-dd_HHmm"
@@ -51,17 +53,18 @@ function Step($name, [scriptblock]$body) {
 
 try {
     if (-not (Test-Path $Py)) { throw ".venv fehlt: $Py (README, Einrichtung)" }
-    $pyHome = (& $Py -c "import sys; print(sys.base_prefix)").Trim()
+    $pyHome = (Invoke-Native $Py @('-c', 'import sys; print(sys.base_prefix)')).Trim()
     $env:PYTHONHOME = $pyHome
     $env:PATH = "$pyHome;$env:PATH"
 
     # --- 1. Branch-Stand -----------------------------------------------------------
     Step "1 Branch-Stand" {
-        $branch = (git -C $Root rev-parse --abbrev-ref HEAD).Trim()
-        $commit = (git -C $Root log -1 --format="%h %ad %s" --date=short).Trim()
-        $dirty = (git -C $Root status --porcelain)
-        @("Branch: $branch", "Commit: $commit", "Uncommittet: $(if ($dirty) { ($dirty | Measure-Object).Count + ' Dateien' } else { 'nichts' })",
-          "Upstream: $(git -C "$Root\third_party\RLGymPPO_CPP" rev-parse --short HEAD 2>$null)") |
+        $branch = (Invoke-Native git @('-C', $Root, 'rev-parse', '--abbrev-ref', 'HEAD')).Trim()
+        $commit = (Invoke-Native git @('-C', $Root, 'log', '-1', '--format=%h %ad %s', '--date=short')).Trim()
+        $dirty = Invoke-Native git @('-C', $Root, 'status', '--porcelain') -Quiet
+        $upstream = Invoke-Native git @('-C', "$Root\third_party\RLGymPPO_CPP", 'rev-parse', '--short', 'HEAD') -NoThrow -Quiet
+        @("Branch: $branch", "Commit: $commit", "Uncommittet: $(if ($dirty) { "$(($dirty | Measure-Object).Count) Dateien" } else { 'nichts' })",
+          "Upstream: $upstream") |
             Tee-Object -FilePath "$Res\git.txt" | ForEach-Object { Write-Host $_ }
         if ($branch -ne $ExpectedBranch) { throw "Branch ist '$branch', erwartet '$ExpectedBranch' (git checkout $ExpectedBranch && git pull)" }
         if ($dirty) { "OK, aber uncommittete Aenderungen vorhanden" } else { "OK ($commit)" }
@@ -69,7 +72,8 @@ try {
 
     # --- 2. Patches + Build ---------------------------------------------------------
     Step "2 Patches und Build ($Flavor)" {
-        & powershell -ExecutionPolicy Bypass -File "$Root\tools\apply_patches.ps1" 2>&1 | Tee-Object -FilePath "$Res\patches.log" | ForEach-Object { Write-Host $_ }
+        Invoke-Native powershell @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "$Root\tools\apply_patches.ps1") -MergeStdErr -NoThrow |
+            Tee-Object -FilePath "$Res\patches.log" | ForEach-Object { Write-Host $_ }
         if ($LASTEXITCODE) { throw "apply_patches.ps1 Exit $LASTEXITCODE" }
         if ($SkipBuild) {
             foreach ($exe in @("train_bot.exe", "rlbot_tests.exe", "dump_obs.exe", "duel.exe", "dump_policy_actions.exe")) {
@@ -77,21 +81,24 @@ try {
             }
             return "uebersprungen (-SkipBuild), Binaries vorhanden"
         }
-        & powershell -ExecutionPolicy Bypass -File "$Root\bench\cpp\build.ps1" -Flavor $Flavor 2>&1 | Tee-Object -FilePath "$Res\build.log" | Select-Object -Last 3 | ForEach-Object { Write-Host $_ }
+        Invoke-Native powershell @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "$Root\bench\cpp\build.ps1", '-Flavor', $Flavor) -MergeStdErr -NoThrow |
+            Tee-Object -FilePath "$Res\build.log" | Select-Object -Last 3 | ForEach-Object { Write-Host $_ }
         if ($LASTEXITCODE) { throw "build.ps1 Exit $LASTEXITCODE, siehe $Res\build.log" }
         "OK"
     }
 
     # --- 3. Tests ---------------------------------------------------------------------
     Step "3 Tests (-Repeat $Repeat)" {
-        & powershell -ExecutionPolicy Bypass -File "$Root\tools\run_all_tests.ps1" -Repeat $Repeat -Flavor $Flavor 2>&1 | Tee-Object -FilePath "$Res\tests.log" | Select-String -Pattern "bestanden|FAIL|fehlgeschlagen|passed|failed|Golden|Python:" | ForEach-Object { Write-Host $_ }
+        Invoke-Native powershell @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "$Root\tools\run_all_tests.ps1", '-Repeat', $Repeat, '-Flavor', $Flavor) -MergeStdErr -NoThrow |
+            Tee-Object -FilePath "$Res\tests.log" | Select-String -Pattern "bestanden|FAIL|fehlgeschlagen|passed|failed|Golden|Python:" | ForEach-Object { Write-Host $_ }
         if ($LASTEXITCODE) { throw "run_all_tests.ps1 Exit $LASTEXITCODE, siehe $Res\tests.log" }
         "OK"
     }
 
     # --- 4. Python-Versionen --------------------------------------------------------------
     Step "4 Python-Versionen gegen Pins" {
-        & $Py "$Root\tools\local\check_python_versions.py" --json "$Res\python_versions.json" 2>&1 | Tee-Object -FilePath "$Res\python_versions.txt" | ForEach-Object { Write-Host $_ }
+        Invoke-Native $Py @("$Root\tools\local\check_python_versions.py", '--json', "$Res\python_versions.json") -MergeStdErr -NoThrow |
+            Tee-Object -FilePath "$Res\python_versions.txt" | ForEach-Object { Write-Host $_ }
         switch ($LASTEXITCODE) {
             0 { "OK, alle Pins stimmen" }
             1 { "ABWEICHUNG (Information, siehe python_versions.txt)" }
@@ -113,13 +120,15 @@ try {
         $cfg.metrics.run = "local_check_sanity"
         $cfgPath = "$smokeRun\config.json"
         $cfg | ConvertTo-Json -Depth 10 | Set-Content -Path $cfgPath -Encoding UTF8
-        & "$Build\train_bot.exe" $cfgPath --save-on-exit 2>&1 | Tee-Object -FilePath "$Res\smoke_train.log" | Select-String -Pattern "Timestep limit|FATAL|Exception|extra_steps|save_on_exit" | ForEach-Object { Write-Host $_ }
+        Invoke-Native "$Build\train_bot.exe" @($cfgPath, '--save-on-exit') -MergeStdErr -NoThrow |
+            Tee-Object -FilePath "$Res\smoke_train.log" | Select-String -Pattern "Timestep limit|FATAL|Exception|extra_steps|save_on_exit" | ForEach-Object { Write-Host $_ }
         if ($LASTEXITCODE) { throw "train_bot.exe Exit $LASTEXITCODE, siehe $Res\smoke_train.log" }
         Copy-Item "$smokeRun\metrics.csv" -Destination "$Res\smoke_metrics.csv"
         Copy-Item "$smokeRun\config_used.json" -Destination "$Res\smoke_config_used.json"
-        & $Py "$Root\tools\experiments\check_abort.py" "$smokeRun\metrics.csv" --warmup 5 2>&1 | ForEach-Object { Write-Host $_ }
+        Invoke-Native $Py @("$Root\tools\experiments\check_abort.py", "$smokeRun\metrics.csv", '--warmup', 5) -MergeStdErr -NoThrow | ForEach-Object { Write-Host $_ }
         if ($LASTEXITCODE -eq 3) { throw "Abbruchkriterium im Smoke-Lauf verletzt (nan/inf?)" }
-        & $Py "$Root\tools\experiments\summarize.py" --run $smokeRun --out "$Res\smoke" --name local_check_sanity 2>&1 | Select-Object -First 30 | ForEach-Object { Write-Host $_ }
+        $sumOut = Invoke-Native $Py @("$Root\tools\experiments\summarize.py", '--run', $smokeRun, '--out', "$Res\smoke", '--name', 'local_check_sanity') -MergeStdErr
+        $sumOut | Select-Object -First 30 | ForEach-Object { Write-Host $_ }
         $ckpts = Get-ChildItem "$smokeRun\checkpoints" -Directory | Measure-Object
         "OK ($($ckpts.Count) Checkpoints, metrics in smoke_metrics.csv)"
     }
@@ -128,12 +137,15 @@ try {
     Step "6 Deployment-Smoke und Bestandsaufnahme ($Run)" {
         if ($SkipDeploy) { return "uebersprungen (-SkipDeploy)" }
         if (-not (Test-Path "$Root\$Run")) { throw "Lauf fehlt: $Root\$Run" }
-        & $Py "$Root\tools\local\inspect_run.py" --run "$Root\$Run" --out "$Res\run_inspect.json" 2>&1 | Select-Object -First 5 | ForEach-Object { Write-Host $_ }
-        & $Py "$Root\tools\local\deploy_smoke.py" --run "$Root\$Run" --out "$Res\deploy" 2>&1 | Tee-Object -FilePath "$Res\deploy_smoke.txt" | ForEach-Object { Write-Host $_ }
+        $inspectOut = Invoke-Native $Py @("$Root\tools\local\inspect_run.py", '--run', "$Root\$Run", '--out', "$Res\run_inspect.json") -MergeStdErr
+        $inspectOut | Select-Object -First 5 | ForEach-Object { Write-Host $_ }
+        Invoke-Native $Py @("$Root\tools\local\deploy_smoke.py", '--run', "$Root\$Run", '--out', "$Res\deploy") -MergeStdErr -NoThrow |
+            Tee-Object -FilePath "$Res\deploy_smoke.txt" | ForEach-Object { Write-Host $_ }
         if ($LASTEXITCODE) { throw "deploy_smoke.py Exit $LASTEXITCODE (siehe deploy_smoke.txt)" }
         # Policy-Paritaet gegen den echten Checkpoint (dump_policy_actions.exe)
         $env:RLBOT_PARITY_RUN = "$Root\$Run"
-        & $Py -m pytest "$Root\tests\test_policy_parity.py" -q --no-header -p no:cacheprovider 2>&1 | Tee-Object -FilePath "$Res\policy_parity.txt" | Select-Object -Last 2 | ForEach-Object { Write-Host $_ }
+        Invoke-Native $Py @('-m', 'pytest', "$Root\tests\test_policy_parity.py", '-q', '--no-header', '-p', 'no:cacheprovider') -MergeStdErr -NoThrow |
+            Tee-Object -FilePath "$Res\policy_parity.txt" | Select-Object -Last 2 | ForEach-Object { Write-Host $_ }
         if ($LASTEXITCODE) { throw "Policy-Paritaetstest fehlgeschlagen (policy_parity.txt)" }
         "OK"
     }

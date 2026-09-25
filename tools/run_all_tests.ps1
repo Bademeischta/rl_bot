@@ -17,9 +17,12 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+# Native Programme nur über Invoke-Native (Review-Befund R2: stderr unter PowerShell 5.1)
+. "$PSScriptRoot\NativeCommand.ps1"
 $Root = Resolve-Path "$PSScriptRoot\.."
 $Build = "$Root\build\cpp_$Flavor"
-$Py = (& "$Root\.venv\Scripts\python.exe" -c "import sys; print(sys.base_prefix)").Trim()
+$VenvPy = "$Root\.venv\Scripts\python.exe"
+$Py = (Invoke-Native $VenvPy @('-c', 'import sys; print(sys.base_prefix)')).Trim()
 $env:PYTHONHOME = $Py
 $env:PATH = "$Py;$env:PATH"
 
@@ -28,16 +31,17 @@ for ($run = 1; $run -le $Repeat; $run++) {
     Write-Host "`n=== Durchlauf $run von $Repeat ===" -ForegroundColor Cyan
 
     Write-Host "`n--- C++-Unit-Tests ---"
-    & "$Build\rlbot_tests.exe" "$Root\collision_meshes" | Select-String -Pattern "FAIL|bestanden"
+    Invoke-Native "$Build\rlbot_tests.exe" @("$Root\collision_meshes") -MergeStdErr -NoThrow |
+        Select-String -Pattern "FAIL|bestanden|WARNUNG" -Context 0, 1 | ForEach-Object { Write-Host $_ }
     if ($LASTEXITCODE -ne 0) { $failed++; Write-Host "C++-Tests fehlgeschlagen" -ForegroundColor Red }
 
     Write-Host "`n--- Golden-Fixtures pruefen (werden nicht ueberschrieben) ---"
     $tmpDump = Join-Path $env:TEMP "rlbot_obs_check_$run.json"
-    & "$Build\dump_obs.exe" $tmpDump 30 | Select-Object -Last 1
+    Invoke-Native "$Build\dump_obs.exe" @($tmpDump, 30) -MergeStdErr -NoThrow | Select-Object -Last 1 | ForEach-Object { Write-Host $_ }
     if ($LASTEXITCODE -ne 0) {
         $failed++; Write-Host "dump_obs fehlgeschlagen" -ForegroundColor Red
     } else {
-        & "$Root\.venv\Scripts\python.exe" "$Root\tools\check_golden.py" $tmpDump
+        Invoke-Native $VenvPy @("$Root\tools\check_golden.py", $tmpDump) -MergeStdErr -NoThrow | ForEach-Object { Write-Host $_ }
         if ($LASTEXITCODE -ne 0) {
             $failed++
             Write-Host "Obs-Layout hat sich geaendert - bestehende Checkpoints sind INKOMPATIBEL." -ForegroundColor Red
@@ -46,9 +50,10 @@ for ($run = 1; $run -le $Repeat; $run++) {
     }
 
     Write-Host "`n--- Python-Tests ---"
-    $pyOut = & "$Root\.venv\Scripts\python.exe" -m pytest "$Root\tests" -q --no-header -p no:cacheprovider 2>&1
+    $pyOut = Invoke-Native $VenvPy @('-m', 'pytest', "$Root\tests", '-q', '--no-header', '-p', 'no:cacheprovider') -MergeStdErr -NoThrow
+    $pyExit = $LASTEXITCODE
     $pyOut | ForEach-Object { Write-Host $_ }
-    if ($LASTEXITCODE -ne 0) { $failed++; Write-Host "Python-Tests fehlgeschlagen" -ForegroundColor Red }
+    if ($pyExit -ne 0) { $failed++; Write-Host "Python-Tests fehlgeschlagen" -ForegroundColor Red }
 
     $summary = ($pyOut | Select-String -Pattern "(\d+) passed") | Select-Object -Last 1
     $passed = 0

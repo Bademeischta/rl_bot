@@ -11,11 +11,13 @@ param(
 
 $ErrorActionPreference = "Stop"
 $Root = Resolve-Path "$PSScriptRoot\..\.."
+# Native Programme nur über Invoke-Native (Review-Befund R2: stderr unter PowerShell 5.1)
+. "$Root\tools\NativeCommand.ps1"
 $VS = "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools"
 $CMakeBin = "$VS\Common7\IDE\CommonExtensions\Microsoft\CMake"
 
 # MSVC-Umgebung (x64) in diese PowerShell-Session übernehmen
-cmd /c "`"$VS\VC\Auxiliary\Build\vcvars64.bat`" >nul && set" | ForEach-Object {
+Invoke-Native cmd @('/c', "`"$VS\VC\Auxiliary\Build\vcvars64.bat`" >nul && set") | ForEach-Object {
     if ($_ -match "^(.*?)=(.*)$") { Set-Item "env:$($matches[1])" $matches[2] }
 }
 $env:PATH = "$CMakeBin\CMake\bin;$CMakeBin\Ninja;$env:PATH"
@@ -24,14 +26,15 @@ $Torch = "$Root\third_party\libtorch_$Flavor\libtorch"
 if (-not (Test-Path $Torch)) { throw "libtorch fehlt: $Torch (siehe third_party\PINNED.md)" }
 
 # Upstream-Patches (Audit K1 Truncation, GCC-Kompatibilität) anwenden, idempotent.
-& powershell -ExecutionPolicy Bypass -File "$Root\tools\apply_patches.ps1"
+Invoke-Native powershell @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "$Root\tools\apply_patches.ps1") -MergeStdErr -NoThrow
 if ($LASTEXITCODE) { throw "Upstream-Patches konnten nicht angewendet werden (tools\apply_patches.ps1)" }
 $Build = "$Root\build\cpp_$Flavor$BuildSuffix"
 # Audit H4: Git-Hash in config_used.json
-$GitHash = (git -C $Root rev-parse --short HEAD 2>$null)
-if (-not $GitHash) { $GitHash = "unbekannt" }
-if (git -C $Root status --porcelain 2>$null) { $GitHash = "$GitHash-dirty" }
-$Py = (& "$Root\.venv\Scripts\python.exe" -c "import sys; print(sys.base_prefix)").Trim()
+$GitHash = Invoke-Native git @('-C', $Root, 'rev-parse', '--short', 'HEAD') -NoThrow -Quiet
+if ($LASTEXITCODE -or -not $GitHash) { $GitHash = "unbekannt" }
+$dirty = Invoke-Native git @('-C', $Root, 'status', '--porcelain') -NoThrow -Quiet
+if ($dirty) { $GitHash = "$GitHash-dirty" }
+$Py = (Invoke-Native "$Root\.venv\Scripts\python.exe" @('-c', 'import sys; print(sys.base_prefix)')).Trim()
 
 $cmakeArgs = @(
     "-S", $Root, "-B", $Build, "-G", "Ninja",
@@ -54,12 +57,12 @@ if ($Flavor -eq "cu128") {
     $cmakeArgs += "-DRLBOT_SKIP_CUDA_LANGUAGE=ON"
 }
 
-cmake @cmakeArgs
+Invoke-Native cmake $cmakeArgs -MergeStdErr -NoThrow
 if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
 if ($Target -eq "all") {
-    cmake --build $Build
+    Invoke-Native cmake @('--build', $Build) -MergeStdErr -NoThrow
 } else {
-    cmake --build $Build --target $Target
+    Invoke-Native cmake @('--build', $Build, '--target', $Target) -MergeStdErr -NoThrow
 }
 exit $LASTEXITCODE

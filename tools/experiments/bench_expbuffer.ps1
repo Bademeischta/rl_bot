@@ -21,6 +21,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 $Root = (Resolve-Path "$PSScriptRoot\..\..").Path
+# Native Programme nur über Invoke-Native (Review-Befund R2: stderr unter PowerShell 5.1)
+. "$Root\tools\NativeCommand.ps1"
 $Py = "$Root\.venv\Scripts\python.exe"
 $Runner = "$Root\tools\experiments\run_experiment.ps1"
 $Variants = @("h5_updates6_epochs2_buf3", "h5_updates3_epochs1_buf3", "h5_updates2_epochs2_buf1")
@@ -36,12 +38,12 @@ try {
         foreach ($variant in $Variants) {
             $name = "${variant}_r$rep"
             Write-Host "`n=== $name ($Steps Steps, Seed $Seed) ===" -ForegroundColor Cyan
-            $args = @("-ExecutionPolicy", "Bypass", "-File", $Runner,
+            $runArgs = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $Runner,
                       "-Config", "$Root\train\configs\experiments\$variant.json",
                       "-StartCheckpoint", $StartCheckpoint, "-Steps", $Steps, "-Seed", $Seed,
                       "-Name", $name, "-DuelGames", $DuelGames, "-Flavor", $Flavor, "-SkipLadder")
-            if ($baselineFolder -ne "") { $args += @("-Baseline", $baselineFolder) }
-            & powershell @args
+            if ($baselineFolder -ne "") { $runArgs += @("-Baseline", $baselineFolder) }
+            Invoke-Native powershell $runArgs -MergeStdErr -NoThrow | ForEach-Object { Write-Host $_ }
             $rc = $LASTEXITCODE
             $folder = Get-ChildItem "$Root\results" -Directory | Where-Object { $_.Name -like "exp_${name}_*" } |
                 Sort-Object LastWriteTime | Select-Object -Last 1
@@ -56,7 +58,7 @@ try {
 
     if ($folders.Count -ge 2) {
         $out = "$Root\results\bench_expbuffer_$Date.md"
-        & $Py "$Root\tools\experiments\compare.py" @folders --baseline $baselineFolder --out $out
+        Invoke-Native $Py (@("$Root\tools\experiments\compare.py") + $folders + @('--baseline', $baselineFolder, '--out', $out)) -MergeStdErr | ForEach-Object { Write-Host $_ }
         Write-Host "`nVergleich: $out" -ForegroundColor Green
         Write-Host "SPS-Spalte = Durchsatz, ep_end_goal/Ballkontakt/Duell = Lernkurve. Streuung zwischen den"
         Write-Host "Wiederholungen (_r1/_r2) derselben Variante zeigt, ob ein Unterschied belastbar ist."

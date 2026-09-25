@@ -37,6 +37,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 $Root = (Resolve-Path "$PSScriptRoot\..\..").Path
+# Native Programme nur über Invoke-Native (Review-Befund R2: stderr unter PowerShell 5.1)
+. "$Root\tools\NativeCommand.ps1"
 $Py = "$Root\.venv\Scripts\python.exe"
 $Build = "$Root\build\cpp_$Flavor"
 $Trainer = "$Build\train_bot.exe"
@@ -69,7 +71,9 @@ try {
     Write-Host "Config:           $Config"
     Write-Host "Start-Checkpoint: $StartCheckpoint ($startSteps Steps)"
     Write-Host "Steps:            $Steps   Seed: $Seed   Ziel: $($startSteps + $Steps)"
-    Write-Host "Git:              $(git -C $Root rev-parse --short HEAD) $(if (git -C $Root status --porcelain) { '(dirty)' })"
+    $gitHead = Invoke-Native git @('-C', $Root, 'rev-parse', '--short', 'HEAD') -NoThrow -Quiet
+    $gitDirty = Invoke-Native git @('-C', $Root, 'status', '--porcelain') -NoThrow -Quiet
+    Write-Host "Git:              $gitHead $(if ($gitDirty) { '(dirty)' })"
 
     # --- 1. Speicherplatz --------------------------------------------------------
     $drive = (Get-Item $Root).PSDrive
@@ -100,7 +104,7 @@ try {
     $cfgJson | ConvertTo-Json -Depth 10 | Set-Content -Path $cfgPath -Encoding UTF8
     Write-Host "Abgeleitete Config: $cfgPath"
 
-    $pyHome = (& $Py -c "import sys; print(sys.base_prefix)").Trim()
+    $pyHome = (Invoke-Native $Py @('-c', 'import sys; print(sys.base_prefix)')).Trim()
     $env:PYTHONHOME = $pyHome
     $env:PATH = "$pyHome;$env:PATH"
 
@@ -121,7 +125,7 @@ try {
         Start-Sleep -Seconds $PollSeconds
         $checkArgs = @("$Root\tools\experiments\check_abort.py", "$RunDir\metrics.csv", "--warmup", $AbortWarmup)
         if ($baselineSps) { $checkArgs += @("--baseline-sps", $baselineSps) }
-        $out = & $Py @checkArgs 2>&1
+        $out = Invoke-Native $Py $checkArgs -MergeStdErr -NoThrow
         $code = $LASTEXITCODE
         if ($code -eq 3) {
             $abortReason = ($out | Out-String).Trim()
@@ -153,21 +157,21 @@ try {
     $duelBase = "$ResDir\duel_end_vs_baseline.json"
     if ((Test-Path $Duel) -and [long]$endCkpt.Name -ne $startSteps) {
         Write-Host "Duell Ende gegen Start ($DuelGames Spiele)..."
-        & $Duel --a "$($endCkpt.FullName)\PPO_POLICY.lt" --b "$ckptDst\PPO_POLICY.lt" --games $DuelGames `
-            --meshes "$Root\collision_meshes" --out $duelStart | Select-Object -Last 2
+        Invoke-Native $Duel @('--a', "$($endCkpt.FullName)\PPO_POLICY.lt", '--b', "$ckptDst\PPO_POLICY.lt", '--games', $DuelGames,
+            '--meshes', "$Root\collision_meshes", '--out', $duelStart) -MergeStdErr | Select-Object -Last 2 | ForEach-Object { Write-Host $_ }
         if ($Baseline -ne "" -and (Test-Path "$Baseline\summary.json")) {
             $bs = Get-Content "$Baseline\summary.json" -Raw | ConvertFrom-Json
             if ($bs.end_checkpoint -and (Test-Path "$($bs.end_checkpoint)\PPO_POLICY.lt")) {
                 Write-Host "Duell Ende gegen Baseline-Ende ($DuelGames Spiele)..."
-                & $Duel --a "$($endCkpt.FullName)\PPO_POLICY.lt" --b "$($bs.end_checkpoint)\PPO_POLICY.lt" `
-                    --games $DuelGames --meshes "$Root\collision_meshes" --out $duelBase | Select-Object -Last 2
+                Invoke-Native $Duel @('--a', "$($endCkpt.FullName)\PPO_POLICY.lt", '--b', "$($bs.end_checkpoint)\PPO_POLICY.lt",
+                    '--games', $DuelGames, '--meshes', "$Root\collision_meshes", '--out', $duelBase) -MergeStdErr | Select-Object -Last 2 | ForEach-Object { Write-Host $_ }
             } else {
                 Write-Host "Baseline-Endcheckpoint nicht gefunden ($($bs.end_checkpoint)), Duell uebersprungen" -ForegroundColor Yellow
             }
         }
         if (-not $SkipLadder) {
             Write-Host "Ladder ($LadderGames Spiele je Paarung)..."
-            & $Py "$Root\eval\ladder.py" --run $RunDir --games $LadderGames --exe $Duel
+            Invoke-Native $Py @("$Root\eval\ladder.py", '--run', $RunDir, '--games', $LadderGames, '--exe', $Duel) -MergeStdErr | ForEach-Object { Write-Host $_ }
         }
     } else {
         Write-Host "duel.exe fehlt oder kein neuer Checkpoint: Duelle uebersprungen" -ForegroundColor Yellow
@@ -183,7 +187,7 @@ try {
     if (Test-Path $duelStart) { $sumArgs += @("--duel-start", $duelStart) }
     if (Test-Path $duelBase) { $sumArgs += @("--duel-baseline", $duelBase) }
     if ($abortReason) { $sumArgs += @("--abort-reason", $abortReason) }
-    & $Py @sumArgs
+    Invoke-Native $Py $sumArgs -MergeStdErr | ForEach-Object { Write-Host $_ }
 }
 finally {
     Stop-Transcript | Out-Null
