@@ -4,8 +4,42 @@ Zweck: Eine neue Session (Mensch oder Agent) soll hier ohne weiteres Vorwissen e
 Grundlage ist `AUDIT.md` (Befunde K1–N10, Roadmap Stufen 0–4). Dieses Dokument wird bei jedem
 Roadmap-Punkt fortgeschrieben.
 
-Branch: `claude/rlbot-audit-roadmap-c8t7nl` (abgezweigt von `main` @ `54105bf`).
-Regel: ein Commit pro Roadmap-Punkt, ID in der Commit-Message (`git log --oneline main..`).
+Branch: `claude/rlbot-audit-roadmap-c8t7nl` (abgezweigt von `main` @ `54105bf`, als PR #1 in `main`
+gemergt). Regel: ein Commit pro Roadmap-Punkt, ID in der Commit-Message.
+
+## Review-Fixes (Branch `claude/review-fixes`, lokal auf dem Trainings-PC, ab 25.09.2026)
+
+Ein unabhängiger Review hat nach dem Merge von PR #1 Fehler gefunden. Behoben wird lokal auf dem
+Windows-PC (Ryzen 7 8700F, RTX 5070, VS 2026, Windows PowerShell 5.1), ein Commit pro Befund
+(`R<n>` in der Commit-Message). Der Review-Bericht selbst lag nicht vor; Grundlage ist die
+Befundliste aus dem Auftrag.
+
+| ID | Befund | Status | Test (schlägt ohne Fix fehl) |
+|---|---|---|---|
+| R1 | Patches mit CRLF (autocrlf) → `git apply` scheitert am gepinnten Commit | behoben | `tests/test_build_scripts.py` (LF im Arbeitsverzeichnis, `check-attr`, frischer Checkout + `git apply`) |
+| R2 | PowerShell 5.1: stderr nativer Befehle wird mit `ErrorActionPreference=Stop` zum Abbruch | offen | |
+| R3 | `.ps1` ohne BOM: Umlaute/typografische Zeichen brechen unter 5.1 die Syntax | offen | |
+| R4 | K1b: Timeout-Bootstrap mit der Reset-Obs statt der letzten Obs der Episode | offen | |
+| R5 | NaN wird als leeres Feld geschrieben, `check_abort` ignoriert leere Felder | offen | |
+| R6 | `env.seed_envs` Default true ändert das Verhalten bestehender Configs | offen | |
+| R7 | `config_used.json` (`_git`, `_started`) ist nicht mehr als Config ladbar | offen | |
+| R8 | H1-Paketpuffer ohne Rückweg | offen | |
+| R9 | Alte Rating-Schlüssel (nur Step-Zahl) nicht mehr lesbar | offen | |
+| R10 | `team_spirit_01` ist im 1v1 wirkungslos (τ), misst in Wahrheit Zero-Sum mit doppeltem Torwert | offen | |
+| R11 | K3 ist ein Bündel aus 7 Werten, nicht als solches markiert | offen | |
+| R12 | `compare.py`: TrueSkill aus getrennten Ladders nicht vergleichbar; Duell ohne Konfidenzintervall | offen | |
+| R13 | `bench_expbuffer.ps1`: gleicher Seed in allen Wiederholungen | offen | |
+| R14 | `run_experiment.ps1`: Start-Checkpoint liegt in der Checkpoint-Rotation | offen | |
+| R15 | `run_experiment.ps1`: Trainer wird hart beendet (`Stop-Process -Force`) | offen | |
+| R16 | `run_experiment.ps1`: End-Checkpoint ohne Vollständigkeitsprüfung | offen | |
+| R17 | Runbook-Vergleichsbefehl verlässt sich auf Glob-Expansion der Shell | offen | |
+| R18 | `run_all_checks.ps1`: harte Branch-Prüfung, Folgeschritte auf alten Binaries, Ergebnisordner überschreibbar | offen | |
+
+Nebenbefund bei der Bestandsaufnahme: Der Hauptlauf `runs/lucy_1v1` wurde nach dem Audit mit dem
+**alten** Binary (ohne K1b, `game_timeout_secs` 300) bis 3.907.335.040 Steps weitertrainiert; der
+Checkpoint `2704829056` aus Runbook und Audit existiert wegen `checkpoints_to_keep = 10` nicht
+mehr. Die alten Binaries sind vor dem Neubau nach `build/cpp_cu128_vor_review_2026-09-25/`
+gesichert.
 
 ## Arbeitsumgebung der Umsetzung (25.09.2026)
 
