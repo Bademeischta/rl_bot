@@ -15,10 +15,13 @@ Deployment in Python über RLBot v5.
 | `train/configs/` | `sanity.json`, `lucy_1v1.json`, `lucy_multimode.json` |
 | `eval/` | `duel.cpp` (zwei Checkpoints gegeneinander), `ladder.py` (TrueSkill) |
 | `deploy/` | RLBot-v5-Bot, Aktionstabelle, Paket-Adapter, Policy-Laden |
-| `tests/` | 39 C++-Tests, 54 Python-Tests, Golden-Fixtures |
+| `tests/` | 75 C++-Tests, 97 Python-Tests, Golden-Fixtures |
 | `bench/` | Phase-0-Benchmarks (Python und C++) |
-| `tools/` | Audit, Metriken-Anzeige, Policy-Export, Testlauf, libtorch-Patch |
-| `third_party/` | gepinnte Klone und libtorch, siehe `PINNED.md` |
+| `tools/` | Audit, Metriken-Anzeige, Policy-Export, Testlauf, Patches (`apply_patches.ps1`), Golden-Prüfung |
+| `tools/experiments/` | Stufe-3/4-Experimente: `run_experiment.ps1`, `compare.py`, Abbruchkriterien |
+| `tools/local/` | lokales Prüfpaket `run_all_checks.ps1`, Versionsabgleich, Deployment-Smoke |
+| `train/configs/experiments/` | je eine Config pro Experiment (ändert genau eine Sache gegenüber `baseline.json`) |
+| `third_party/` | gepinnte Klone, libtorch und Upstream-Patches, siehe `PINNED.md` |
 
 ## Einrichtung
 ```powershell
