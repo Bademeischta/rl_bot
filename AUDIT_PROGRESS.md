@@ -39,6 +39,7 @@ Werte im letzten Fünftel der Iterationen; Duelle je 1000 Spiele à 300 s, Tordi
 |---|---|---|---|---|---|---|---|---|---|---|
 | 1 | baseline (`exp_baseline_2026-09-26_140705`) | nein | −0,001 [−0,031; +0,029], 0,023 Tore/min je Seite | (Referenz) | 3,43 (Start 3,58) | 2,21 % | 0,39 | 0,61 | 0,066 | 32,9 min (Training 25 min, 68.650 SPS) |
 | 2 | h2_ent_coef_0004 (`exp_h2_ent_coef_0004_2026-09-26_144033`) | nein (Entropie-Warnungen < 2,5) | −0,025 [−0,059; +0,009] | **−0,025 [−0,040; −0,010]** (0,004 : 0,009 Tore/min) | 2,68 | 1,85 % | 0,11 | 0,89 | 0,008 | ~40 min |
+| 3 | h3_no_shuffle (`exp_h3_no_shuffle_2026-09-26_152037`) | nein | **+0,628 [+0,569; +0,687]**, Gewinnrate 70,4 % (418:10, 572 remis), 0,130 : 0,004 Tore/min | **+0,408 [+0,359; +0,457]**, Gewinnrate 64,5 % (305:15), 0,089 : 0,008 Tore/min | 3,44 | 2,17 % | 0,36 | 0,64 | 0,068 | 38,6 min (Training 24,6 min, 69.500 SPS) |
 
 Zwischenstand nach 1 (Baseline): Kein Stärkeunterschied zum Start (Tordifferenz ≈ 0), aber das
 Spiel hat sich verändert: Im Duell fallen kaum noch Tore (0,023 Tore/min je Seite gegen 0,072
@@ -54,6 +55,19 @@ die Updates werden **nicht** größer (Clip-Fraction 1,8 %, KL 0,0023; Audit-Erw
 Baseline (1,22 gegen 0,98), mehr Ballkontakt (0,042 gegen 0,036), aber `ep_end_goal` 0,11 statt
 0,39 und 89 % Zeit-Timeouts. Im Duell gegen das Baseline-Ende knapp schlechter (−0,025 Tore/Spiel,
 KI ganz unter 0), bei sehr wenigen Toren (65 in 1000 Spielen). Vorläufig: eher verwerfen.
+
+Zwischenstand nach 3 (H3): Die Trainingsmetriken sind fast gleich wie bei der Baseline
+(Entropie 3,44 gegen 3,43, Clip-Fraction 2,17 gegen 2,21 %, `ep_end_goal` 0,36 gegen 0,39,
+Value Loss 0,068 gegen 0,066). Im Duell ist H3 aber mit Abstand am stärksten: +0,63 Tore/Spiel
+gegen den Start und +0,41 gegen das Baseline-Ende. Beide Intervalle liegen weit über 0 und etwa
+zehnmal über der Rauschbreite der Nullmessung. Vermutliche Ursache: Duell (`duel.cpp`) und Bot
+(`env/obs_python.py`) mischen die Slots nicht. Im 1v1 hat die Obs drei Gegner-Slots (ein echter
+Gegner, zwei Null-Slots), und ohne Shuffle steht der Gegner immer in Slot 0. H3 trainiert genau in
+dieser Anordnung, der Start-Checkpoint und die Baseline dagegen mit dem Gegner in einem zufälligen
+der drei Slots. Der Effekt
+gilt also für das Duell **und** für den echten Bot, sagt aber nichts über Stärke bei gemischten
+Slots. Vorbehalt: Es gibt nur einen Trainingslauf je Config; das Rauschen zwischen
+Trainingsläufen ist nicht gemessen (siehe Schritt 3). Vorläufig: behalten.
 
 ## Review-Fixes (Branch `claude/review-fixes`, lokal auf dem Trainings-PC, ab 25.09.2026)
 
