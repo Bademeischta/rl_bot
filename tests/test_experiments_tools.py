@@ -249,6 +249,50 @@ def test_compare_hint_reports_duel_in_the_noise(tmp_path):
     assert "Hauptkriterium Duell: **im Rauschen**" in hints and "enthält 0" in hints
 
 
+def _add_duels(folder: Path, baseline=None, start=None) -> None:
+    path = folder / "summary.json"
+    s = json.loads(path.read_text(encoding="utf-8"))
+    s["duel_baseline"], s["duel_start"] = baseline, start
+    path.write_text(json.dumps(s), encoding="utf-8")
+
+
+def test_compare_judges_effects_against_the_training_noise_of_a_baseline_replicate(tmp_path):
+    """Stufe 3: Eine Wiederholung der Baseline (gleiche Config) lag im Duell +0,083 über dem
+    Baseline-Ende, KI ganz über 0. Vorher hieß das „besser“, ebenso jedes Experiment in derselben
+    Größenordnung. Jetzt: Wiederholung erkannt, Abstand als Trainingsrauschen, Effekte bis zum
+    Doppelten „im Trainingsrauschen“, große Effekte weiter „besser“."""
+    base, rep = tmp_path / "exp_baseline_x", tmp_path / "exp_replicate_baseline_x"
+    small, big = tmp_path / "exp_k3_x", tmp_path / "exp_zs_x"
+    make_result_with_config(base, "baseline", "baseline")
+    make_result_with_config(rep, "replicate_baseline", "baseline")
+    make_result_with_config(small, "k3_rewards", "k3_rewards")
+    make_result_with_config(big, "zero_sum", "zero_sum")
+    # Start-Duelle: Baseline 0,0, Wiederholung +0,25 -> Abstand 0,25, Schwelle 0,5
+    _add_duels(base, start=_duel_json([(0, 0)] * 100))
+    _add_duels(rep, baseline=_duel_json([(1, 0)] * 10 + [(0, 0)] * 90),
+               start=_duel_json([(1, 0)] * 25 + [(0, 0)] * 75))
+    _add_duels(small, baseline=_duel_json([(1, 0)] * 40 + [(0, 0)] * 60))        # +0,4
+    _add_duels(big, baseline=_duel_json([(6, 0)] * 100))                          # +6
+    experiments = [compare.load_experiment(p) for p in (base, rep, small, big)]
+    assert compare.training_noise(experiments, experiments[0]) == pytest.approx(0.25)
+
+    table = compare.build_table(experiments, experiments[0], None)
+    assert "| replicate_baseline (Wiederholung der Baseline) |" in table
+    hints = compare.verdict_hints(experiments, experiments[0]).splitlines()
+    line = lambda name: next(h for h in hints if h.startswith(f"* **{name}**"))
+    assert "Trainingsrauschen: Zwei Läufe derselben Config liegen im Duell bis zu 0.250" in "\n".join(hints)
+    assert "**Wiederholung der Baseline**" in line("replicate_baseline")
+    assert "**besser**" not in line("replicate_baseline")
+    assert "**im Trainingsrauschen** (+0.400" in line("k3_rewards")
+    assert "**besser**" in line("zero_sum")
+
+    # ohne Wiederholung: Hinweis, dass das Trainingsrauschen unbekannt ist, Urteil wie bisher
+    without = [experiments[0], experiments[2]]
+    hints = compare.verdict_hints(without, without[0])
+    assert "Rauschen zwischen Trainingsläufen ist unbekannt" in hints
+    assert "**besser**" in hints
+
+
 def test_duel_stats_goal_difference_with_t_interval():
     """Tordifferenz je Spiel mit t-Intervall; Referenz: t(0,975; df) aus der Tabelle."""
     from metrics_util import duel_stats, t_quantile_975

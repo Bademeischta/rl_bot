@@ -22,6 +22,12 @@ Dazu je Experiment (letztes Fünftel der Iterationen): ep_end_goal, ep_end_timeo
 Clip-Fraction, KL, Value Loss, Truncated Steps, SPS mit Differenz zur Baseline. Experimente, die mehr
 als einen Config-Wert ändern, werden als Bündel markiert (Review R11). Die Baseline ist der Ordner
 mit --baseline oder der, dessen Name mit "exp_baseline" beginnt.
+
+**Trainingsrauschen**: Ein Lauf ohne jede Config-Änderung gegenüber der Baseline (run_experiment.ps1
+mit baseline.json und -Name replicate_baseline) gilt als Wiederholung. Sein Abstand zur Baseline zeigt,
+wie weit zwei Läufe derselben Config im Duell auseinanderliegen. Effekte bis zum Doppelten davon
+heißen in den Hinweisen „im Trainingsrauschen“, auch wenn das Duell-Intervall 0 ausschließt
+(AUDIT.md §7.9). Ohne Wiederholung sagen die Hinweise, dass dieses Rauschen unbekannt ist.
 """
 from __future__ import annotations
 
@@ -98,6 +104,35 @@ def bundle_label(changes: dict | None) -> str:
     if changes and len(changes) > 1:
         return f" **(Bündel: {len(changes)} Werte)**"
     return ""
+
+
+def replicates(experiments: list[dict], baseline: dict) -> list[dict]:
+    """Wiederholungen der Baseline: Läufe ohne jede Config-Änderung gegenüber der Baseline."""
+    return [s for s in experiments if s is not baseline and config_changes(s, baseline) == {}]
+
+
+def training_noise(experiments: list[dict], baseline: dict) -> float | None:
+    """Wie weit zwei Läufe derselben Config im Duell auseinanderliegen (Tore/Spiel), oder None ohne
+    Wiederholung der Baseline.
+
+    Die 95-%-Intervalle der Duelle erfassen nur das Rauschen der Duellspiele. Stufe 3 hat gezeigt,
+    dass zwei Trainingsläufe derselben Config (gleicher Start, Seed und Build) deutlich weiter
+    auseinanderliegen (AUDIT.md §7.9). Gemessen wird der Abstand je Wiederholung auf zwei Wegen:
+    ihr Duell gegen das Baseline-Ende und der Unterschied der Duelle beider Läufe gegen den Start.
+    Das Maximum ist eine grobe Schätzung aus wenigen Läufen, eher eine Untergrenze. Ein Experiment
+    ohne Effekt liegt gegen das Baseline-Ende etwa um diesen Abstand daneben; verdict_hints nennt
+    einen Effekt deshalb erst ab dem Doppelten belastbar (grob zwei Standardabweichungen).
+    """
+    gaps = []
+    base_start = duel_summary(baseline.get("duel_start"))
+    for r in replicates(experiments, baseline):
+        ds = duel_summary(r.get("duel_baseline"))
+        if ds:
+            gaps.append(abs(ds["goal_diff"]))
+        rs = duel_summary(r.get("duel_start"))
+        if rs and base_start:
+            gaps.append(abs(rs["goal_diff"] - base_start["goal_diff"]))
+    return max(gaps) if gaps else None
 
 
 def load_experiment(folder: Path) -> dict:
@@ -206,10 +241,12 @@ def build_table(experiments: list[dict], baseline: dict, ladder: dict | None) ->
     lines.append("|" + "---|" * (header.count("|") - 1))
     base_last = baseline.get("metrics", {}).get("last_20pct", {})
     ratings = (ladder or {}).get("ratings", {})
+    reps = replicates(experiments, baseline)
     for s in experiments:
         last = s.get("metrics", {}).get("last_20pct", {})
         is_base = s is baseline
-        label = s["name"] + (" (Baseline)" if is_base else bundle_label(config_changes(s, baseline)))
+        label = s["name"] + (" (Baseline)" if is_base else " (Wiederholung der Baseline)" if s in reps
+                             else bundle_label(config_changes(s, baseline)))
         cells = [label, str(s.get("metrics", {}).get("iterations", "-"))]
         ds = None if is_base else duel_summary(s.get("duel_baseline"))
         if ds:
@@ -250,11 +287,23 @@ def verdict_hints(experiments: list[dict], baseline: dict) -> str:
     """Kurze, regelbasierte Hinweise; die Entscheidung bleibt beim Menschen (AUDIT.md Roadmap)."""
     out = ["", "## Hinweise (regelbasiert, keine Entscheidung)", ""]
     base_last = baseline.get("metrics", {}).get("last_20pct", {})
+    reps = replicates(experiments, baseline)
+    noise = training_noise(experiments, baseline)
+    if noise is None:
+        out += ["Keine Wiederholung der Baseline dabei: Das Rauschen zwischen Trainingsläufen ist unbekannt, "
+                "die Intervalle erfassen nur das Rauschen der Duellspiele.", ""]
+    else:
+        out += [f"Trainingsrauschen: Zwei Läufe derselben Config liegen im Duell bis zu {noise:.3f} Tore/Spiel "
+                f"auseinander ({len(reps)} Wiederholung(en) der Baseline). Ein Effekt gilt erst ab dem Doppelten "
+                f"({2 * noise:.3f}) als belastbar; darunter heißt er „im Trainingsrauschen“, auch wenn das "
+                f"Duell-Intervall 0 ausschließt.", ""]
     for s in experiments:
         if s is baseline:
             continue
         notes = []
         last = s.get("metrics", {}).get("last_20pct", {})
+        if s in reps:
+            notes.append("**Wiederholung der Baseline** (gleiche Config): misst das Trainingsrauschen, kein Experiment")
         if s.get("abort_reason"):
             notes.append(f"abgebrochen: {s['abort_reason']}")
         changes = config_changes(s, baseline)
@@ -265,7 +314,13 @@ def verdict_hints(experiments: list[dict], baseline: dict) -> str:
         if ds and not math.isnan(ds["goal_diff_ci_low"]):
             m, low, high = ds["goal_diff"], ds["goal_diff_ci_low"], ds["goal_diff_ci_high"]
             span = f"{m:+.3f} Tore/Spiel, 95-%-KI [{low:+.3f}, {high:+.3f}]"
-            if low > 0:
+            if s in reps:
+                notes.append(f"Duell gegen das Baseline-Ende {span}: Abstand zweier Läufe derselben Config")
+            elif noise is not None and (low > 0 or high < 0) and abs(m) <= 2 * noise:
+                notes.append(f"Hauptkriterium Duell: **im Trainingsrauschen** ({span}; schließt 0 aus, ist aber "
+                             f"nicht größer als das Doppelte von {noise:.3f}, dem Abstand zweier Läufe derselben "
+                             f"Config); Wiederholungen oder längerer Lauf")
+            elif low > 0:
                 notes.append(f"Hauptkriterium Duell: **besser** als Baseline-Ende ({span}, ganz über 0)")
             elif high < 0:
                 notes.append(f"Hauptkriterium Duell: **schlechter** als Baseline-Ende ({span}, ganz unter 0)")
