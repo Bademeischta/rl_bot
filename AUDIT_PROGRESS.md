@@ -38,6 +38,7 @@ Werte im letzten Fünftel der Iterationen; Duelle je 1000 Spiele à 300 s, Tordi
 | # | Experiment | Abbruch | Duell gg. Start | Duell gg. Baseline-Ende | Entropie | Clip-Frac. | ep_end_goal | Zeit-Timeout-Anteil | Value Loss | Dauer |
 |---|---|---|---|---|---|---|---|---|---|---|
 | 1 | baseline (`exp_baseline_2026-09-26_140705`) | nein | −0,001 [−0,031; +0,029], 0,023 Tore/min je Seite | (Referenz) | 3,43 (Start 3,58) | 2,21 % | 0,39 | 0,61 | 0,066 | 32,9 min (Training 25 min, 68.650 SPS) |
+| 2 | h2_ent_coef_0004 (`exp_h2_ent_coef_0004_2026-09-26_144033`) | nein (Entropie-Warnungen < 2,5) | −0,025 [−0,059; +0,009] | **−0,025 [−0,040; −0,010]** (0,004 : 0,009 Tore/min) | 2,68 | 1,85 % | 0,11 | 0,89 | 0,008 | ~40 min |
 
 Zwischenstand nach 1 (Baseline): Kein Stärkeunterschied zum Start (Tordifferenz ≈ 0), aber das
 Spiel hat sich verändert: Im Duell fallen kaum noch Tore (0,023 Tore/min je Seite gegen 0,072
@@ -46,6 +47,13 @@ keine mehr per NoTouch; Episoden dauern im Mittel ~665 s. `Avg Val Target` steig
 (K1b bootstrappt Timeouts statt sie auf 0 zu setzen), K1b-Diagnose sauber (Reset-Anteil 0).
 Entropie fällt leicht (3,58 → 3,43), Clip-Fraction 1,4 → 2,2 %. 183 von 971 Iterationen ohne
 beendete Episode (lange, synchron gestartete Episoden; kein Abbruchgrund, R5).
+
+Zwischenstand nach 2 (H2): Die Entropie fällt wie erwartet (3,58 → 2,68, zeitweise < 2,5), aber
+die Updates werden **nicht** größer (Clip-Fraction 1,8 %, KL 0,0023; Audit-Erwartung > 5 % bzw.
+0,006). Stattdessen verschiebt sich das Verhalten zum Shaping: Reward pro Step +25 % gegenüber der
+Baseline (1,22 gegen 0,98), mehr Ballkontakt (0,042 gegen 0,036), aber `ep_end_goal` 0,11 statt
+0,39 und 89 % Zeit-Timeouts. Im Duell gegen das Baseline-Ende knapp schlechter (−0,025 Tore/Spiel,
+KI ganz unter 0), bei sehr wenigen Toren (65 in 1000 Spielen). Vorläufig: eher verwerfen.
 
 ## Review-Fixes (Branch `claude/review-fixes`, lokal auf dem Trainings-PC, ab 25.09.2026)
 
