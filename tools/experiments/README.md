@@ -69,9 +69,12 @@ Rückgabewerte von `check_abort.py`: 0 weiter, 3 abbrechen, 4 Warnung.
 
 ## Vergleich (`compare.py`)
 
-**Hauptkriterium** (Review R12): das Duell jedes Experiment-Endes gegen das Baseline-Ende
-(`duel_end_vs_baseline.json`, 100 Spiele): Gewinnrate (Remis = halber Sieg) mit
-95-%-Wilson-Intervall. Intervall ganz über 50 % = besser, ganz darunter = schlechter, sonst unklar.
+**Hauptkriterium** (Stufe 3, AUDIT.md §7.8): das Duell jedes Experiment-Endes gegen das
+Baseline-Ende (`duel_end_vs_baseline.json`, 1000 Spiele à 300 s): mittlere Tordifferenz pro
+Spiel mit 95-%-t-Intervall. Intervall ganz über 0 = besser, ganz darunter = schlechter, sonst im
+Rauschen. Dazu Gewinnrate (Remis = halber Sieg, Wilson) und Tore pro Minute. Nullmessung
+(Checkpoint gegen sich selbst): −0,005 [−0,058; +0,048]. Achtung: Spielstärke im Selbstspiel ist
+nicht transitiv (§7.8), ein einzelnes Duell ist kein vollständiges Urteil.
 
 **TrueSkill** nur aus **einer gemeinsamen Ladder**, die `compare.py` selbst mit `duel.exe` spielt:
 alle Experiment-Enden plus Baseline-Start und Baseline-Ende, jeder gegen jeden

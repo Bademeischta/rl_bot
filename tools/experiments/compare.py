@@ -338,7 +338,7 @@ def main() -> int:
     ap.add_argument("folders", nargs="+", help="Ergebnisordner oder Muster wie results/exp_* (löst compare.py selbst auf)")
     ap.add_argument("--baseline", type=Path, default=None)
     ap.add_argument("--out", type=Path, default=None, help="Markdown zusätzlich in Datei schreiben")
-    ap.add_argument("--ladder-games", type=int, default=50,
+    ap.add_argument("--ladder-games", type=int, default=100,
                     help="Spiele je Paarung in der gemeinsamen Ladder (0 = keine Ladder)")
     ap.add_argument("--exe", type=Path, default=DUEL_EXE, help="Pfad zu duel.exe")
     ap.add_argument("--ladder-out", type=Path, default=None,

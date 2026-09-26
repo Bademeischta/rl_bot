@@ -90,3 +90,29 @@ def test_ladder_duels_use_300_second_games(tmp_path):
     result = run_duel(POLICY, POLICY, 2, exe=DUEL)
     assert result.raw["max_seconds"] == 300
     assert len(result.raw["per_game"]) == 2
+
+
+# --- Spielanzahl (Auftrag Schritt 1) ---------------------------------------------------------
+
+# Nullmessung: neuester Checkpoint gegen sich selbst, 1000 Spiele à 300 s (AUDIT.md §7.8)
+NULL_SD_GOAL_DIFF = 0.854
+# Ziel: 95-%-Intervall der Tordifferenz höchstens +-0,055 Tore/Spiel
+TARGET_HALF_WIDTH = 0.055
+
+
+def _ps_int_default(script: Path, name: str) -> int:
+    import re
+    text = script.read_text(encoding="utf-8-sig")
+    m = re.search(rf"\[int\]\${name}\s*=\s*(\d+)", text)
+    assert m, f"{name} nicht gefunden in {script.name}"
+    return int(m.group(1))
+
+
+def test_default_duel_games_resolve_the_target_effect():
+    """Vorher 100 Spiele: Intervall +-0,17 Tore/Spiel, fast jeder realistische Effekt im Rauschen."""
+    sys.path.insert(0, str(ROOT / "tools" / "experiments"))
+    from metrics_util import games_for_half_width
+    needed = games_for_half_width(NULL_SD_GOAL_DIFF, TARGET_HALF_WIDTH)
+    for script in ("run_experiment.ps1", "bench_expbuffer.ps1"):
+        games = _ps_int_default(ROOT / "tools" / "experiments" / script, "DuelGames")
+        assert games >= needed, (script, games, needed)

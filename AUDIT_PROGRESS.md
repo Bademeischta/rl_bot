@@ -8,6 +8,27 @@ Branches: `claude/rlbot-audit-roadmap-c8t7nl` (Audit-Roadmap, abgezweigt von `ma
 als PR #1 in `main` gemergt) und `claude/review-fixes` (Review-Befunde R1-R19, von `main` @
 `bb7f93e`, eigener PR). Regel: ein Commit pro Punkt, ID in der Commit-Message.
 
+## Stufe 3: Duell-Instrument und Experimente (Branch `claude/duel-and-experiments`, ab 26.09.2026)
+
+Abgezweigt von `claude/review-fixes` (8c6e7fa); dieser Branch war entgegen der Annahme im Auftrag
+noch nicht in `main` gemergt (Nutzer-Entscheidung: von review-fixes abzweigen). Regeln: Hauptlauf
+wird nicht fortgesetzt, Experimente nacheinander, alle vom neuesten Checkpoint (3.907.335.040),
+Seed 123, derselbe Build (Git-Hash in `config_used.json`).
+
+### Schritt 1: Duell-Auswertung (erledigt)
+
+| ID | Änderung | Test (ohne Fix rot) |
+|---|---|---|
+| D1 | `duel.exe`: 300-s-Matches mit Anstoß nach jedem Tor, Ergebnis je Spiel, geseedete Anstöße (Paare mit Seitentausch), je Spiel frische Arena + eigene Generatoren (Aktionen, RocketSim-Respawn), Car-ID-Reihenfolge, Sperre für deterministische Wiederholungen, parallele Spiele (`--threads`) | `tests/test_duel.py` (echter `duel.exe`, 4 rot mit dem alten) |
+| D2 | Hauptkriterium in `compare.py`/`summarize.py`: Tordifferenz pro Spiel mit 95-%-t-KI; Gewinnrate (Wilson) und Tore/min zusätzlich | `test_experiments_tools.py` (3 rot mit dem alten) |
+| D3 | Spielanzahl 1000 je Duell (`run_experiment.ps1`, `bench_expbuffer.ps1`), gemeinsame Ladder 100 Spiele je Paarung | `test_default_duel_games_resolve_the_target_effect` (rot mit 100) |
+
+Prüfungen zur Unabhängigkeit: verschiedene Anstoß-Seeds je Spielpaar (ja), Seitentausch (ja, Blau
+gegen Orange in der Nullmessung +0,021 [−0,032; +0,074]), deterministische Policies (ja, 1 von 20
+Spielen exakt doppelt → Sperre), stochastisch 1000/1000 verschiedene Spiele. Nullmessung,
+Laufzeit, Effekt von 100/225 Mio. Steps und die Begründung für 1000 Spiele: AUDIT.md §7.8.
+Rohdaten: `results\duel_null\*.json`.
+
 ## Review-Fixes (Branch `claude/review-fixes`, lokal auf dem Trainings-PC, ab 25.09.2026)
 
 Ein unabhängiger Review hat nach dem Merge von PR #1 Fehler gefunden. Behoben wird lokal auf dem

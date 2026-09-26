@@ -30,7 +30,9 @@ param(
     [int]$Seed = 123,
     [string]$Name = "",
     [string]$Baseline = "",
-    [int]$DuelGames = 100,
+    # 1000 Spiele à 300 s: 95-%-KI der Tordifferenz +-0,053 Tore/Spiel bei der gemessenen
+    # Streuung (SD 0,85, Nullmessung); ~6 min je Duell mit 8 Threads (AUDIT.md §7.8)
+    [int]$DuelGames = 1000,
     [int]$LadderGames = 50,
     [int]$PollSeconds = 30,
     [int]$MinFreeGB = 20,

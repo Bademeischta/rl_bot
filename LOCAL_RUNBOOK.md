@@ -130,10 +130,9 @@ Probelauf (Review-Fix, 25.09.2026, **kein Experiment**): dieselbe Baseline-Confi
 `-Steps 3000000 -DuelGames 20 -LadderGames 10` vom Checkpoint 3907335040 lief in 1,6 min
 komplett durch (Kopie `start\` + `checkpoints\` mit Hash-Prüfung, Training ~71.000 SPS,
 End-Checkpoint 3910425600 per `save_on_exit` und `pick_checkpoint.py`, Duell, Lauf-Ladder,
-`summary.md`, Zip). Auffällig: **17 von 20 Duellspielen endeten remis** (nach 120 s Spielzeit
-ohne Tor, `duel.exe --max-seconds`); die Gewinnrate des Hauptkriteriums wird bei 100 Spielen
-entsprechend breite Intervalle haben. Ob mehr Spiele oder längere Spiele sinnvoll sind, ist vor
-Schritt 4 zu entscheiden (AUDIT_PROGRESS.md, offene Punkte).
+`summary.md`, Zip). Auffällig damals: **17 von 20 Duellspielen endeten remis** (120 s, Ende beim
+ersten Tor). Seit Stufe 3 spielt `duel.exe` 300-s-Matches, `-DuelGames` ist 1000 (~6 min je
+Duell), Hauptkriterium ist die Tordifferenz pro Spiel (AUDIT.md §7.8).
 
 ## 4. Experimente (Stufe 3, je ~30–40 Minuten, nacheinander)
 
@@ -174,10 +173,10 @@ Abbruch (Exit 3) ist ein Ergebnis, kein Fehler: `summary.md` nennt den Grund.
 übersprungen und gemeldet (Review R17).
 
 `compare.py` spielt dabei die **gemeinsame Ladder** (alle Experiment-Enden + Baseline-Start +
-Baseline-Ende, jeder gegen jeden, 50 Spiele je Paarung; bei 4 Experimenten 15 Paarungen, einige
+Baseline-Ende, jeder gegen jeden, 100 Spiele je Paarung; bei 4 Experimenten 15 Paarungen, ~9
 Minuten). `results\compare.md` und `results\joint_ladder.json` zurückgeben. Hauptkriterium ist
-das Duell gegen das Baseline-Ende (Gewinnrate mit 95-%-KI, Review R12); dazu `ep_end_goal`,
-Entropie und die gemeinsame Ladder. Die Entscheidung behalten / verwerfen / nachmessen trage ich
+das Duell gegen das Baseline-Ende (Tordifferenz pro Spiel mit 95-%-KI, AUDIT.md §7.8); dazu
+`ep_end_goal`, Entropie und die gemeinsame Ladder. Die Entscheidung behalten / verwerfen / nachmessen trage ich
 in AUDIT.md ein.
 
 ## 6. Optional: Stufe 4, Gradientenschritte 6 / 3 / 2 (~1 Stunde)

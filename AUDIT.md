@@ -1663,3 +1663,42 @@ Gemessen auf dem Trainings-PC (lokal / Auditor-Kategorie, §0): Return-std im ne
 `baseline.json` ~71.000 SPS (je nur 2–3 Mio. Steps, keine eingeschwungenen Werte);
 Deployment-Latenz p95 0,28 ms. Der Hauptlauf wurde nach dem Audit mit dem alten Binary von
 2,70 auf 3,91 Mrd. Steps weitertrainiert; der Checkpoint 2704829056 existiert nicht mehr.
+
+### 7.8 Duell als Messinstrument (26.09.2026, lokal)
+
+Vor Stufe 3 wurde das Duell (`eval/cpp/duel.cpp`) überarbeitet, weil im Probelauf 17 von 20
+Spielen remis endeten. Details und Tests in `AUDIT_PROGRESS.md` (Abschnitt Stufe 3).
+
+* **Spiel = 300-s-Match**: nach einem Tor neuer Anstoß bis Spielende (vorher: Ende beim ersten
+  Tor oder nach 120 s, Tordifferenz je Spiel nur −1/0/+1). Ergebnis je Spiel im JSON.
+* **Unabhängige Spiele**: Seitentausch, Anstöße geseedet (Paare mit Seitentausch teilen die
+  Anstoß-Folge), je Spiel frische Arena und eigene Generatoren. Deterministische Policies
+  erzeugen Wiederholungen (nur 5 Anstoßpositionen × 2 Seiten) und werden für mehr Spiele
+  abgelehnt. Bitgenau reproduzierbar ist ein Spiel wegen RocketSims adressabhängiger Physik
+  nicht (31/32 Spiele mit gleichen Toren bei gleichem Seed).
+* **Hauptkriterium**: mittlere Tordifferenz pro Spiel mit 95-%-t-Intervall; dazu Gewinnrate
+  (Wilson) und Tore pro Minute.
+
+Messungen mit dem neuesten Checkpoint 3.907.335.040 (je 1000 Spiele à 300 s, Seed 123):
+
+| Duell | Tordifferenz/Spiel [95-%-KI] | SD | Gewinnrate [KI] | Tore/min |
+|---|---|---|---|---|
+| **Nullmessung** 3,907 gegen sich selbst (Endstand-Binary, 8 Threads) | −0,005 [−0,058; +0,048] | 0,854 | 49,8 % [46,8; 52,9] | 0,144 |
+| Nullmessung, erste Fassung (1 Thread, ohne frische Arena) | −0,048 [−0,101; +0,005] | 0,859 | 46,9 % [43,8; 49,9] | 0,150 |
+| 3,907 gegen 3,807 (100 Mio. Steps älter) | **+0,310 [+0,250; +0,370]** | 0,969 | 59,4 % [56,3; 62,4] | 0,172 |
+| 3,907 gegen 3,682 (225 Mio. Steps älter) | **−0,111 [−0,181; −0,041]** | 1,129 | 46,7 % [43,6; 49,8] | 0,239 |
+
+Folgerungen:
+
+* Die Nullmessung liegt um 0, die Intervallbreite ±0,053 Tore/Spiel ist das Rauschen bei 1000
+  Spielen. (Die Gewinnrate der ersten Nullmessung schloss 50 % knapp aus: ein erwartbarer
+  5-%-Ausreißer und ein weiterer Grund, sie nicht als Hauptkriterium zu nehmen.)
+* **Spielanzahl 1000** (`run_experiment.ps1 -DuelGames`): Realistische Effekte zwischen
+  Checkpoints liegen hier bei 0,1–0,3 Tore/Spiel; 1000 Spiele lösen ±0,053 (Null-SD) bis ±0,07
+  (SD der Effekt-Duelle) auf, also Effekte ab ~0,1 Tore/Spiel mit hoher Wahrscheinlichkeit. Das
+  kostet ~6 min je Duell (8 Threads, 0,35 s je Spiel; ein Kern: 1,14 s). 100 Spiele (vorher)
+  hätten ±0,17 aufgelöst, also fast nichts.
+* **Spielstärke im Selbstspiel ist nicht transitiv**: Der neueste Checkpoint schlägt den 100
+  Mio. Steps älteren deutlich und verliert gegen den 225 Mio. Steps älteren. Ein Duell gegen nur
+  **einen** Gegner (Baseline-Ende) kann deshalb eine Stil-Frage messen (wer kontert wen) statt
+  allgemeiner Stärke. Die gemeinsame Ladder und mehrere Gegner gehören in jede Entscheidung.

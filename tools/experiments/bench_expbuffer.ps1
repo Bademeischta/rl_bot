@@ -19,7 +19,7 @@ param(
     [long]$Steps = 20000000,
     [int]$Repeats = 2,
     [int]$Seed = 123,
-    [int]$DuelGames = 100,
+    [int]$DuelGames = 1000,
     [int]$LadderGames = 20,
     [string]$Flavor = "cu128",
     [switch]$DryRun
