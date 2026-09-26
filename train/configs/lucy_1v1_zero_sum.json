@@ -1,0 +1,66 @@
+{
+  "_comment": "Vorschlag aus Stufe 3 (26.09.2026), NICHT gestartet: Hauptlauf lucy_1v1 fortsetzen mit Zero-Sum-Shaping, dem einzigen bestätigten Gewinner (AUDIT.md §7.9). Gegenüber lucy_1v1.json nur drei Reward-Werte wie in experiments/zero_sum.json: team_spirit 0 -> 0,1 schaltet ZeroSumReward ein (im 1v1 r_i - r_j, der Wert 0,1 selbst ist wirkungslos), goal/concede 10 -> 5, damit ein Tor nach dem Wrapper weiter +-10 zählt. Checkpoint-kompatibel (Obs 257, 90 Aktionen, gleiche Netze); lädt wie lucy_1v1.json den neuesten Checkpoint aus runs/lucy_1v1/checkpoints. Achtung: checkpoints_to_keep 10 rotiert die ältesten Hauptlauf-Checkpoints heraus, vorher sichern, falls sie als Duell-Gegner gebraucht werden. Beobachten: Entropie (im 100-Mio.-Test 3,58 -> 2,89, Warnschwelle 2,5), Value Loss (~0,37), ep_end_goal (~1,0); Average Step/Episode Reward sind mit Zero-Sum konstant 0, das Shaping steht in raw_step_reward.",
+  "env": {
+    "tick_skip": 8,
+    "max_players": 3,
+    "action_stack_size": 5,
+    "no_touch_timeout_secs": 30.0,
+    "game_timeout_secs": 900.0,
+    "mode_mix": [1.0, 0.0, 0.0]
+  },
+  "rewards": {
+    "goal": 5.0,
+    "concede": 5.0,
+    "demo": 0.0,
+    "demoed": 0.0,
+    "touch_ball_to_goal_accel": 1.0,
+    "offensive_potential_krc": 1.0,
+    "dist_weighted_align_krc": 0.5,
+    "velocity_player_to_ball": 0.1,
+    "save_boost": 0.3,
+    "in_air": 0.02,
+    "team_spirit": 0.1
+  },
+  "state_setters": {
+    "kickoff": 2.0,
+    "random": 2.0,
+    "aerial": 0.5,
+    "dribble": 0.5,
+    "wall_play": 0.5,
+    "recovery": 0.5,
+    "defense": 1.0
+  },
+  "learner": {
+    "num_threads": 16,
+    "num_games_per_thread": 64,
+    "collection_during_learn": false,
+    "device": "cuda",
+    "timestep_limit": 0,
+    "timesteps_per_iteration": 100000,
+    "timesteps_per_save": 25000000,
+    "checkpoints_to_keep": 10,
+    "checkpoint_folder": "runs/lucy_1v1/checkpoints",
+    "policy_layer_sizes": [512, 512, 512],
+    "critic_layer_sizes": [512, 512, 512],
+    "ppo_epochs": 2,
+    "ppo_batch_size": 100000,
+    "ppo_mini_batch_size": 50000,
+    "ent_coef": 0.01,
+    "clip_range": 0.2,
+    "policy_lr": 0.0002,
+    "critic_lr": 0.0002,
+    "gae_lambda": 0.95,
+    "gae_gamma": 0.9954,
+    "random_seed": 123
+  },
+  "metrics": {
+    "send_metrics": false,
+    "project": "rlbot",
+    "group": "phase3",
+    "run": "lucy_1v1",
+    "skill_tracker": true,
+    "skill_timesteps_per_version": 500000000,
+    "skill_max_versions": 20,
+    "skill_update_interval": 32
+  }
+}

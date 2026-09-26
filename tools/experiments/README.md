@@ -11,8 +11,13 @@ Step-Zahl** wie der Kontrolllauf, und ändert gegenüber `baseline.json` genau *
 | `h3_no_shuffle.json` | `env.shuffle_slots` → false | H3 |
 | `k3_rewards.json` | **Bündel aus 7 Werten** laut AUDIT.md K3 (goal/concede 50, vier dichte Terme runter, in_air 0). Ein Effekt ist keinem einzelnen Wert zuzuordnen; `compare.py` markiert das. Aufteilen nur, wenn das Ergebnis schlecht oder unklar ist (Review R11) | K3 |
 | `zero_sum.json` (früher `team_spirit_01.json`) | `rewards.team_spirit` 0 → 0,1 **und** `goal`/`concede` 10 → 5. Im 1v1 ist τ wirkungslos: jedes τ > 0 ergibt `r_i − r_j` (Zero-Sum). Zero-Sum zählt Tore doppelt, deshalb halbiert: nach dem Wrapper bleibt ein Tor ±10 wie in der Baseline, gemessen wird nur der Zero-Sum-Effekt auf das Shaping. `Average Step/Episode Reward` sind hier konstant 0 → `raw_step_reward` (vor dem Wrapper) ansehen | optional, K3 zweiter Hebel (Review R10) |
+| `zero_sum_h3.json` (Vorschlag, nicht gelaufen) | `zero_sum.json` plus `env.shuffle_slots` → false: H3 auf Zero-Sum-Basis, 300 Mio. Steps gegen einen zero_sum-Lauf gleicher Länge (AUDIT.md §7.9) | Verlängerung nach Stufe 3 |
 
 `RUNNING_STATS.json` wird bei allen Experimenten **übernommen** (Begründung AUDIT.md §7.3).
+
+Zu jeder Experimentreihe gehört eine **Wiederholung der Baseline** (`baseline.json` mit
+`-Name replicate_baseline`). Sie misst, wie weit zwei Läufe derselben Config auseinanderliegen.
+In Stufe 3 waren das bis zu 0,24 Tore/Spiel, das Fünffache der Duell-Rauschbreite (AUDIT.md §7.9).
 
 ## Reihenfolge lokal
 
@@ -20,14 +25,15 @@ Step-Zahl** wie der Kontrolllauf, und ändert gegenüber `baseline.json` genau *
 # 1. Kontrolllauf (Pflicht, zuerst)
 powershell -ExecutionPolicy Bypass -File tools\experiments\run_experiment.ps1 `
     -Config train\configs\experiments\baseline.json `
-    -StartCheckpoint runs\lucy_1v1\checkpoints\2704829056 -Steps 100000000 -Seed 123
+    -StartCheckpoint runs\lucy_1v1\checkpoints\3907335040 -Steps 100000000 -Seed 123
 
 # 2. Experimente, jeweils mit -Baseline auf den Ergebnisordner des Kontrolllaufs
 powershell -ExecutionPolicy Bypass -File tools\experiments\run_experiment.ps1 `
     -Config train\configs\experiments\h2_ent_coef_0004.json `
-    -StartCheckpoint runs\lucy_1v1\checkpoints\2704829056 -Steps 100000000 -Seed 123 `
+    -StartCheckpoint runs\lucy_1v1\checkpoints\3907335040 -Steps 100000000 -Seed 123 `
     -Baseline results\exp_baseline_<datum>
-# ... dito h3_no_shuffle, k3_rewards, zero_sum
+# ... dito h3_no_shuffle, k3_rewards, zero_sum, dazu die Wiederholung der Baseline:
+#     -Config train\configs\experiments\baseline.json -Name replicate_baseline
 
 # 3. Vergleich
 .\.venv\Scripts\python tools\experiments\compare.py results\exp_* --out results\compare.md
@@ -76,15 +82,22 @@ Rauschen. Dazu Gewinnrate (Remis = halber Sieg, Wilson) und Tore pro Minute. Nul
 (Checkpoint gegen sich selbst): −0,005 [−0,058; +0,048]. Achtung: Spielstärke im Selbstspiel ist
 nicht transitiv (§7.8), ein einzelnes Duell ist kein vollständiges Urteil.
 
+**Trainingsrauschen** (seit Stufe 3, AUDIT.md §7.9): Ein Lauf ohne Config-Änderung gegenüber der
+Baseline gilt als Wiederholung. Sein Abstand zur Baseline ist das Rauschen zwischen
+Trainingsläufen: sein Duell gegen das Baseline-Ende und der Unterschied der Duelle beider Läufe
+gegen den Start. Effekte bis zum Doppelten davon heißen in den Hinweisen „im
+Trainingsrauschen“, auch wenn das Duell-Intervall 0 ausschließt. Ohne Wiederholung sagen die
+Hinweise, dass dieses Rauschen unbekannt ist.
+
 **TrueSkill** nur aus **einer gemeinsamen Ladder**, die `compare.py` selbst mit `duel.exe` spielt:
 alle Experiment-Enden plus Baseline-Start und Baseline-Ende, jeder gegen jeden
-(`--ladder-games`, Default 50 je Paarung; 0 = aus). Ergebnis in `joint_ladder.json` neben `--out`.
+(`--ladder-games`, Default 100 je Paarung; 0 = aus). Ergebnis in `joint_ladder.json` neben `--out`.
 Die Einzel-Ladders in den Lauf-Ordnern haben jeweils eigene Nullpunkte und werden für den
 Vergleich nicht benutzt.
 
 Dazu pro Experiment (letztes Fünftel der Iterationen): Tor-Anteil (`ep_end_goal`),
 Timeout-Anteil, Episodenlänge, Ballkontakt, Entropie, Clip-Fraction, KL, Value Loss, Val Target,
-Truncated Steps, SPS mit Differenz zur Baseline, der Toranteil im Duell (± SE) und die Liste der
+Truncated Steps, SPS mit Differenz zur Baseline und die Liste der
 Config-Änderungen (Bündel markiert, R11). Die Hinweise am Ende sind regelbasiert; die
 Entscheidung behalten / verwerfen / nachmessen bleibt beim Menschen, Kriterien in AUDIT.md §6
 Stufe 3.

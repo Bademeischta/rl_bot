@@ -88,6 +88,24 @@ def test_all_experiments_keep_obs_layout_and_actions():
         assert cfg["learner.checkpoint_folder"] == "runs/EXPERIMENT/checkpoints", path.name
 
 
+def test_main_run_proposal_is_main_config_plus_confirmed_winners_only():
+    """Stufe 3, Schritt 3: Vorschlag für den fortgesetzten Hauptlauf = lucy_1v1.json plus die
+    bestätigten Gewinner (nur zero_sum, AUDIT.md §7.9), gleicher Checkpoint-Ordner, Obs/Aktionen
+    unverändert. Nicht gestartet."""
+    main = flatten(json.loads((ROOT / "train" / "configs" / "lucy_1v1.json").read_text(encoding="utf-8")))
+    proposal = flatten(json.loads((ROOT / "train" / "configs" / "lucy_1v1_zero_sum.json").read_text(encoding="utf-8")))
+    assert diff(main, proposal) == EXPECTED["zero_sum"]
+    assert proposal["learner.checkpoint_folder"] == "runs/lucy_1v1/checkpoints"
+    assert proposal["env.max_players"] == 3 and proposal["env.action_stack_size"] == 5
+    assert "NICHT gestartet" in proposal["_comment"]
+
+
+def test_proposed_extension_tests_h3_on_top_of_zero_sum_with_one_change():
+    """Vorgeschlagene Verlängerung (AUDIT.md §7.9): H3 auf Zero-Sum-Basis, genau eine Änderung."""
+    assert diff(load("zero_sum"), load("zero_sum_h3")) == {"env.shuffle_slots": (None, False)}
+    assert load("zero_sum_h3")["metrics.run"] == "zero_sum_h3"
+
+
 # --- Stufe 4, H5: Gradientenschritte pro Iteration ------------------------------
 
 H5_EXPECTED = {

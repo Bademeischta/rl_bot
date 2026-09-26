@@ -145,7 +145,14 @@ powershell -ExecutionPolicy Bypass -File tools\experiments\run_experiment.ps1 -C
 powershell -ExecutionPolicy Bypass -File tools\experiments\run_experiment.ps1 -Config train\configs\experiments\h3_no_shuffle.json    -StartCheckpoint $C -Steps 100000000 -Seed 123 -Baseline $B
 powershell -ExecutionPolicy Bypass -File tools\experiments\run_experiment.ps1 -Config train\configs\experiments\k3_rewards.json       -StartCheckpoint $C -Steps 100000000 -Seed 123 -Baseline $B
 powershell -ExecutionPolicy Bypass -File tools\experiments\run_experiment.ps1 -Config train\configs\experiments\zero_sum.json         -StartCheckpoint $C -Steps 100000000 -Seed 123 -Baseline $B
+# Wiederholung der Baseline (gleiche Config): misst das Rauschen zwischen Trainingsläufen
+powershell -ExecutionPolicy Bypass -File tools\experiments\run_experiment.ps1 -Config train\configs\experiments\baseline.json -Name replicate_baseline -StartCheckpoint $C -Steps 100000000 -Seed 123 -Baseline $B
 ```
+
+Die Wiederholung ist seit Stufe 3 Pflicht (AUDIT.md §7.9). Zwei Läufe derselben Config lagen im
+Duell bis zu 0,24 Tore/Spiel auseinander, das Fünffache der Duell-Rauschbreite. `compare.py`
+erkennt einen Lauf ohne Config-Änderung als Wiederholung und nennt Effekte bis zum Doppelten
+dieses Abstands „im Trainingsrauschen“.
 
 Erwartungen aus AUDIT.md: **H2** Entropie < 3,4, Clip-Fraction > 5 %, KL Richtung 0,006
 (Warnung des Runners bei Entropie < 2,5). **H3** keine Verschlechterung, eher schnellere
@@ -173,11 +180,38 @@ Abbruch (Exit 3) ist ein Ergebnis, kein Fehler: `summary.md` nennt den Grund.
 übersprungen und gemeldet (Review R17).
 
 `compare.py` spielt dabei die **gemeinsame Ladder** (alle Experiment-Enden + Baseline-Start +
-Baseline-Ende, jeder gegen jeden, 100 Spiele je Paarung; bei 4 Experimenten 15 Paarungen, ~9
-Minuten). `results\compare.md` und `results\joint_ladder.json` zurückgeben. Hauptkriterium ist
+Baseline-Ende, jeder gegen jeden, 100 Spiele je Paarung; bei 5 Experimenten inkl. Wiederholung 21
+Paarungen, ~14 Minuten). `results\compare.md` und `results\joint_ladder.json` zurückgeben. Hauptkriterium ist
 das Duell gegen das Baseline-Ende (Tordifferenz pro Spiel mit 95-%-KI, AUDIT.md §7.8); dazu
 `ep_end_goal`, Entropie und die gemeinsame Ladder. Die Entscheidung behalten / verwerfen / nachmessen trage ich
 in AUDIT.md ein.
+
+## 5a. Nach Stufe 3: Vorschlag, nichts davon ist gestartet (AUDIT.md §7.9)
+
+**Hauptlauf fortsetzen** mit dem einzigen bestätigten Gewinner (Zero-Sum). Die Config ist
+`lucy_1v1.json` plus drei Reward-Werte und lädt den neuesten Checkpoint aus
+`runs\lucy_1v1\checkpoints`. `checkpoints_to_keep` 10 rotiert dabei die ältesten
+Hauptlauf-Checkpoints heraus. Wer sie als Duell-Gegner behalten will, kopiert sie vorher weg.
+
+```powershell
+.\build\cpp_cu128\train_bot.exe train\configs\lucy_1v1_zero_sum.json
+```
+
+**Verlängerung, H3 auf Zero-Sum-Basis** (je 300 Mio. Steps, nacheinander, ~90–95 min je Lauf:
+~73 min Training bei ~69.000 SPS, zwei Duelle à ~6 min, Lauf-Ladder; zusammen ~4,5–5 h):
+
+```powershell
+$C = "runs\lucy_1v1\checkpoints\3907335040"   # derselbe Start wie Stufe 3
+powershell -ExecutionPolicy Bypass -File tools\experiments\run_experiment.ps1 -Config train\configs\experiments\zero_sum.json -StartCheckpoint $C -Steps 300000000 -Seed 123
+$Z = "results\exp_zero_sum_<datum des 300-Mio.-Laufs>"
+powershell -ExecutionPolicy Bypass -File tools\experiments\run_experiment.ps1 -Config train\configs\experiments\zero_sum_h3.json -StartCheckpoint $C -Steps 300000000 -Seed 123 -Baseline $Z
+powershell -ExecutionPolicy Bypass -File tools\experiments\run_experiment.ps1 -Config train\configs\experiments\zero_sum.json -Name replicate_zero_sum -StartCheckpoint $C -Steps 300000000 -Seed 123 -Baseline $Z
+.\.venv\Scripts\python tools\experiments\compare.py $Z results\exp_zero_sum_h3_* results\exp_replicate_zero_sum_* --baseline $Z --out results\compare_300m.md
+```
+
+Die Kopie des Start-Checkpoints aus `runs\lucy_1v1` ist nur lesend. Wird der Hauptlauf vorher
+fortgesetzt, bleibt 3907335040 trotzdem erhalten, bis zehn neue Checkpoints geschrieben sind (250
+Mio. Steps, ~1 h). Sicherer ist, ihn vorher zu kopieren.
 
 ## 6. Optional: Stufe 4, Gradientenschritte 6 / 3 / 2 (~1 Stunde)
 
