@@ -29,6 +29,24 @@ Spielen exakt doppelt → Sperre), stochastisch 1000/1000 verschiedene Spiele. N
 Laufzeit, Effekt von 100/225 Mio. Steps und die Begründung für 1000 Spiele: AUDIT.md §7.8.
 Rohdaten: `results\duel_null\*.json`.
 
+### Schritt 2: Experimente (je 100 Mio. Steps ab 3.907.335.040, Seed 123, Build `d7c4b0a`)
+
+Werte im letzten Fünftel der Iterationen; Duelle je 1000 Spiele à 300 s, Tordifferenz pro Spiel
+(A = Experiment-Ende) mit 95-%-KI. Rohdaten: `results\exp_<name>_<datum>\`, Logs
+`results\stage3_logs\`.
+
+| # | Experiment | Abbruch | Duell gg. Start | Duell gg. Baseline-Ende | Entropie | Clip-Frac. | ep_end_goal | Zeit-Timeout-Anteil | Value Loss | Dauer |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | baseline (`exp_baseline_2026-09-26_140705`) | nein | −0,001 [−0,031; +0,029], 0,023 Tore/min je Seite | (Referenz) | 3,43 (Start 3,58) | 2,21 % | 0,39 | 0,61 | 0,066 | 32,9 min (Training 25 min, 68.650 SPS) |
+
+Zwischenstand nach 1 (Baseline): Kein Stärkeunterschied zum Start (Tordifferenz ≈ 0), aber das
+Spiel hat sich verändert: Im Duell fallen kaum noch Tore (0,023 Tore/min je Seite gegen 0,072
+beim Start gegen sich selbst), in den Trainingsepisoden enden 61 % am 900-s-Zeitlimit (K1a) und
+keine mehr per NoTouch; Episoden dauern im Mittel ~665 s. `Avg Val Target` steigt 12,5 → 14,6
+(K1b bootstrappt Timeouts statt sie auf 0 zu setzen), K1b-Diagnose sauber (Reset-Anteil 0).
+Entropie fällt leicht (3,58 → 3,43), Clip-Fraction 1,4 → 2,2 %. 183 von 971 Iterationen ohne
+beendete Episode (lange, synchron gestartete Episoden; kein Abbruchgrund, R5).
+
 ## Review-Fixes (Branch `claude/review-fixes`, lokal auf dem Trainings-PC, ab 25.09.2026)
 
 Ein unabhängiger Review hat nach dem Merge von PR #1 Fehler gefunden. Behoben wird lokal auf dem
