@@ -206,6 +206,15 @@ def make_result(folder: Path, name: str, goal: float, entropy: float, duel=None,
     (folder / "summary.json").write_text(json.dumps(summary), encoding="utf-8")
 
 
+def _duel_json(results: list[tuple[int, int]], seconds: float = 300.0) -> dict:
+    """Duell-Ergebnis im Format von duel.exe (per_game mit Toren je Spiel)."""
+    per_game = [{"a_blue": i % 2 == 0, "goals_a": a, "goals_b": b, "game_seconds": seconds} for i, (a, b) in enumerate(results)]
+    return {"games": len(results), "max_seconds": seconds,
+            "goals_a": sum(a for a, _ in results), "goals_b": sum(b for _, b in results),
+            "wins_a": sum(a > b for a, b in results), "wins_b": sum(b > a for a, b in results),
+            "draws": sum(a == b for a, b in results), "per_game": per_game}
+
+
 def test_compare_table_marks_baseline_and_deltas(tmp_path):
     base = tmp_path / "exp_baseline_2026-10-01"
     exp = tmp_path / "exp_h2_2026-10-01"
@@ -213,33 +222,48 @@ def test_compare_table_marks_baseline_and_deltas(tmp_path):
     make_result(base, "baseline", 0.30, 3.58,
                 ratings={"exp_baseline/2704829056": {"mu": 25, "sigma": 8.3, "conservative": 0.1},
                          "exp_baseline/2804829056": {"mu": 30, "sigma": 2.0, "conservative": 24.0}})
-    make_result(exp, "h2_ent_coef_0004", 0.36, 3.30,
-                duel={"games": 100, "goals_a": 70, "goals_b": 40, "wins_a": 60, "wins_b": 30, "draws": 10,
-                      "goal_share_a": 70 / 110, "goal_share_se": math.sqrt((70 / 110) * (40 / 110) / 110)})
+    # 100 Spiele: 40x 1:0, 20x 0:1, 40x 0:0 -> Tordifferenz +0,2 pro Spiel
+    make_result(exp, "h2_ent_coef_0004", 0.36, 3.30, duel=_duel_json([(1, 0)] * 40 + [(0, 1)] * 20 + [(0, 0)] * 40))
     experiments = [compare.load_experiment(base), compare.load_experiment(exp)]
     table = compare.build_table(experiments, experiments[0], None)
     lines = table.splitlines()
     assert lines[0].startswith("| Experiment |")
-    assert "Gewinnrate [95-%-KI]" in lines[0]
+    assert "Tordifferenz/Spiel [95-%-KI]" in lines[0] and "Gewinnrate" in lines[0] and "Tore/min" in lines[0]
     assert "baseline (Baseline)" in lines[2]
     assert "24.00" not in table                   # keine Einzel-Ladder
     assert "0.360 (+0.060 (+20.0%))" in lines[3]  # Delta gegen Baseline
-    assert "**65.0%** [" in lines[3]              # Gewinnrate (60 + 10/2) / 100
-    assert "63.6% ±" in lines[3]                  # Duell-Toranteil (nebenbei)
+    assert "**+0.200** [" in lines[3]             # Tordifferenz pro Spiel
+    assert "60.0% [" in lines[3]                  # Gewinnrate (40 + 40/2) / 100
+    assert "0.080 : 0.040" in lines[3]            # Tore/min: 40 bzw. 20 Tore in 500 min
     hints = compare.verdict_hints(experiments, experiments[0])
     assert "Hauptkriterium Duell: **besser**" in hints
 
 
-def test_compare_hint_reports_unclear_duel(tmp_path):
+def test_compare_hint_reports_duel_in_the_noise(tmp_path):
     base = tmp_path / "exp_baseline_x"
     exp = tmp_path / "exp_h3_x"
     make_result(base, "baseline", 0.30, 3.58)
-    make_result(exp, "h3_no_shuffle", 0.31, 3.58,
-                duel={"games": 20, "goals_a": 11, "goals_b": 9, "wins_a": 10, "wins_b": 9, "draws": 1,
-                      "goal_share_a": 0.55, "goal_share_se": math.sqrt(0.55 * 0.45 / 20)})
+    make_result(exp, "h3_no_shuffle", 0.31, 3.58, duel=_duel_json([(1, 0)] * 11 + [(0, 1)] * 9 + [(0, 0)] * 20))
     experiments = [compare.load_experiment(base), compare.load_experiment(exp)]
     hints = compare.verdict_hints(experiments, experiments[0])
-    assert "Hauptkriterium Duell: **unklar**" in hints and "enthält 50 %" in hints
+    assert "Hauptkriterium Duell: **im Rauschen**" in hints and "enthält 0" in hints
+
+
+def test_duel_stats_goal_difference_with_t_interval():
+    """Tordifferenz je Spiel mit t-Intervall; Referenz: t(0,975; df) aus der Tabelle."""
+    from metrics_util import duel_stats, t_quantile_975
+    for df, table in ((5, 2.5706), (10, 2.2281), (30, 2.0423), (100, 1.9840)):
+        assert t_quantile_975(df) == pytest.approx(table, rel=5e-3), df
+    d = _duel_json([(2, 0), (1, 1), (0, 1), (3, 1), (0, 0), (1, 0), (0, 2), (1, 1), (2, 1), (0, 0)])
+    s = duel_stats(d)
+    diffs = [2, 0, -1, 2, 0, 1, -2, 0, 1, 0]
+    m = sum(diffs) / 10
+    sd = math.sqrt(sum((x - m) ** 2 for x in diffs) / 9)
+    assert s["goal_diff"] == pytest.approx(0.3)
+    assert s["goal_diff_sd"] == pytest.approx(sd)
+    assert s["goal_diff_ci_high"] - s["goal_diff"] == pytest.approx(2.2622 * sd / math.sqrt(10), rel=2e-3)
+    assert s["goals_per_minute"] == pytest.approx(17 / 50)   # 10 + 7 Tore in 10 x 5 min
+    assert s["win_rate"] == pytest.approx((4 + 0.5 * 4) / 10)
 
 
 def test_win_rate_ci_matches_the_wilson_interval():
