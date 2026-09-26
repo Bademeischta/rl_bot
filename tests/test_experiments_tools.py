@@ -293,6 +293,28 @@ def test_compare_judges_effects_against_the_training_noise_of_a_baseline_replica
     assert "**besser**" in hints
 
 
+STAGE3 = ROOT / "results"
+STAGE3_BASELINE = STAGE3 / "exp_baseline_2026-09-26_140705"
+
+
+@pytest.mark.skipif(not (STAGE3_BASELINE / "summary.json").exists(), reason="Stufe-3-Ergebnisse nur auf dem Trainings-PC")
+def test_compare_on_the_real_stage3_results_separates_training_noise_from_effects():
+    """Echte Ergebnisordner aus Stufe 3 (AUDIT.md §7.9) über die Kommandozeile wie im Runbook."""
+    import subprocess
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+    r = subprocess.run([sys.executable, str(ROOT / "tools" / "experiments" / "compare.py"),
+                        str(STAGE3 / "exp_*_2026-09-26_*"), "--baseline", str(STAGE3_BASELINE), "--ladder-games", "0"],
+                       capture_output=True, text=True, encoding="utf-8", env=env)
+    assert r.returncode == 0, r.stderr
+    tail = r.stdout.split("## Hinweise", 1)[1]
+    hints = {line.split("**")[1]: line for line in tail.splitlines() if line.startswith("* **")}
+    assert "| replicate_baseline (Wiederholung der Baseline) |" in r.stdout
+    assert "**Wiederholung der Baseline**" in hints["replicate_baseline"]
+    for name in ("h3_no_shuffle", "k3_rewards", "h2_ent_coef_0004"):
+        assert "**im Trainingsrauschen**" in hints[name], hints[name]
+    assert "**besser**" in hints["zero_sum"]
+
+
 def test_duel_stats_goal_difference_with_t_interval():
     """Tordifferenz je Spiel mit t-Intervall; Referenz: t(0,975; df) aus der Tabelle."""
     from metrics_util import duel_stats, t_quantile_975
