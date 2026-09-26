@@ -41,6 +41,7 @@ Werte im letzten Fünftel der Iterationen; Duelle je 1000 Spiele à 300 s, Tordi
 | 2 | h2_ent_coef_0004 (`exp_h2_ent_coef_0004_2026-09-26_144033`) | nein (Entropie-Warnungen < 2,5) | −0,025 [−0,059; +0,009] | **−0,025 [−0,040; −0,010]** (0,004 : 0,009 Tore/min) | 2,68 | 1,85 % | 0,11 | 0,89 | 0,008 | ~40 min |
 | 3 | h3_no_shuffle (`exp_h3_no_shuffle_2026-09-26_152037`) | nein | **+0,628 [+0,569; +0,687]**, Gewinnrate 70,4 % (418:10, 572 remis), 0,130 : 0,004 Tore/min | **+0,408 [+0,359; +0,457]**, Gewinnrate 64,5 % (305:15), 0,089 : 0,008 Tore/min | 3,44 | 2,17 % | 0,36 | 0,64 | 0,068 | 38,6 min (Training 24,6 min, 69.500 SPS) |
 | 4 | k3_rewards, Bündel aus 7 Werten (`exp_k3_rewards_2026-09-26_160133`) | nein | **+0,387 [+0,331; +0,443]**, Gewinnrate 62,5 % (335:85), 0,114 : 0,037 Tore/min | **+0,322 [+0,270; +0,374]**, Gewinnrate 60,4 % (259:51), 0,085 : 0,020 Tore/min | **3,99** (steigt) | 0,80 % | 0,39 | 0,61 | 0,005 | 38,8 min (Training 24,7 min, 69.700 SPS) |
+| 5 | zero_sum, Bündel aus 3 Werten (`exp_zero_sum_2026-09-26_164026`) | nein | **+6,79 [+6,61; +6,97]**, Gewinnrate 99,8 % (996:0, 4 remis), 1,367 : 0,009 Tore/min | **+5,76 [+5,59; +5,93]**, Gewinnrate 99,4 % (987:0, 13 remis), 1,155 : 0,003 Tore/min | 2,89 | 3,00 % | **1,00** | 0,0002 | **0,370** | 39,2 min (Training 25,2 min, 68.700 SPS) |
 
 Zwischenstand nach 1 (Baseline): Kein Stärkeunterschied zum Start (Tordifferenz ≈ 0), aber das
 Spiel hat sich verändert: Im Duell fallen kaum noch Tore (0,023 Tore/min je Seite gegen 0,072
@@ -82,6 +83,22 @@ fünfmal kleinerem Shaping werden die Policy-Gradienten kleiner, und der Entropi
 spielt dort also zufälliger und gewinnt trotzdem. Vorläufig: behalten. Weil K3 ein Bündel ist,
 lässt sich der Effekt keinem einzelnen Wert zuordnen. Für einen längeren Lauf die Entropie
 beobachten (Return-std neu schätzen oder `ent_coef` anpassen).
+
+Zwischenstand nach 5 (zero_sum): Das Spiel ändert sich grundlegend. Fast jede Trainingsepisode
+endet mit einem Tor (`ep_end_goal` 0,9998, Baseline 0,39), Episoden dauern ~96 s statt ~665 s,
+der Ballkontakt steigt auf 0,051 (Baseline 0,036). Im Duell schießt das zero_sum-Ende 1,2–1,4
+Tore pro Minute, die Gegner (Start, Baseline-Ende) fast keine: +6,8 bzw. +5,8 Tore/Spiel, 996 bzw.
+987 von 1000 Spielen gewonnen, kein einziges verloren. Das ist rund hundertmal die Rauschbreite.
+Deutung: Das Shaping der Baseline (Offensivpotenzial, Ausrichtung, Tempo zum Ball, Boost) zahlt
+im Selbstspiel beiden Spielern gleichzeitig. Beide Seiten sammeln es, ohne zu riskieren, und
+spielen passiv: 61 % der Episoden enden am 900-s-Limit, im Duell fallen 0,02–0,07 Tore/min.
+Zero-Sum (`r_i − r_j`) macht gemeinsames Sammeln wertlos, übrig bleibt der Anreiz, Tore zu
+schießen. Die Kosten: Value Loss 0,37 (Baseline 0,066), weil der Wert jetzt vom Spielstand
+abhängt. `Avg Val Target` fällt von 3,5 auf 2,4 (bei Zero-Sum wäre im Mittel 0 zu erwarten; der
+Critic verlernt noch das alte Niveau ~12). Die Entropie fällt auf 2,89 (Warnschwelle 2,5).
+`Average Step Reward` ist wie erwartet 0, `raw_step_reward` 0,72. Vorläufig: behalten. Der
+Effekt ist so groß, dass er nur ein Stilbruch gegen passive Gegner sein könnte. Deshalb in der
+gemeinsamen Ladder gegen alle anderen Enden prüfen.
 
 ## Review-Fixes (Branch `claude/review-fixes`, lokal auf dem Trainings-PC, ab 25.09.2026)
 
