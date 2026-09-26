@@ -1481,6 +1481,16 @@ demselben Seed, verglichen über Ladder + `ep_end_goal` + Entropie:
     deshalb zuletzt, wenn 11 und 12 bereits sauber vermessen sind.
 14. Optional: `team_spirit > 0` für zero-sum Shaping. Separater Versuch nach 13.
 
+**Stand 26.09.2026 (§7.9):** Alle vier gelaufen, dazu eine Wiederholung der Baseline.
+Entscheidungen:
+
+* zero_sum **behalten**: +5,8 Tore/Spiel gegen das Baseline-Ende, weit jenseits jedes Rauschens.
+* H3 **verlängern**: stärkster Lauf ohne Zero-Sum, aber im Trainingsrauschen. Nächster Test auf
+  Zero-Sum-Basis, 3 × 300 Mio. Steps.
+* K3 und H2 **verwerfen**.
+
+Vorschlag für den Hauptlauf: `train/configs/lucy_1v1_zero_sum.json`, nicht gestartet.
+
 ### Stufe 4 — Geschwindigkeit (erst wenn das Lernsignal stimmt)
 15. **H5** `expBufferIterations` konfigurierbar machen, dann A/B über 6 / 3 / 2 Gradientenschritte
     pro Iteration. Bis zu +10 % Durchsatz, aber nur behalten, wenn die Lernkurve nicht leidet.
@@ -1702,3 +1712,124 @@ Folgerungen:
   Mio. Steps älteren deutlich und verliert gegen den 225 Mio. Steps älteren. Ein Duell gegen nur
   **einen** Gegner (Baseline-Ende) kann deshalb eine Stil-Frage messen (wer kontert wen) statt
   allgemeiner Stärke. Die gemeinsame Ladder und mehrere Gegner gehören in jede Entscheidung.
+
+### 7.9 Ergebnisse Stufe 3 (26.09.2026, lokal)
+
+**Aufbau.** Die Experimente liefen in der Reihenfolge des Runbooks (Baseline, H2, H3, K3,
+zero_sum), dazu kam als sechster Lauf eine **Wiederholung der Baseline**. Jeder Lauf: 100 Mio.
+Steps ab 3.907.335.040, Seed 123, Build `d7c4b0a` (`_git` in jeder `config_used.json` geprüft).
+Die Läufe liefen nacheinander, je ~39 min (25 min Training bei 68.300–69.700 SPS, dazu zwei
+Duelle à ~6,3 min; die Baseline hat nur eines, ~33 min). **Kein Abbruchkriterium hat gegriffen.** Bewertet wird jedes Ende gegen vier
+Gegner, je Duell 1000 Spiele bzw. 500 im Panel, Spiele à 300 s:
+
+* den Start
+* das Baseline-Ende
+* zwei ältere Hauptlauf-Checkpoints, 3,682 und 3,807 Mrd. (Panel wegen der Nicht-Transitivität, §7.8)
+
+Dazu kommt die gemeinsame Ladder aus `compare.py` (100 Spiele je Paarung). Sie lief zweimal mit
+gleicher Reihenfolge, μ−3σ wich um höchstens 0,3 ab. Rohdaten:
+`results\exp_*_2026-09-26_*`, `results\stage3_panel\`, `results\compare_stage3*.md` (lokal,
+`results\` ist nicht versioniert).
+
+Tordifferenz pro Spiel aus Sicht des Experiment-Endes, [95-%-KI]:
+
+| Ende | gg. Start | gg. Baseline-Ende | gg. 3,682 | gg. 3,807 | Mittel über Start, 3,682, 3,807 (Abstand zum Mittel beider Baseline-Läufe) | Ladder μ−3σ |
+|---|---|---|---|---|---|---|
+| baseline | −0,00 [−0,03; +0,03] | (Referenz) | −0,17 [−0,23; −0,11] | −0,08 [−0,13; −0,02] | −0,08 (−0,16) | 19,6 |
+| Wiederholung der Baseline | +0,24 [+0,20; +0,27] | +0,08 [+0,06; +0,11] | +0,17 [+0,12; +0,22] | +0,31 [+0,25; +0,37] | +0,24 (+0,16) | 25,9 |
+| H2 `ent_coef` 0,004 | −0,03 [−0,06; +0,01] | −0,03 [−0,04; −0,01] | −0,29 [−0,36; −0,23] | −0,13 [−0,19; −0,07] | −0,15 (−0,23) | 17,7 |
+| H3 ohne Slot-Shuffle | +0,63 [+0,57; +0,69] | +0,41 [+0,36; +0,46] | +0,53 [+0,45; +0,62] | +0,68 [+0,59; +0,76] | +0,61 (+0,53) | 31,0 |
+| K3 (Bündel, 7 Werte) | +0,39 [+0,33; +0,44] | +0,32 [+0,27; +0,37] | +0,37 [+0,28; +0,47] | +0,69 [+0,59; +0,80] | +0,49 (+0,41) | 25,7 |
+| zero_sum (Bündel, 3 Werte) | **+6,79** [+6,61; +6,97] | **+5,76** [+5,58; +5,93] | **+6,21** [+5,97; +6,45] | **+7,24** [+6,97; +7,51] | **+6,75 (+6,67)** | 38,7 |
+
+Trainingsmetriken, letztes Fünftel der Iterationen:
+
+| Ende | Entropie (Start 3,58) | Clip-Frac. | KL | `ep_end_goal` | Zeit-Timeout-Anteil | Value Loss | Ballkontakt | Step-Reward (roh) |
+|---|---|---|---|---|---|---|---|---|
+| baseline | 3,43 | 2,21 % | 0,0025 | 0,39 | 0,61 | 0,066 | 0,036 | 0,98 |
+| Wiederholung | 3,40 | 2,20 % | 0,0025 | 0,38 | 0,61 | 0,068 | 0,034 | 0,99 |
+| H2 | 2,68 | 1,85 % | 0,0023 | 0,11 | 0,89 | 0,008 | 0,042 | 1,22 |
+| H3 | 3,44 | 2,17 % | 0,0025 | 0,36 | 0,64 | 0,068 | 0,037 | 0,99 |
+| K3 | 3,99 | 0,80 % | 0,0012 | 0,39 | 0,61 | 0,005 | 0,028 | 0,21 |
+| zero_sum | 2,89 | 3,00 % | 0,0031 | 1,00 | 0,00 | 0,370 | 0,051 | 0,72 |
+
+**Rauschen zwischen Trainingsläufen.** Das ist die wichtigste methodische Erkenntnis dieser
+Stufe. Die Wiederholung der Baseline hat dieselbe Config, denselben Start, Seed und Build. Die
+Läufe laufen nur über RocketSims nicht bitgenaue Physik auseinander. Ihre Trainingsmetriken sind
+fast identisch. Im Duell ist sie aber gegen jeden gemeinsamen Gegner besser als der erste
+Baseline-Lauf: +0,24, +0,34 und +0,39 Tore/Spiel, im Mittel 0,32. Das ist das Sechsfache der
+Duell-Rauschbreite (±0,053, §7.8). Aus diesem einen Paar geschätzt streut ein einzelner
+100-Mio.-Lauf um σ ≈ 0,23 Tore/Spiel. Der Abstand eines einzelnen Experiment-Laufs zum Mittel
+beider Baseline-Läufe streut damit um σ ≈ 0,28 (σ·√1,5). Das ist der Maßstab in den
+Entscheidungen unten. Weil der Seed gleich war, ist das eher eine Untergrenze. Folgen:
+
+* Das Duell-KI eines einzelnen Laufs sagt nichts über dieses Rauschen. Die Wiederholung hätte
+  nach dem alten Hauptkriterium als „besser“ gegolten (+0,083, KI ganz über 0).
+* `compare.py` erkennt Wiederholungen deshalb jetzt und nennt Effekte bis zum Doppelten ihres
+  Abstands „im Trainingsrauschen“ (D4 in `AUDIT_PROGRESS.md`). Das Runbook verlangt zu jeder
+  Reihe eine Wiederholung.
+* Ein 100-Mio.-Lauf pro Config löst nur Effekte ab etwa 0,5 Tore/Spiel sicher auf.
+
+**Entscheidungen**
+
+* **zero_sum: behalten.** Der Effekt ist über zwanzigmal so groß wie das Trainingsrauschen und
+  zeigt sich gegen alle vier Gegner gleich: 99,4–99,8 % Gewinnrate, in 3000 Spielen **kein
+  einziges verloren**. In der Ladder liegt zero_sum mit Abstand vorn. Die Trainingsmetriken passen
+  dazu: Fast jede Episode endet mit einem Tor (`ep_end_goal` 1,00 statt 0,39), die
+  900-s-Timeouts verschwinden (0,61 → 0,00), der Ballkontakt steigt um 39 %. Damit ist Kurzfazit
+  Punkt 1 bestätigt. Ohne Zero-Sum zahlt das dichte Shaping beiden Selbstspiel-Agenten zugleich.
+  Das Ergebnis ist ein passives Gleichgewicht: 61 % der Baseline-Episoden enden am Zeitlimit, im
+  Duell fallen 0,02–0,07 Tore/min. Mit `r_i − r_j` lohnt nur noch, was dem Gegner schadet. Kosten
+  und Beobachtungspunkte:
+  * Value Loss 0,37 statt 0,066 (der Wert hängt jetzt vom Spielstand ab).
+  * `Avg Val Target` fällt noch (3,5 → 2,4; bei Zero-Sum ist im Mittel 0 zu erwarten).
+  * Die Entropie sinkt auf 2,89. Warnschwelle ist 2,5.
+  * Vorbehalt: Die Höhe des Vorsprungs spiegelt auch die Passivität aller Gegner. Gegen einen
+    Zero-Sum-Gegner wird er viel kleiner ausfallen.
+* **H3 (Slot-Shuffle aus): verlängern.** H3 ist gegen alle vier Gegner der stärkste Lauf ohne
+  Zero-Sum (+0,41 bis +0,68) und in der Ladder Zweiter. Dafür gibt es einen plausiblen Grund: Duell
+  und Bot (`env/obs_python.py`) mischen nicht, der Gegner steht immer in Slot 0, und H3 trainiert
+  genau so. Die Trainingsmetriken sind dabei unverändert. Der Vorsprung auf die bessere der beiden
+  Baseline-Läufe (+0,37 im Mittel) ist aber so groß wie der Abstand der Baseline-Läufe
+  untereinander (0,32). Gegen das Mittel beider Baseline-Läufe sind es +0,53 ≈ 1,9σ, und σ
+  stammt aus einem einzigen Paar. Das liegt **im Trainingsrauschen** und ist nicht bestätigt.
+* **K3 (Reward-Umgewichtung, Bündel): verwerfen in dieser Form.** Das Ergebnis liegt im
+  Trainingsrauschen: +0,41 gegen das Mittel der Baseline-Läufe ≈ 1,5σ, und in der Ladder liegt
+  K3 gleichauf mit der Wiederholung der Baseline (25,7 gegen 25,9). Dazu kommen Nebenwirkungen:
+  * Der Trainer teilt die Rewards durch die übernommene Return-std (14,81) und normiert
+    Advantages nicht. Mit fünfmal kleinerem Shaping werden die Policy-Gradienten deshalb kleiner:
+    Die Entropie **steigt** (3,58 → 3,99), die Clip-Fraction fällt auf 0,8 %, die KL halbiert sich.
+  * Der erhoffte Anstieg von `ep_end_goal` bleibt aus (0,39).
+  * Der Ballkontakt fällt um 24 %.
+
+  Das Ziel von K3 (Tore zählen mehr als Shaping) erreicht zero_sum direkter. Ein neuer Versuch
+  wäre nur auf Zero-Sum-Basis sinnvoll, mit neu geschätzter Return-std.
+* **H2 (`ent_coef` 0,004): verwerfen.** Im Duell liegt H2 gegen alle vier Gegner unter der
+  Baseline (−0,03 bis −0,29), allerdings noch im Trainingsrauschen (−0,23 ≈ −0,8σ). Eindeutig
+  sind die Trainingsmetriken. Die Entropie fällt (2,68), aber die Updates werden nicht größer:
+  Clip-Fraction 1,85 %, KL 0,0023 statt der erwarteten > 5 % bzw. 0,006. Stattdessen sammelt die
+  Policy mehr Shaping (Step-Reward +25 %) und schießt weniger Tore (`ep_end_goal` 0,11,
+  Zeit-Timeouts 89 %). H2 vertieft die Passivität.
+
+**Verlängerung (Vorschlag, nicht gestartet).** Die einzige offene Frage mit Aussicht ist H3. Der
+Hauptlauf soll mit Zero-Sum weitergehen, deshalb wird H3 auf dieser Basis geprüft
+(`experiments/zero_sum_h3.json`, genau eine Änderung gegenüber `zero_sum.json`). Geplant sind drei
+Läufe à 300 Mio. Steps vom selben Start (Befehle in `LOCAL_RUNBOOK.md` §5a):
+
+* zero_sum (Referenz)
+* zero_sum_h3
+* eine Wiederholung von zero_sum (Trainingsrauschen)
+
+Jeder Lauf dauert ~90 min (~73 min Training bei ~69.000 SPS, zwei Duelle, Lauf-Ladder),
+zusammen **~4,5 h**. Belastbarer wären zwei Läufe je Config (~9 h). Unter Zero-Sum fallen viele
+Tore, und die Streuung je Spiel liegt bei SD ≈ 2,8–3,0 statt 0,85. 1000 Duellspiele lösen dann
+±0,18 Tore/Spiel auf; das reicht bei Spielständen von 6–7 Toren pro Spiel. K3 und H2 nicht
+verlängern.
+
+**Config für den fortgesetzten Hauptlauf (Vorschlag, nicht gestartet):**
+`train/configs/lucy_1v1_zero_sum.json` = `lucy_1v1.json` plus die drei zero_sum-Werte
+(`team_spirit` 0,1, `goal`/`concede` 5). Obs 257, 90 Aktionen, `max_players` und
+`action_stack_size` bleiben unverändert, der Checkpoint ist kompatibel. `RUNNING_STATS.json` wird
+wie im Experiment übernommen. H3 kommt erst nach bestätigter Verlängerung dazu. Beim Fortsetzen
+rotiert `checkpoints_to_keep` 10 die ältesten Checkpoints aus `runs\lucy_1v1` heraus. Wer 3,682 bis
+3,907 Mrd. als Duell-Gegner behalten will, sichert sie vorher.
