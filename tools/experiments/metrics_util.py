@@ -128,6 +128,66 @@ def win_rate_ci(wins: int, losses: int, draws: int, z: float = 1.96) -> tuple[fl
     return p, max(0.0, center - half), min(1.0, center + half)
 
 
+def t_quantile_975(df: int) -> float:
+    """97,5-%-Quantil der t-Verteilung (zweiseitiges 95-%-Intervall), Reihenentwicklung um die
+    Normalverteilung (Genauigkeit besser als 0,5 % ab df = 5, ohne scipy)."""
+    z = 1.959963984540054
+    if df <= 0:
+        return math.nan
+    return (z + (z ** 3 + z) / (4 * df) + (5 * z ** 5 + 16 * z ** 3 + 3 * z) / (96 * df ** 2)
+            + (3 * z ** 7 + 19 * z ** 5 + 17 * z ** 3 - 15 * z) / (384 * df ** 3))
+
+
+def mean_ci95(values: list[float]) -> tuple[float, float, float, float]:
+    """(Mittel, KI unten, KI oben, Standardabweichung) mit t-Intervall; nan bei weniger als 2 Werten."""
+    n = len(values)
+    if n < 2:
+        return (values[0] if values else math.nan), math.nan, math.nan, math.nan
+    m = sum(values) / n
+    sd = math.sqrt(sum((v - m) ** 2 for v in values) / (n - 1))
+    half = t_quantile_975(n - 1) * sd / math.sqrt(n)
+    return m, m - half, m + half, sd
+
+
+def duel_stats(d: dict) -> dict:
+    """Kennzahlen eines duel.exe-Ergebnisses aus Sicht von A (Hauptkriterium, Review Schritt 1).
+
+    goal_diff:        mittlere Tordifferenz A - B pro Spiel mit 95-%-t-Intervall über die Spiele
+    win_rate:         Gewinnrate (Remis = halber Sieg) mit 95-%-Wilson-Intervall
+    goals_per_minute: Tore pro Minute Spielzeit für A, B und zusammen
+    Ohne Einzelspiele (JSON von vor dem Umbau) nur Mittelwerte, Intervall nan.
+    """
+    games = d.get("per_game") or []
+    out: dict = {}
+    if games:
+        diffs = [g["goals_a"] - g["goals_b"] for g in games]
+        m, low, high, sd = mean_ci95(diffs)
+        minutes = sum(g.get("game_seconds", 0.0) for g in games) / 60.0
+        goals_a = sum(g["goals_a"] for g in games)
+        goals_b = sum(g["goals_b"] for g in games)
+        n = len(games)
+    else:
+        n = d.get("games", 0)
+        goals_a, goals_b = d.get("goals_a", 0), d.get("goals_b", 0)
+        m = (goals_a - goals_b) / n if n else math.nan
+        low = high = sd = math.nan
+        minutes = n * d.get("max_seconds", 120) / 60.0
+    out["games"] = n
+    out["goal_diff"], out["goal_diff_ci_low"], out["goal_diff_ci_high"], out["goal_diff_sd"] = m, low, high, sd
+    rate, wlow, whigh = win_rate_ci(d.get("wins_a", 0), d.get("wins_b", 0), d.get("draws", 0))
+    out["win_rate"], out["win_rate_ci_low"], out["win_rate_ci_high"] = rate, wlow, whigh
+    out["goals_per_minute_a"] = goals_a / minutes if minutes else math.nan
+    out["goals_per_minute_b"] = goals_b / minutes if minutes else math.nan
+    out["goals_per_minute"] = (goals_a + goals_b) / minutes if minutes else math.nan
+    out["distinct_games"] = d.get("distinct_games")
+    return out
+
+
+def games_for_half_width(sd: float, half_width: float) -> int:
+    """Spielanzahl, bei der das 95-%-Intervall der mittleren Tordifferenz +-half_width breit ist."""
+    return math.ceil((1.96 * sd / half_width) ** 2)
+
+
 def count_bad(rows: list[dict[str, str]], key: str) -> int:
     """Wie viele Iterationen in einer Spalte nan, inf oder leer sind."""
     return sum(1 for r in rows if is_bad_value(r.get(key)))

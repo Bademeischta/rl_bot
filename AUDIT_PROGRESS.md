@@ -8,6 +8,139 @@ Branches: `claude/rlbot-audit-roadmap-c8t7nl` (Audit-Roadmap, abgezweigt von `ma
 als PR #1 in `main` gemergt) und `claude/review-fixes` (Review-Befunde R1-R19, von `main` @
 `bb7f93e`, eigener PR). Regel: ein Commit pro Punkt, ID in der Commit-Message.
 
+## Stufe 3: Duell-Instrument und Experimente (Branch `claude/duel-and-experiments`, ab 26.09.2026)
+
+Abgezweigt von `claude/review-fixes` (8c6e7fa); dieser Branch war entgegen der Annahme im Auftrag
+noch nicht in `main` gemergt (Nutzer-Entscheidung: von review-fixes abzweigen). Regeln: Hauptlauf
+wird nicht fortgesetzt, Experimente nacheinander, alle vom neuesten Checkpoint (3.907.335.040),
+Seed 123, derselbe Build (Git-Hash in `config_used.json`).
+
+### Schritt 1: Duell-Auswertung (erledigt)
+
+| ID | Änderung | Test (ohne Fix rot) |
+|---|---|---|
+| D1 | `duel.exe`: 300-s-Matches mit Anstoß nach jedem Tor, Ergebnis je Spiel, geseedete Anstöße (Paare mit Seitentausch), je Spiel frische Arena + eigene Generatoren (Aktionen, RocketSim-Respawn), Car-ID-Reihenfolge, Sperre für deterministische Wiederholungen, parallele Spiele (`--threads`) | `tests/test_duel.py` (echter `duel.exe`, 4 rot mit dem alten) |
+| D2 | Hauptkriterium in `compare.py`/`summarize.py`: Tordifferenz pro Spiel mit 95-%-t-KI; Gewinnrate (Wilson) und Tore/min zusätzlich | `test_experiments_tools.py` (3 rot mit dem alten) |
+| D3 | Spielanzahl 1000 je Duell (`run_experiment.ps1`, `bench_expbuffer.ps1`), gemeinsame Ladder 100 Spiele je Paarung | `test_default_duel_games_resolve_the_target_effect` (rot mit 100) |
+| D4 (aus Schritt 3) | `compare.py` erkennt Wiederholungen der Baseline (keine Config-Änderung), nimmt ihren Abstand zur Baseline als Trainingsrauschen und nennt Effekte bis zum Doppelten „im Trainingsrauschen“; ohne Wiederholung der Hinweis, dass dieses Rauschen unbekannt ist | `test_compare_judges_effects_against_the_training_noise_of_a_baseline_replicate` (rot mit dem alten) |
+
+Prüfungen zur Unabhängigkeit: verschiedene Anstoß-Seeds je Spielpaar (ja), Seitentausch (ja, Blau
+gegen Orange in der Nullmessung +0,021 [−0,032; +0,074]), deterministische Policies (ja, 1 von 20
+Spielen exakt doppelt → Sperre), stochastisch 1000/1000 verschiedene Spiele. Nullmessung,
+Laufzeit, Effekt von 100/225 Mio. Steps und die Begründung für 1000 Spiele: AUDIT.md §7.8.
+Rohdaten: `results\duel_null\*.json`.
+
+### Schritt 2: Experimente (je 100 Mio. Steps ab 3.907.335.040, Seed 123, Build `d7c4b0a`)
+
+Werte im letzten Fünftel der Iterationen; Duelle je 1000 Spiele à 300 s, Tordifferenz pro Spiel
+(A = Experiment-Ende) mit 95-%-KI. Rohdaten: `results\exp_<name>_<datum>\`, Logs
+`results\stage3_logs\`.
+
+| # | Experiment | Abbruch | Duell gg. Start | Duell gg. Baseline-Ende | Entropie | Clip-Frac. | ep_end_goal | Zeit-Timeout-Anteil | Value Loss | Dauer |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | baseline (`exp_baseline_2026-09-26_140705`) | nein | −0,001 [−0,031; +0,029], 0,023 Tore/min je Seite | (Referenz) | 3,43 (Start 3,58) | 2,21 % | 0,39 | 0,61 | 0,066 | 32,9 min (Training 25 min, 68.650 SPS) |
+| 2 | h2_ent_coef_0004 (`exp_h2_ent_coef_0004_2026-09-26_144033`) | nein (Entropie-Warnungen < 2,5) | −0,025 [−0,059; +0,009] | **−0,025 [−0,040; −0,010]** (0,004 : 0,009 Tore/min) | 2,68 | 1,85 % | 0,11 | 0,89 | 0,008 | ~40 min |
+| 3 | h3_no_shuffle (`exp_h3_no_shuffle_2026-09-26_152037`) | nein | **+0,628 [+0,569; +0,687]**, Gewinnrate 70,4 % (418:10, 572 remis), 0,130 : 0,004 Tore/min | **+0,408 [+0,359; +0,457]**, Gewinnrate 64,5 % (305:15), 0,089 : 0,008 Tore/min | 3,44 | 2,17 % | 0,36 | 0,64 | 0,068 | 38,6 min (Training 24,6 min, 69.500 SPS) |
+| 4 | k3_rewards, Bündel aus 7 Werten (`exp_k3_rewards_2026-09-26_160133`) | nein | **+0,387 [+0,331; +0,443]**, Gewinnrate 62,5 % (335:85), 0,114 : 0,037 Tore/min | **+0,322 [+0,270; +0,374]**, Gewinnrate 60,4 % (259:51), 0,085 : 0,020 Tore/min | **3,99** (steigt) | 0,80 % | 0,39 | 0,61 | 0,005 | 38,8 min (Training 24,7 min, 69.700 SPS) |
+| 5 | zero_sum, Bündel aus 3 Werten (`exp_zero_sum_2026-09-26_164026`) | nein | **+6,79 [+6,61; +6,97]**, Gewinnrate 99,8 % (996:0, 4 remis), 1,367 : 0,009 Tore/min | **+5,76 [+5,59; +5,93]**, Gewinnrate 99,4 % (987:0, 13 remis), 1,155 : 0,003 Tore/min | 2,89 | 3,00 % | **1,00** | 0,0002 | **0,370** | 39,2 min (Training 25,2 min, 68.700 SPS) |
+| 6 | *Zusatz:* replicate_baseline = `baseline.json` noch einmal, gleicher Seed, Checkpoint und Build (`exp_replicate_baseline_2026-09-26_171954`) | nein | **+0,238 [+0,203; +0,273]**, Gewinnrate 60,1 % (227:26), 0,055 : 0,007 Tore/min | **+0,083 [+0,058; +0,108]**, Gewinnrate 53,5 % (100:30), 0,023 : 0,006 Tore/min | 3,40 | 2,20 % | 0,38 | 0,61 | 0,068 | 39,1 min (Training 25,1 min, 68.300 SPS) |
+
+Zwischenstand nach 1 (Baseline): Kein Stärkeunterschied zum Start (Tordifferenz ≈ 0), aber das
+Spiel hat sich verändert: Im Duell fallen kaum noch Tore (0,023 Tore/min je Seite gegen 0,072
+beim Start gegen sich selbst), in den Trainingsepisoden enden 61 % am 900-s-Zeitlimit (K1a) und
+keine mehr per NoTouch; Episoden dauern im Mittel ~665 s. `Avg Val Target` steigt 12,5 → 14,6
+(K1b bootstrappt Timeouts statt sie auf 0 zu setzen), K1b-Diagnose sauber (Reset-Anteil 0).
+Entropie fällt leicht (3,58 → 3,43), Clip-Fraction 1,4 → 2,2 %. 183 von 971 Iterationen ohne
+beendete Episode (lange, synchron gestartete Episoden; kein Abbruchgrund, R5).
+
+Zwischenstand nach 2 (H2): Die Entropie fällt wie erwartet (3,58 → 2,68, zeitweise < 2,5), aber
+die Updates werden **nicht** größer (Clip-Fraction 1,8 %, KL 0,0023; Audit-Erwartung > 5 % bzw.
+0,006). Stattdessen verschiebt sich das Verhalten zum Shaping: Reward pro Step +25 % gegenüber der
+Baseline (1,22 gegen 0,98), mehr Ballkontakt (0,042 gegen 0,036), aber `ep_end_goal` 0,11 statt
+0,39 und 89 % Zeit-Timeouts. Im Duell gegen das Baseline-Ende knapp schlechter (−0,025 Tore/Spiel,
+KI ganz unter 0), bei sehr wenigen Toren (65 in 1000 Spielen). Vorläufig: eher verwerfen (Schritt 3: verwerfen).
+
+Zwischenstand nach 3 (H3): Die Trainingsmetriken sind fast gleich wie bei der Baseline
+(Entropie 3,44 gegen 3,43, Clip-Fraction 2,17 gegen 2,21 %, `ep_end_goal` 0,36 gegen 0,39,
+Value Loss 0,068 gegen 0,066). Im Duell ist H3 aber mit Abstand am stärksten: +0,63 Tore/Spiel
+gegen den Start und +0,41 gegen das Baseline-Ende. Beide Intervalle liegen weit über 0 und etwa
+zehnmal über der Rauschbreite der Nullmessung. Vermutliche Ursache: Duell (`duel.cpp`) und Bot
+(`env/obs_python.py`) mischen die Slots nicht. Im 1v1 hat die Obs drei Gegner-Slots (ein echter
+Gegner, zwei Null-Slots), und ohne Shuffle steht der Gegner immer in Slot 0. H3 trainiert genau in
+dieser Anordnung, der Start-Checkpoint und die Baseline dagegen mit dem Gegner in einem zufälligen
+der drei Slots. Der Effekt
+gilt also für das Duell **und** für den echten Bot, sagt aber nichts über Stärke bei gemischten
+Slots. Vorbehalt: Es gibt nur einen Trainingslauf je Config; das Rauschen zwischen
+Trainingsläufen ist nicht gemessen (siehe Schritt 3). Vorläufig: behalten (Schritt 3: im
+Trainingsrauschen, verlängern).
+
+Zwischenstand nach 4 (K3): Die Erwartungen aus dem Runbook treffen ein: `Avg Val Target` 3,1
+(Baseline 14,6), `Average Step Reward` 0,21 (Baseline 0,98), Value Loss 0,005. `ep_end_goal`
+steigt aber **nicht** (0,39 wie die Baseline), der Ballkontakt sinkt (0,028 gegen 0,036). Im Duell
+ist K3 klar besser: +0,32 Tore/Spiel gegen das Baseline-Ende und +0,39 gegen den Start, beide
+Intervalle weit über 0. Auffällig ist die Entropie. Sie **steigt** von 3,58 auf 3,99, und die
+Clip-Fraction fällt auf 0,8 % (KL 0,0012). Der Grund: Der Trainer teilt die Rewards durch die
+übernommene Return-std (14,81, AUDIT.md §7.3) und normiert die Advantages nicht pro Batch. Mit
+fünfmal kleinerem Shaping werden die Policy-Gradienten kleiner, und der Entropie-Bonus
+(`ent_coef` 0,01) wiegt relativ schwerer. Das Duell spielt stochastisch, eine breitere Policy
+spielt dort also zufälliger und gewinnt trotzdem. Vorläufig: behalten (Schritt 3: im
+Trainingsrauschen, verwerfen). Weil K3 ein Bündel ist,
+lässt sich der Effekt keinem einzelnen Wert zuordnen. Für einen längeren Lauf die Entropie
+beobachten (Return-std neu schätzen oder `ent_coef` anpassen).
+
+Zwischenstand nach 5 (zero_sum): Das Spiel ändert sich grundlegend. Fast jede Trainingsepisode
+endet mit einem Tor (`ep_end_goal` 0,9998, Baseline 0,39), Episoden dauern ~96 s statt ~665 s,
+der Ballkontakt steigt auf 0,051 (Baseline 0,036). Im Duell schießt das zero_sum-Ende 1,2–1,4
+Tore pro Minute, die Gegner (Start, Baseline-Ende) fast keine: +6,8 bzw. +5,8 Tore/Spiel, 996 bzw.
+987 von 1000 Spielen gewonnen, kein einziges verloren. Das ist rund hundertmal die Rauschbreite.
+Deutung: Das Shaping der Baseline (Offensivpotenzial, Ausrichtung, Tempo zum Ball, Boost) zahlt
+im Selbstspiel beiden Spielern gleichzeitig. Beide Seiten sammeln es, ohne zu riskieren, und
+spielen passiv: 61 % der Episoden enden am 900-s-Limit, im Duell fallen 0,02–0,07 Tore/min.
+Zero-Sum (`r_i − r_j`) macht gemeinsames Sammeln wertlos, übrig bleibt der Anreiz, Tore zu
+schießen. Die Kosten: Value Loss 0,37 (Baseline 0,066), weil der Wert jetzt vom Spielstand
+abhängt. `Avg Val Target` fällt von 3,5 auf 2,4 (bei Zero-Sum wäre im Mittel 0 zu erwarten; der
+Critic verlernt noch das alte Niveau ~12). Die Entropie fällt auf 2,89 (Warnschwelle 2,5).
+`Average Step Reward` ist wie erwartet 0, `raw_step_reward` 0,72. Vorläufig: behalten. Der
+Effekt ist so groß, dass er nur ein Stilbruch gegen passive Gegner sein könnte. Deshalb in der
+gemeinsamen Ladder gegen alle anderen Enden prüfen.
+
+Zusatz 6 (Wiederholung der Baseline, nicht im Runbook): Das Duell-Intervall erfasst nur das
+Rauschen der Duellspiele, nicht das zwischen Trainingsläufen. Deshalb lief `baseline.json` ein
+zweites Mal, mit identischem Start, Seed und Build. Ergebnis: Die Trainingsmetriken sind fast
+gleich (Entropie 3,40 gegen 3,43, Clip-Fraction 2,20 gegen 2,21 %, `ep_end_goal` 0,38 gegen
+0,39, Value Loss 0,068 gegen 0,066). Die Duelle weichen aber deutlich ab: gegen den Start
+**+0,24** statt −0,00, und gegen das erste Baseline-Ende +0,08 mit einem KI ganz über 0. Zwei
+Läufe derselben Config unterscheiden sich im Duell also um bis zu ~0,25 Tore/Spiel, das Fünffache
+der Duell-Rauschbreite (±0,05). Weil der Seed gleich war (die Läufe laufen nur über RocketSims
+nicht bitgenaue Physik auseinander), ist das eher eine Untergrenze. Folge für die Auswertung: Ein
+Effekt aus **einem** 100-Mio.-Lauf ist erst deutlich jenseits von ~0,25–0,3 Tore/Spiel belastbar.
+
+### Schritt 3: Auswertung (erledigt, Details und Zahlen in AUDIT.md §7.9)
+
+* `compare.py` lief über alle sechs Läufe mit gemeinsamer Ladder (100 Spiele je Paarung, 21
+  Paarungen, ~14 min). Ausgaben: `results\compare_stage3.md` (erster Lauf) und
+  `results\compare_stage3_final.md` (nach D4, mit Hinweisen zum Trainingsrauschen).
+* Panel: jedes Ende gegen die Hauptlauf-Checkpoints 3,682 und 3,807 Mrd. (je 500 Spiele,
+  `results\stage3_panel\`, ~36 min). Grund ist die Nicht-Transitivität (§7.8).
+* Rauschen zwischen Trainingsläufen: Die Wiederholung der Baseline ist gegen jeden gemeinsamen
+  Gegner besser als der erste Lauf (+0,24 / +0,34 / +0,39). Daraus σ ≈ 0,23 Tore/Spiel je Lauf.
+  Das ist das Sechsfache der Duell-Rauschbreite.
+* Entscheidungen:
+  * **zero_sum behalten.** Der Effekt ist über zwanzigmal so groß wie das Rauschen: 3000
+    Spiele gegen vier Gegner, keines verloren.
+  * **H3 verlängern.** Überall der stärkste Lauf ohne Zero-Sum, aber sein Vorsprung ist so groß
+    wie der Abstand der beiden Baseline-Läufe.
+  * **K3 verwerfen.** Im Rauschen, in der Ladder gleichauf mit der Wiederholung. Die Entropie
+    steigt, `ep_end_goal` steigt nicht.
+  * **H2 verwerfen.** Überall unter der Baseline, dazu mehr Passivität (`ep_end_goal` 0,11).
+* Vorschläge, **nicht gestartet**:
+  * Hauptlauf mit `train/configs/lucy_1v1_zero_sum.json` fortsetzen (`lucy_1v1.json` plus drei
+    zero_sum-Werte).
+  * Verlängerung: zero_sum, `experiments/zero_sum_h3.json` und eine Wiederholung von zero_sum,
+    je 300 Mio. Steps, zusammen ~4,5 h (LOCAL_RUNBOOK.md §5a).
+  * Beide Configs sind durch Tests auf genau diese Änderungen festgelegt
+    (`tests/test_experiment_configs.py`).
+
 ## Review-Fixes (Branch `claude/review-fixes`, lokal auf dem Trainings-PC, ab 25.09.2026)
 
 Ein unabhängiger Review hat nach dem Merge von PR #1 Fehler gefunden. Behoben wird lokal auf dem

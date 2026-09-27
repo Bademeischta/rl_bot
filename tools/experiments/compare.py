@@ -5,10 +5,13 @@
 
 Jeder Ordner braucht summary.json (aus summarize.py) und, wenn vorhanden, metrics.csv.
 
-**Hauptkriterium** (Review-Befund R12) ist das direkte Duell jedes Experiment-Endes gegen das
-Baseline-Ende (duel_end_vs_baseline.json aus run_experiment.ps1): Gewinnrate (Remis = halber Sieg)
-mit 95-%-Konfidenzintervall nach Wilson. Liegt das ganze Intervall über 50 %, ist das Experiment
-besser; ganz darunter schlechter; sonst unklar.
+**Hauptkriterium** ist das direkte Duell jedes Experiment-Endes gegen das Baseline-Ende
+(duel_end_vs_baseline.json aus run_experiment.ps1): mittlere **Tordifferenz pro Spiel** (Spiele à
+300 s, siehe eval/cpp/duel.cpp) mit 95-%-t-Intervall über die Einzelspiele. Liegt das ganze
+Intervall über 0, ist das Experiment besser; ganz darunter schlechter; sonst unklar (im Rauschen).
+Zusätzlich: Gewinnrate (Remis = halber Sieg, Wilson-Intervall) und Tore pro Minute. Die Gewinnrate
+war vorher das Hauptkriterium (R12), taugte aber nicht: Mit 120-s-Spielen, die beim ersten Tor
+endeten, waren fast alle Spiele remis.
 
 **TrueSkill** kommt nur aus EINER gemeinsamen Ladder, die compare.py selbst spielt: alle
 Experiment-Enden plus Baseline-Start und Baseline-Ende, jeder gegen jeden (--ladder-games Spiele je
@@ -19,6 +22,12 @@ Dazu je Experiment (letztes Fünftel der Iterationen): ep_end_goal, ep_end_timeo
 Clip-Fraction, KL, Value Loss, Truncated Steps, SPS mit Differenz zur Baseline. Experimente, die mehr
 als einen Config-Wert ändern, werden als Bündel markiert (Review R11). Die Baseline ist der Ordner
 mit --baseline oder der, dessen Name mit "exp_baseline" beginnt.
+
+**Trainingsrauschen**: Ein Lauf ohne jede Config-Änderung gegenüber der Baseline (run_experiment.ps1
+mit baseline.json und -Name replicate_baseline) gilt als Wiederholung. Sein Abstand zur Baseline zeigt,
+wie weit zwei Läufe derselben Config im Duell auseinanderliegen. Effekte bis zum Doppelten davon
+heißen in den Hinweisen „im Trainingsrauschen“, auch wenn das Duell-Intervall 0 ausschließt
+(AUDIT.md §7.9). Ohne Wiederholung sagen die Hinweise, dass dieses Rauschen unbekannt ist.
 """
 from __future__ import annotations
 
@@ -31,7 +40,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from metrics_util import read_rows, win_rate_ci, window_mean  # noqa: E402
+from metrics_util import duel_stats, read_rows, window_mean  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -97,6 +106,35 @@ def bundle_label(changes: dict | None) -> str:
     return ""
 
 
+def replicates(experiments: list[dict], baseline: dict) -> list[dict]:
+    """Wiederholungen der Baseline: Läufe ohne jede Config-Änderung gegenüber der Baseline."""
+    return [s for s in experiments if s is not baseline and config_changes(s, baseline) == {}]
+
+
+def training_noise(experiments: list[dict], baseline: dict) -> float | None:
+    """Wie weit zwei Läufe derselben Config im Duell auseinanderliegen (Tore/Spiel), oder None ohne
+    Wiederholung der Baseline.
+
+    Die 95-%-Intervalle der Duelle erfassen nur das Rauschen der Duellspiele. Stufe 3 hat gezeigt,
+    dass zwei Trainingsläufe derselben Config (gleicher Start, Seed und Build) deutlich weiter
+    auseinanderliegen (AUDIT.md §7.9). Gemessen wird der Abstand je Wiederholung auf zwei Wegen:
+    ihr Duell gegen das Baseline-Ende und der Unterschied der Duelle beider Läufe gegen den Start.
+    Das Maximum ist eine grobe Schätzung aus wenigen Läufen, eher eine Untergrenze. Ein Experiment
+    ohne Effekt liegt gegen das Baseline-Ende etwa um diesen Abstand daneben; verdict_hints nennt
+    einen Effekt deshalb erst ab dem Doppelten belastbar (grob zwei Standardabweichungen).
+    """
+    gaps = []
+    base_start = duel_summary(baseline.get("duel_start"))
+    for r in replicates(experiments, baseline):
+        ds = duel_summary(r.get("duel_baseline"))
+        if ds:
+            gaps.append(abs(ds["goal_diff"]))
+        rs = duel_summary(r.get("duel_start"))
+        if rs and base_start:
+            gaps.append(abs(rs["goal_diff"] - base_start["goal_diff"]))
+    return max(gaps) if gaps else None
+
+
 def load_experiment(folder: Path) -> dict:
     summary_path = folder / "summary.json"
     if not summary_path.exists():
@@ -116,11 +154,11 @@ def load_experiment(folder: Path) -> dict:
     return s
 
 
-def duel_win_rate(d: dict | None) -> tuple[float, float, float] | None:
-    """(Gewinnrate, KI unten, KI oben) des Duells aus Sicht von A (= Experiment-Ende)."""
+def duel_summary(d: dict | None) -> dict | None:
+    """Kennzahlen des Duells aus Sicht von A (= Experiment-Ende), siehe metrics_util.duel_stats."""
     if not d or not d.get("games"):
         return None
-    return win_rate_ci(d.get("wins_a", 0), d.get("wins_b", 0), d.get("draws", 0))
+    return duel_stats(d)
 
 
 def fmt(v, digits) -> str:
@@ -195,25 +233,31 @@ def run_joint_ladder(participants: dict[str, Path], games: int, exe: Path, out_p
 
 def build_table(experiments: list[dict], baseline: dict, ladder: dict | None) -> str:
     lines = []
-    header = ("| Experiment | Iter. | **Duell gg. Baseline-Ende: Gewinnrate [95-%-KI]** | "
+    header = ("| Experiment | Iter. | **Duell gg. Baseline-Ende: Tordifferenz/Spiel [95-%-KI]** | "
+              "Gewinnrate [95-%-KI] | Tore/min (Exp. : Base) | "
               + " | ".join(name for _, name, _, _ in COMPARE_COLUMNS)
-              + " | TrueSkill gemeinsame Ladder (mu-3σ ± σ) | Toranteil im Duell ± SE |")
+              + " | TrueSkill gemeinsame Ladder (mu-3σ ± σ) |")
     lines.append(header)
     lines.append("|" + "---|" * (header.count("|") - 1))
     base_last = baseline.get("metrics", {}).get("last_20pct", {})
     ratings = (ladder or {}).get("ratings", {})
+    reps = replicates(experiments, baseline)
     for s in experiments:
         last = s.get("metrics", {}).get("last_20pct", {})
         is_base = s is baseline
-        label = s["name"] + (" (Baseline)" if is_base else bundle_label(config_changes(s, baseline)))
+        label = s["name"] + (" (Baseline)" if is_base else " (Wiederholung der Baseline)" if s in reps
+                             else bundle_label(config_changes(s, baseline)))
         cells = [label, str(s.get("metrics", {}).get("iterations", "-"))]
-        wr = None if is_base else duel_win_rate(s.get("duel_baseline"))
-        if wr:
+        ds = None if is_base else duel_summary(s.get("duel_baseline"))
+        if ds:
             d = s["duel_baseline"]
-            cells.append(f"**{wr[0]:.1%}** [{wr[1]:.1%}, {wr[2]:.1%}] ({d['wins_a']}:{d['wins_b']}, "
-                         f"{d['draws']} remis, {d['games']} Spiele)")
+            cells.append(f"**{ds['goal_diff']:+.3f}** [{ds['goal_diff_ci_low']:+.3f}, {ds['goal_diff_ci_high']:+.3f}] "
+                         f"({ds['games']} Spiele)")
+            cells.append(f"{ds['win_rate']:.1%} [{ds['win_rate_ci_low']:.1%}, {ds['win_rate_ci_high']:.1%}] "
+                         f"({d['wins_a']}:{d['wins_b']}, {d['draws']} remis)")
+            cells.append(f"{ds['goals_per_minute_a']:.3f} : {ds['goals_per_minute_b']:.3f}")
         else:
-            cells.append("(Referenz)" if is_base else "-")
+            cells += ["(Referenz)" if is_base else "-", "-", "-"]
         for short, _, digits, _ in COMPARE_COLUMNS:
             v = last.get(short)
             if is_base:
@@ -222,12 +266,6 @@ def build_table(experiments: list[dict], baseline: dict, ladder: dict | None) ->
                 cells.append(f"{fmt(v, digits)} ({delta(v, base_last.get(short), digits)})" if v is not None else "-")
         r = ratings.get(end_label(s, baseline))
         cells.append(f"{r['conservative']:.2f} ± {r['sigma']:.2f}" if r else "-")
-        d = s.get("duel_baseline")
-        if d and not is_base and d.get("goal_share_a") is not None:
-            se = d.get("goal_share_se")
-            cells.append(f"{d['goal_share_a']:.1%} ± {(se or 0) * 100:.1f} pp ({d['goals_a']}:{d['goals_b']})")
-        else:
-            cells.append("-")
         lines.append("| " + " | ".join(cells) + " |")
     return "\n".join(lines)
 
@@ -249,27 +287,48 @@ def verdict_hints(experiments: list[dict], baseline: dict) -> str:
     """Kurze, regelbasierte Hinweise; die Entscheidung bleibt beim Menschen (AUDIT.md Roadmap)."""
     out = ["", "## Hinweise (regelbasiert, keine Entscheidung)", ""]
     base_last = baseline.get("metrics", {}).get("last_20pct", {})
+    reps = replicates(experiments, baseline)
+    noise = training_noise(experiments, baseline)
+    if noise is None:
+        out += ["Keine Wiederholung der Baseline dabei: Das Rauschen zwischen Trainingsläufen ist unbekannt, "
+                "die Intervalle erfassen nur das Rauschen der Duellspiele.", ""]
+    else:
+        out += [f"Trainingsrauschen: Zwei Läufe derselben Config liegen im Duell bis zu {noise:.3f} Tore/Spiel "
+                f"auseinander ({len(reps)} Wiederholung(en) der Baseline). Ein Effekt gilt erst ab dem Doppelten "
+                f"({2 * noise:.3f}) als belastbar; darunter heißt er „im Trainingsrauschen“, auch wenn das "
+                f"Duell-Intervall 0 ausschließt.", ""]
     for s in experiments:
         if s is baseline:
             continue
         notes = []
         last = s.get("metrics", {}).get("last_20pct", {})
+        if s in reps:
+            notes.append("**Wiederholung der Baseline** (gleiche Config): misst das Trainingsrauschen, kein Experiment")
         if s.get("abort_reason"):
             notes.append(f"abgebrochen: {s['abort_reason']}")
         changes = config_changes(s, baseline)
         if changes and len(changes) > 1:
             notes.append(f"**Bündel aus {len(changes)} Änderungen** ({', '.join(changes)}): Ein Effekt ist keinem "
                          f"einzelnen Wert zuzuordnen; nur bei schlechtem oder unklarem Ergebnis aufteilen (AUDIT.md §7.6)")
-        wr = duel_win_rate(s.get("duel_baseline"))
-        if wr:
-            rate, low, high = wr
-            if low > 0.5:
-                notes.append(f"Hauptkriterium Duell: **besser** als Baseline-Ende ({rate:.1%}, 95-%-KI [{low:.1%}, {high:.1%}] über 50 %)")
-            elif high < 0.5:
-                notes.append(f"Hauptkriterium Duell: **schlechter** als Baseline-Ende ({rate:.1%}, 95-%-KI [{low:.1%}, {high:.1%}] unter 50 %)")
+        ds = duel_summary(s.get("duel_baseline"))
+        if ds and not math.isnan(ds["goal_diff_ci_low"]):
+            m, low, high = ds["goal_diff"], ds["goal_diff_ci_low"], ds["goal_diff_ci_high"]
+            span = f"{m:+.3f} Tore/Spiel, 95-%-KI [{low:+.3f}, {high:+.3f}]"
+            if s in reps:
+                notes.append(f"Duell gegen das Baseline-Ende {span}: Abstand zweier Läufe derselben Config")
+            elif noise is not None and (low > 0 or high < 0) and abs(m) <= 2 * noise:
+                notes.append(f"Hauptkriterium Duell: **im Trainingsrauschen** ({span}; schließt 0 aus, ist aber "
+                             f"nicht größer als das Doppelte von {noise:.3f}, dem Abstand zweier Läufe derselben "
+                             f"Config); Wiederholungen oder längerer Lauf")
+            elif low > 0:
+                notes.append(f"Hauptkriterium Duell: **besser** als Baseline-Ende ({span}, ganz über 0)")
+            elif high < 0:
+                notes.append(f"Hauptkriterium Duell: **schlechter** als Baseline-Ende ({span}, ganz unter 0)")
             else:
-                notes.append(f"Hauptkriterium Duell: **unklar** ({rate:.1%}, 95-%-KI [{low:.1%}, {high:.1%}] enthält 50 %); "
-                             f"mehr Duell-Spiele oder längerer Lauf")
+                notes.append(f"Hauptkriterium Duell: **im Rauschen** ({span} enthält 0); mehr Duell-Spiele "
+                             f"oder längerer Lauf")
+        elif ds:
+            notes.append("Hauptkriterium Duell ohne Einzelspiele (altes duel.exe): kein Intervall")
         else:
             notes.append("Hauptkriterium Duell fehlt (kein duel_end_vs_baseline.json; -Baseline bei run_experiment.ps1?)")
         g, gb = last.get("ep_end_goal"), base_last.get("ep_end_goal")
@@ -334,7 +393,7 @@ def main() -> int:
     ap.add_argument("folders", nargs="+", help="Ergebnisordner oder Muster wie results/exp_* (löst compare.py selbst auf)")
     ap.add_argument("--baseline", type=Path, default=None)
     ap.add_argument("--out", type=Path, default=None, help="Markdown zusätzlich in Datei schreiben")
-    ap.add_argument("--ladder-games", type=int, default=50,
+    ap.add_argument("--ladder-games", type=int, default=100,
                     help="Spiele je Paarung in der gemeinsamen Ladder (0 = keine Ladder)")
     ap.add_argument("--exe", type=Path, default=DUEL_EXE, help="Pfad zu duel.exe")
     ap.add_argument("--ladder-out", type=Path, default=None,
@@ -368,8 +427,9 @@ def main() -> int:
 
     md = "# Experiment-Vergleich (letztes Fünftel der Iterationen)\n\n"
     md += f"Baseline: `{baseline['_folder']}`\n\n"
-    md += ("Hauptkriterium: Duell gegen das Baseline-Ende, Gewinnrate (Remis = halber Sieg) mit "
-           "95-%-Wilson-Intervall. TrueSkill nur aus der gemeinsamen Ladder unten.\n\n")
+    md += ("Hauptkriterium: Duell gegen das Baseline-Ende, mittlere Tordifferenz pro Spiel mit "
+           "95-%-t-Intervall (Spiele à 300 s). Dazu Gewinnrate (Remis = halber Sieg, Wilson) und "
+           "Tore pro Minute. TrueSkill nur aus der gemeinsamen Ladder unten.\n\n")
     md += build_table(experiments, baseline, ladder) + "\n"
     md += ladder_section(ladder, reason) + "\n"
     md += changes_section(experiments, baseline) + "\n"

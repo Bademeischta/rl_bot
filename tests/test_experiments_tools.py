@@ -206,6 +206,15 @@ def make_result(folder: Path, name: str, goal: float, entropy: float, duel=None,
     (folder / "summary.json").write_text(json.dumps(summary), encoding="utf-8")
 
 
+def _duel_json(results: list[tuple[int, int]], seconds: float = 300.0) -> dict:
+    """Duell-Ergebnis im Format von duel.exe (per_game mit Toren je Spiel)."""
+    per_game = [{"a_blue": i % 2 == 0, "goals_a": a, "goals_b": b, "game_seconds": seconds} for i, (a, b) in enumerate(results)]
+    return {"games": len(results), "max_seconds": seconds,
+            "goals_a": sum(a for a, _ in results), "goals_b": sum(b for _, b in results),
+            "wins_a": sum(a > b for a, b in results), "wins_b": sum(b > a for a, b in results),
+            "draws": sum(a == b for a, b in results), "per_game": per_game}
+
+
 def test_compare_table_marks_baseline_and_deltas(tmp_path):
     base = tmp_path / "exp_baseline_2026-10-01"
     exp = tmp_path / "exp_h2_2026-10-01"
@@ -213,33 +222,114 @@ def test_compare_table_marks_baseline_and_deltas(tmp_path):
     make_result(base, "baseline", 0.30, 3.58,
                 ratings={"exp_baseline/2704829056": {"mu": 25, "sigma": 8.3, "conservative": 0.1},
                          "exp_baseline/2804829056": {"mu": 30, "sigma": 2.0, "conservative": 24.0}})
-    make_result(exp, "h2_ent_coef_0004", 0.36, 3.30,
-                duel={"games": 100, "goals_a": 70, "goals_b": 40, "wins_a": 60, "wins_b": 30, "draws": 10,
-                      "goal_share_a": 70 / 110, "goal_share_se": math.sqrt((70 / 110) * (40 / 110) / 110)})
+    # 100 Spiele: 40x 1:0, 20x 0:1, 40x 0:0 -> Tordifferenz +0,2 pro Spiel
+    make_result(exp, "h2_ent_coef_0004", 0.36, 3.30, duel=_duel_json([(1, 0)] * 40 + [(0, 1)] * 20 + [(0, 0)] * 40))
     experiments = [compare.load_experiment(base), compare.load_experiment(exp)]
     table = compare.build_table(experiments, experiments[0], None)
     lines = table.splitlines()
     assert lines[0].startswith("| Experiment |")
-    assert "Gewinnrate [95-%-KI]" in lines[0]
+    assert "Tordifferenz/Spiel [95-%-KI]" in lines[0] and "Gewinnrate" in lines[0] and "Tore/min" in lines[0]
     assert "baseline (Baseline)" in lines[2]
     assert "24.00" not in table                   # keine Einzel-Ladder
     assert "0.360 (+0.060 (+20.0%))" in lines[3]  # Delta gegen Baseline
-    assert "**65.0%** [" in lines[3]              # Gewinnrate (60 + 10/2) / 100
-    assert "63.6% ±" in lines[3]                  # Duell-Toranteil (nebenbei)
+    assert "**+0.200** [" in lines[3]             # Tordifferenz pro Spiel
+    assert "60.0% [" in lines[3]                  # Gewinnrate (40 + 40/2) / 100
+    assert "0.080 : 0.040" in lines[3]            # Tore/min: 40 bzw. 20 Tore in 500 min
     hints = compare.verdict_hints(experiments, experiments[0])
     assert "Hauptkriterium Duell: **besser**" in hints
 
 
-def test_compare_hint_reports_unclear_duel(tmp_path):
+def test_compare_hint_reports_duel_in_the_noise(tmp_path):
     base = tmp_path / "exp_baseline_x"
     exp = tmp_path / "exp_h3_x"
     make_result(base, "baseline", 0.30, 3.58)
-    make_result(exp, "h3_no_shuffle", 0.31, 3.58,
-                duel={"games": 20, "goals_a": 11, "goals_b": 9, "wins_a": 10, "wins_b": 9, "draws": 1,
-                      "goal_share_a": 0.55, "goal_share_se": math.sqrt(0.55 * 0.45 / 20)})
+    make_result(exp, "h3_no_shuffle", 0.31, 3.58, duel=_duel_json([(1, 0)] * 11 + [(0, 1)] * 9 + [(0, 0)] * 20))
     experiments = [compare.load_experiment(base), compare.load_experiment(exp)]
     hints = compare.verdict_hints(experiments, experiments[0])
-    assert "Hauptkriterium Duell: **unklar**" in hints and "enthält 50 %" in hints
+    assert "Hauptkriterium Duell: **im Rauschen**" in hints and "enthält 0" in hints
+
+
+def _add_duels(folder: Path, baseline=None, start=None) -> None:
+    path = folder / "summary.json"
+    s = json.loads(path.read_text(encoding="utf-8"))
+    s["duel_baseline"], s["duel_start"] = baseline, start
+    path.write_text(json.dumps(s), encoding="utf-8")
+
+
+def test_compare_judges_effects_against_the_training_noise_of_a_baseline_replicate(tmp_path):
+    """Stufe 3: Eine Wiederholung der Baseline (gleiche Config) lag im Duell +0,083 über dem
+    Baseline-Ende, KI ganz über 0. Vorher hieß das „besser“, ebenso jedes Experiment in derselben
+    Größenordnung. Jetzt: Wiederholung erkannt, Abstand als Trainingsrauschen, Effekte bis zum
+    Doppelten „im Trainingsrauschen“, große Effekte weiter „besser“."""
+    base, rep = tmp_path / "exp_baseline_x", tmp_path / "exp_replicate_baseline_x"
+    small, big = tmp_path / "exp_k3_x", tmp_path / "exp_zs_x"
+    make_result_with_config(base, "baseline", "baseline")
+    make_result_with_config(rep, "replicate_baseline", "baseline")
+    make_result_with_config(small, "k3_rewards", "k3_rewards")
+    make_result_with_config(big, "zero_sum", "zero_sum")
+    # Start-Duelle: Baseline 0,0, Wiederholung +0,25 -> Abstand 0,25, Schwelle 0,5
+    _add_duels(base, start=_duel_json([(0, 0)] * 100))
+    _add_duels(rep, baseline=_duel_json([(1, 0)] * 10 + [(0, 0)] * 90),
+               start=_duel_json([(1, 0)] * 25 + [(0, 0)] * 75))
+    _add_duels(small, baseline=_duel_json([(1, 0)] * 40 + [(0, 0)] * 60))        # +0,4
+    _add_duels(big, baseline=_duel_json([(6, 0)] * 100))                          # +6
+    experiments = [compare.load_experiment(p) for p in (base, rep, small, big)]
+    assert compare.training_noise(experiments, experiments[0]) == pytest.approx(0.25)
+
+    table = compare.build_table(experiments, experiments[0], None)
+    assert "| replicate_baseline (Wiederholung der Baseline) |" in table
+    hints = compare.verdict_hints(experiments, experiments[0]).splitlines()
+    line = lambda name: next(h for h in hints if h.startswith(f"* **{name}**"))
+    assert "Trainingsrauschen: Zwei Läufe derselben Config liegen im Duell bis zu 0.250" in "\n".join(hints)
+    assert "**Wiederholung der Baseline**" in line("replicate_baseline")
+    assert "**besser**" not in line("replicate_baseline")
+    assert "**im Trainingsrauschen** (+0.400" in line("k3_rewards")
+    assert "**besser**" in line("zero_sum")
+
+    # ohne Wiederholung: Hinweis, dass das Trainingsrauschen unbekannt ist, Urteil wie bisher
+    without = [experiments[0], experiments[2]]
+    hints = compare.verdict_hints(without, without[0])
+    assert "Rauschen zwischen Trainingsläufen ist unbekannt" in hints
+    assert "**besser**" in hints
+
+
+STAGE3 = ROOT / "results"
+STAGE3_BASELINE = STAGE3 / "exp_baseline_2026-09-26_140705"
+
+
+@pytest.mark.skipif(not (STAGE3_BASELINE / "summary.json").exists(), reason="Stufe-3-Ergebnisse nur auf dem Trainings-PC")
+def test_compare_on_the_real_stage3_results_separates_training_noise_from_effects():
+    """Echte Ergebnisordner aus Stufe 3 (AUDIT.md §7.9) über die Kommandozeile wie im Runbook."""
+    import subprocess
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+    r = subprocess.run([sys.executable, str(ROOT / "tools" / "experiments" / "compare.py"),
+                        str(STAGE3 / "exp_*_2026-09-26_*"), "--baseline", str(STAGE3_BASELINE), "--ladder-games", "0"],
+                       capture_output=True, text=True, encoding="utf-8", env=env)
+    assert r.returncode == 0, r.stderr
+    tail = r.stdout.split("## Hinweise", 1)[1]
+    hints = {line.split("**")[1]: line for line in tail.splitlines() if line.startswith("* **")}
+    assert "| replicate_baseline (Wiederholung der Baseline) |" in r.stdout
+    assert "**Wiederholung der Baseline**" in hints["replicate_baseline"]
+    for name in ("h3_no_shuffle", "k3_rewards", "h2_ent_coef_0004"):
+        assert "**im Trainingsrauschen**" in hints[name], hints[name]
+    assert "**besser**" in hints["zero_sum"]
+
+
+def test_duel_stats_goal_difference_with_t_interval():
+    """Tordifferenz je Spiel mit t-Intervall; Referenz: t(0,975; df) aus der Tabelle."""
+    from metrics_util import duel_stats, t_quantile_975
+    for df, table in ((5, 2.5706), (10, 2.2281), (30, 2.0423), (100, 1.9840)):
+        assert t_quantile_975(df) == pytest.approx(table, rel=5e-3), df
+    d = _duel_json([(2, 0), (1, 1), (0, 1), (3, 1), (0, 0), (1, 0), (0, 2), (1, 1), (2, 1), (0, 0)])
+    s = duel_stats(d)
+    diffs = [2, 0, -1, 2, 0, 1, -2, 0, 1, 0]
+    m = sum(diffs) / 10
+    sd = math.sqrt(sum((x - m) ** 2 for x in diffs) / 9)
+    assert s["goal_diff"] == pytest.approx(0.3)
+    assert s["goal_diff_sd"] == pytest.approx(sd)
+    assert s["goal_diff_ci_high"] - s["goal_diff"] == pytest.approx(2.2622 * sd / math.sqrt(10), rel=2e-3)
+    assert s["goals_per_minute"] == pytest.approx(17 / 50)   # 10 + 7 Tore in 10 x 5 min
+    assert s["win_rate"] == pytest.approx((4 + 0.5 * 4) / 10)
 
 
 def test_win_rate_ci_matches_the_wilson_interval():

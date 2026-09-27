@@ -84,7 +84,7 @@ def games_needed(margin: float, p: float = 0.5) -> int:
 
 def run_duel(path_a: Path, path_b: Path, games: int, team_size: int = 1,
              deterministic: bool = False, setter: str = "kickoff",
-             max_seconds: int = 120, exe: Path = DUEL_EXE) -> DuelResult:
+             max_seconds: int = 300, exe: Path = DUEL_EXE) -> DuelResult:
     if not exe.exists():
         raise FileNotFoundError(f"duel.exe fehlt: {exe} (bench\\cpp\\build.ps1 -Target duel)")
 
