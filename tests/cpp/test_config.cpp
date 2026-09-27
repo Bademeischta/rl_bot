@@ -202,25 +202,28 @@ TEST(ModusMix_trifft_kleine_Anteile_auch_bei_wenigen_Envs) {
 // --- Schalter aus dem Audit (H3 shuffle_slots, H6 seed_envs) ----------------
 
 TEST(Config_shuffle_slots_und_seed_envs_haben_altes_Verhalten_als_Default) {
+	// Review-Befund R6: seed_envs war true und änderte damit still das Verhalten von
+	// lucy_1v1.json (Hauptlauf). Altes Verhalten = zeitgeseedeter Engine = false.
 	auto path = WriteTempConfig("{}");
 	auto cfg = TrainConfig::FromFile(path.string());
 	std::filesystem::remove(path);
 	CHECK(cfg.shuffleSlots);
-	CHECK(cfg.seedEnvs);
+	CHECK(!cfg.seedEnvs);
+	CHECK(!TrainConfig{}.seedEnvs);
 }
 
 TEST(Config_shuffle_slots_und_seed_envs_sind_lesbar_und_roundtrip_fest) {
-	auto path = WriteTempConfig(R"({"env": {"shuffle_slots": false, "seed_envs": false}})");
+	auto path = WriteTempConfig(R"({"env": {"shuffle_slots": false, "seed_envs": true}})");
 	auto cfg = TrainConfig::FromFile(path.string());
 	std::filesystem::remove(path);
 	CHECK(!cfg.shuffleSlots);
-	CHECK(!cfg.seedEnvs);
+	CHECK(cfg.seedEnvs);
 
 	auto path2 = WriteTempConfig(cfg.ToJSONString());
 	auto cfg2 = TrainConfig::FromFile(path2.string());
 	std::filesystem::remove(path2);
 	CHECK(!cfg2.shuffleSlots);
-	CHECK(!cfg2.seedEnvs);
+	CHECK(cfg2.seedEnvs);
 }
 
 // --- Experiment-Optionen (Stufe 3): extra_steps, save_on_exit ------------------
@@ -272,4 +275,29 @@ TEST(Config_exp_buffer_iterations_steuert_Puffergroesse) {
 	CHECK_EQ(cfg2.expBufferIterations, 1);
 
 	CHECK(LoadFails(R"({"learner": {"exp_buffer_iterations": 0}})"));
+}
+
+// --- config_used.json wieder als Config (Review-Befund R7) ----------------------
+
+TEST(Config_config_used_json_ist_wieder_als_Config_ladbar) {
+	// Genau der Inhalt, den main.cpp nach runs/<lauf>/config_used.json schreibt (mit _git/_started)
+	TrainConfig cfg = {};
+	cfg.entCoef = 0.004f;
+	cfg.seedEnvs = true;
+	cfg.gameTimeoutSecs = 900.f;
+	cfg.metricsRunName = "exp_test";
+	auto path = WriteTempConfig(cfg.ToUsedJSONString("abc1234-dirty", "2026-09-25 12:00:00"));
+	auto loaded = TrainConfig::FromFile(path.string());
+	std::filesystem::remove(path);
+	CHECK_NEAR(loaded.entCoef, 0.004, 1e-7);
+	CHECK(loaded.seedEnvs);
+	CHECK_EQ(loaded.metricsRunName, std::string("exp_test"));
+	CHECK_EQ(loaded.ToJSONString(), cfg.ToJSONString());
+}
+
+TEST(Config_Unterstrich_Felder_ueberall_erlaubt_andere_unbekannte_nicht) {
+	CHECK(!LoadFails(R"({"_git": "abc", "_started": "x", "env": {"_note": "a"}, "learner": {"_why": [1, 2]}})"));
+	CHECK(LoadFails(R"({"env": {"note": "a"}})"));
+	CHECK(LoadFails(R"({"git": "abc"})"));
+	CHECK(LoadFails(R"({"learner": {"ent_coeff": 0.01}})"));
 }

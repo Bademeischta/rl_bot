@@ -2,6 +2,12 @@
 
     python eval/ladder.py --run runs/lucy_1v1 --games 50
     python eval/ladder.py --a runs/x/checkpoints/100 --b runs/x/checkpoints/200 --games 100
+    python eval/ladder.py --show runs/sanity/ratings.json            # nur anzeigen, auch alte Dateien
+    python eval/ladder.py --migrate runs/sanity/ratings.json --out runs/sanity/ratings_v2.json
+
+Rating-Schlüssel sind seit Audit M4 "<lauf>/<steps>". Dateien von davor haben nur "<steps>";
+sie bleiben lesbar (Schlüssel werden beim Laden mit dem Laufnamen ergänzt), werden aber nie in
+place umgeschrieben: --migrate schreibt eine Kopie (Review-Befund R9).
 
 Bewertet wird pro Tor statt pro Spiel: Die Tordifferenz hat weniger Varianz als Sieg/Niederlage,
 bei gleichem Rechenaufwand (Lucy-SKG wertet ebenfalls Einzeltor-Matches).
@@ -149,11 +155,52 @@ def conservative(rating: trueskill.Rating) -> float:
     return rating.mu - 3 * rating.sigma
 
 
-def load_ratings(path: Path = RATINGS_PATH) -> dict[str, trueskill.Rating]:
+def is_legacy_key(key: str) -> bool:
+    """Schlüssel von vor Audit M4: nur die Step-Zahl ("2704829056"), ohne Laufnamen."""
+    return key.isdigit()
+
+
+def migrate_keys(data: dict, run_name: str) -> dict:
+    """Alte Schlüssel "<steps>" -> "<lauf>/<steps>"; neue Schlüssel bleiben (Review-Befund R9)."""
+    out: dict = {}
+    for key, value in data.items():
+        new = f"{run_name}/{key}" if is_legacy_key(key) else key
+        if new in out:
+            raise ValueError(f"Schlüssel {new} kommt alt und neu vor; Datei von Hand prüfen")
+        out[new] = value
+    return out
+
+
+def has_legacy_keys(path: Path) -> bool:
+    if not path.exists():
+        return False
+    return any(is_legacy_key(k) for k in json.loads(path.read_text(encoding="utf-8")))
+
+
+def load_ratings(path: Path = RATINGS_PATH, run_name: str | None = None) -> dict[str, trueskill.Rating]:
+    """Liest ratings.json. Alte Schlüssel (nur Step-Zahl) bekommen mit run_name den Laufnamen
+    vorangestellt, ohne run_name bleiben sie wie sie sind. Die Datei wird dabei nie verändert."""
     if not path.exists():
         return {}
     data = json.loads(path.read_text(encoding="utf-8"))
+    if run_name:
+        data = migrate_keys(data, run_name)
     return {k: ENV.create_rating(v["mu"], v["sigma"]) for k, v in data.items()}
+
+
+def migrate_file(src: Path, dst: Path, run_name: str) -> int:
+    """Schreibt eine Kopie von src mit neuen Schlüsseln nach dst. src bleibt unverändert, dst
+    darf noch nicht existieren. Liefert die Zahl der umbenannten Schlüssel."""
+    src, dst = Path(src), Path(dst)
+    if src.resolve() == dst.resolve():
+        raise ValueError("Migration nur in eine Kopie, nicht in place")
+    if dst.exists():
+        raise FileExistsError(f"{dst} existiert schon (wird nie überschrieben)")
+    data = json.loads(src.read_text(encoding="utf-8"))
+    renamed = sum(1 for k in data if is_legacy_key(k))
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    dst.write_text(json.dumps(migrate_keys(data, run_name), indent=2), encoding="utf-8")
+    return renamed
 
 
 def save_ratings(ratings: dict[str, trueskill.Rating], path: Path = RATINGS_PATH) -> None:
@@ -189,8 +236,33 @@ def main():
     ap.add_argument("--ratings", type=Path, default=None,
                     help="Standard: <run>/ratings.json bei --run, sonst eval/ratings.json")
     ap.add_argument("--exe", type=Path, default=DUEL_EXE, help="Pfad zu duel.exe")
+    ap.add_argument("--run-name", default=None,
+                    help="Laufname für alte Schlüssel (nur Step-Zahl); Standard: Ordnername von --run "
+                         "bzw. der Ordner, in dem die ratings.json liegt")
+    ap.add_argument("--show", type=Path, default=None, help="ratings.json nur anzeigen (auch alte)")
+    ap.add_argument("--migrate", type=Path, default=None,
+                    help="alte ratings.json in eine Kopie mit neuen Schlüsseln schreiben (--out)")
+    ap.add_argument("--out", type=Path, default=None, help="Ziel für --migrate (darf nicht existieren)")
     a = ap.parse_args()
+
+    if a.show or a.migrate:
+        src = a.show or a.migrate
+        run_name = a.run_name or src.resolve().parent.name
+        if a.migrate:
+            if not a.out:
+                raise SystemExit("--migrate braucht --out <kopie>")
+            n = migrate_file(a.migrate, a.out, run_name)
+            print(f"{n} alte Schlüssel als '{run_name}/<steps>' nach {a.out} geschrieben; {a.migrate} unverändert")
+        print_table(load_ratings(a.out if a.migrate else src, run_name))
+        return
+
     ratings_path = a.ratings or default_ratings_path(a.run)
+    if has_legacy_keys(ratings_path):
+        # Nie in place umschreiben (Review-Befund R9): erst eine migrierte Kopie anlegen
+        raise SystemExit(
+            f"{ratings_path} enthält alte Schlüssel (nur Step-Zahl, vor Audit M4) und wird nicht "
+            f"verändert.\nMigrieren in eine Kopie: python eval/ladder.py --migrate {ratings_path} "
+            f"--out <kopie.json>\nund dann die Ladder mit --ratings <kopie.json> laufen lassen.")
 
     pairs: list[tuple[Path, Path]] = []
     if a.a and a.b:
@@ -206,7 +278,7 @@ def main():
     else:
         raise SystemExit("Entweder --run oder --a/--b angeben")
 
-    ratings = load_ratings(ratings_path)
+    ratings = load_ratings(ratings_path, a.run_name or (a.run.name if a.run else None))
     print(f"Standardfehler bei {a.games} Spielen und p=0,5: "
           f"+-{standard_error(0.5, a.games) * 100:.1f} Prozentpunkte "
           f"(fuer +-5 %: {games_needed(0.05)} Spiele)")

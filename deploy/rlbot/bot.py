@@ -11,9 +11,14 @@ Wichtig für die Übereinstimmung mit dem Training:
   (RLGymSim `Gym::actionDelay = tickSkip - 1`). Der Bot entscheidet deshalb auf dem Paket von
   vor 7 Ticks, nicht auf dem aktuellen, sonst bekäme er im Spiel frischere Daten als je im
   Training und würde seine Schüsse zu weit vorhalten.
+- Rückweg (Review-Befund R8): Umgebungsvariable RLBOT_OBS_DELAY (0 bis 7, Default 7) setzt die
+  Verzögerung in Ticks. 0 ist exakt das Verhalten vor H1: Entscheidung auf dem aktuellen Paket,
+  keine Sonderbehandlung von Replay, Countdown und Pause.
+      $env:RLBOT_OBS_DELAY = "0"   # vor dem Start von RLBot, in derselben Shell
 """
 from __future__ import annotations
 
+import os
 import sys
 from collections import deque
 from pathlib import Path
@@ -33,8 +38,10 @@ from deploy.policy import load_policy  # noqa: E402
 from env.obs_python import build_obs, obs_size  # noqa: E402
 
 TICK_SKIP = 8
-# Beobachtungslatenz des Trainings in Ticks (Gym::actionDelay = tickSkip - 1)
+# Beobachtungslatenz des Trainings in Ticks (Gym::actionDelay = tickSkip - 1). Default des Bots;
+# über RLBOT_OBS_DELAY änderbar, 0 = Verhalten vor Audit H1 (Review-Befund R8).
 OBS_DELAY = TICK_SKIP - 1
+OBS_DELAY_ENV = "RLBOT_OBS_DELAY"
 MAX_PLAYERS = 3
 ACTION_STACK = 5
 DEFAULT_POLICY = Path(__file__).parent / "policy.pt"
@@ -94,6 +101,25 @@ class PacketBuffer:
         return best
 
 
+def obs_delay_from_env(environ=None) -> int:
+    """Verzögerung in Ticks aus RLBOT_OBS_DELAY (leer/fehlend = OBS_DELAY = 7).
+
+    Erlaubt sind 0 (Verhalten vor H1) bis TICK_SKIP - 1 (wie im Training); mehr wäre älter als
+    alles, was die Policy im Training gesehen hat.
+    """
+    raw = (os.environ if environ is None else environ).get(OBS_DELAY_ENV, "").strip()
+    if raw == "":
+        return OBS_DELAY
+    try:
+        value = int(raw)
+    except ValueError:
+        raise ValueError(f"{OBS_DELAY_ENV}={raw!r} ist keine ganze Zahl (erlaubt 0 bis {TICK_SKIP - 1})") from None
+    if not 0 <= value <= TICK_SKIP - 1:
+        raise ValueError(f"{OBS_DELAY_ENV}={value} außerhalb 0 bis {TICK_SKIP - 1} "
+                         f"(0 = Verhalten vor Audit H1, {OBS_DELAY} = wie im Training)")
+    return value
+
+
 def _is_continuous(packet: GamePacket) -> bool:
     phase = getattr(packet.match_info, "match_phase", None)
     return phase is None or phase in CONTINUOUS_PHASES
@@ -137,13 +163,19 @@ class RLbotAgent(Bot):
         self.pad_index_map = build_pad_index_map(pad_locations)
         self.deterministic = True
         self._init_runtime_state()
+        self.logger.info(f"Beobachtungsverzögerung {self.obs_delay} Ticks"
+                         f"{' (Verhalten vor Audit H1)' if self.obs_delay == 0 else ''}")
 
-    def _init_runtime_state(self) -> None:
-        """Alles, was pro Spiel neu anfängt (auch von den Tests genutzt)."""
+    def _init_runtime_state(self, obs_delay: int | None = None) -> None:
+        """Alles, was pro Spiel neu anfängt (auch von den Tests genutzt).
+
+        obs_delay None = aus RLBOT_OBS_DELAY bzw. Default OBS_DELAY (7).
+        """
+        self.obs_delay = obs_delay_from_env() if obs_delay is None else obs_delay
         self.action_history: deque[np.ndarray] = deque(maxlen=ACTION_STACK)
         self.current_action = LOOKUP_TABLE[0] * 0.0   # Nullaktion bis zur ersten Entscheidung
         self.next_decision_frame = -1
-        self.packet_buffer = PacketBuffer(OBS_DELAY)
+        self.packet_buffer = PacketBuffer(self.obs_delay)
         # Abstand (Ticks) zwischen dem Entscheidungs-Frame und dem benutzten Paket, zur Diagnose
         self.last_obs_delay: int | None = None
 
@@ -152,6 +184,14 @@ class RLbotAgent(Bot):
             return ControllerState()
 
         frame = packet.match_info.frame_num
+        if self.obs_delay == 0:
+            # Rückweg (R8): exakt das Verhalten vor Audit H1, aktuelles Paket, keine Phasen-Logik
+            if frame >= self.next_decision_frame:
+                self.next_decision_frame = frame + TICK_SKIP
+                self.last_obs_delay = 0
+                self.current_action = self._decide(packet)
+            return self._to_controller(self.current_action)
+
         if not _is_continuous(packet):
             # Replay, Countdown, Pause: Eingaben wirken nicht, der Zustand springt danach.
             # Wie ein Reset im Training: Puffer und Aktions-Stack leeren, im ersten laufenden

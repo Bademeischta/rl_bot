@@ -52,13 +52,25 @@ RewardFunction* BuildLucyReward(const RewardWeights& w) {
 	if (w.inAir != 0)
 		parts.push_back({ new InAirReward(), w.inAir });
 
-	RewardFunction* combined = new CombinedReward(parts, true);
+	// Der Tap merkt sich die Rewards vor einem Zero-Sum-Wrapper (raw_step_reward, Review R10)
+	RewardFunction* combined = new RawRewardTap(new CombinedReward(parts, true));
 
 	// teamSpirit > 0 -> zero-sum und Teamverteilung (Bauplan: tau startet bei 0 und
 	// steigt gate-getriggert). Bei 0 bleibt es beim reinen Eigenreward.
+	// Im 1v1 ist tau wirkungslos: Das eigene Team ist nur der Spieler selbst, also
+	// r_i' = r_i * (1 - tau) + r_i * tau - r_j = r_i - r_j für jedes tau > 0 (Review R10).
+	// Tor/Gegentor zählen dabei doppelt (+g beim Schützen, -g beim Gegner wird abgezogen).
 	if (w.teamSpirit > 0)
 		return new ZeroSumReward(combined, w.teamSpirit, 1.f, true);
 	return combined;
+}
+
+const RawRewardTap* FindRawRewardTap(const RewardFunction* fn) {
+	if (auto* tap = dynamic_cast<const RawRewardTap*>(fn))
+		return tap;
+	if (auto* zeroSum = dynamic_cast<const ZeroSumReward*>(fn))
+		return dynamic_cast<const RawRewardTap*>(zeroSum->childFunc);
+	return nullptr;
 }
 
 } // namespace RLbot

@@ -4,12 +4,14 @@ from __future__ import annotations
 import csv
 import json
 import math
+import os
 import sys
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+BUILD_DIR = Path(os.environ.get("RLBOT_BUILD_DIR", str(ROOT / "build" / "cpp_cu128")))
 sys.path.insert(0, str(ROOT / "tools" / "experiments"))
 
 import check_abort  # noqa: E402
@@ -18,7 +20,7 @@ import summarize  # noqa: E402
 from metrics_util import has_non_finite, read_rows, window_mean  # noqa: E402
 
 COLUMNS = ["Cumulative Timesteps", "Timesteps Collected", "Overall Steps/Second", "Policy Entropy",
-           "Value Function Loss", "Mean KL Divergence", "Average Episode Reward", "Avg Advantage",
+           "Value Function Loss", "Mean KL Divergence", "Average Episode Reward", "Avg Advantage", "Avg Val Target",
            "SB3 Clip Fraction", "ep_end_goal", "ep_end_timeout", "Truncated Steps", "Skill Rating 1v1"]
 
 
@@ -29,6 +31,7 @@ def write_metrics(path: Path, n: int, **overrides):
         row = {"Cumulative Timesteps": 2_700_000_000 + (i + 1) * 100_000, "Timesteps Collected": 100_000,
                "Overall Steps/Second": 68_000, "Policy Entropy": 3.58, "Value Function Loss": 10.0,
                "Mean KL Divergence": 0.0027, "Average Episode Reward": 2049.0, "Avg Advantage": 0.4,
+               "Avg Val Target": 10.0,
                "SB3 Clip Fraction": 0.0245, "ep_end_goal": 0.3, "ep_end_timeout": 0.7,
                "Truncated Steps": 1050, "Skill Rating 1v1": 1930}
         for k, f in overrides.items():
@@ -60,12 +63,33 @@ def test_window_mean_uses_last_fraction(tmp_path):
     assert window_mean(read_rows(p), "Policy Entropy") == pytest.approx(2.0)
 
 
-def test_has_non_finite_ignores_empty_fields(tmp_path):
+def test_has_non_finite_flags_nan_inf_and_empty_fields(tmp_path):
+    """Review-Befund R5: leere Felder zählen wie nan/inf (der Trainer schrieb nan früher leer)."""
     p = tmp_path / "metrics.csv"
-    write_metrics(p, 3, **{"Value Function Loss": lambda i: "" if i == 1 else 1.0})
+    for bad in ("", "nan", "inf", "-inf", "-nan(ind)"):
+        write_metrics(p, 3, **{"Value Function Loss": lambda i, bad=bad: bad if i == 1 else 1.0})
+        assert has_non_finite(read_rows(p), ["Value Function Loss"]) == ["Value Function Loss"], bad
+    write_metrics(p, 3)
     assert has_non_finite(read_rows(p), ["Value Function Loss"]) == []
-    write_metrics(p, 3, **{"Value Function Loss": lambda i: "nan" if i == 1 else 1.0})
-    assert has_non_finite(read_rows(p), ["Value Function Loss"]) == ["Value Function Loss"]
+
+
+def test_columns_added_later_are_not_flagged_in_older_rows(tmp_path):
+    """Ältere Zeilen sind kürzer, wenn eine Spalte später dazukam (M1): das ist kein Fehler."""
+    p = tmp_path / "metrics.csv"
+    p.write_text('"Cumulative Timesteps","A","B"\n100,1\n200,2,3\n', encoding="utf-8")
+    rows = read_rows(p)
+    assert rows[0]["B"] is None
+    assert has_non_finite(rows, ["B"]) == []
+
+
+def test_half_written_last_line_is_ignored(tmp_path):
+    """check_abort liest, während der Trainer schreibt: eine Zeile ohne Zeilenende zählt nicht."""
+    p = tmp_path / "metrics.csv"
+    p.write_text('"Cumulative Timesteps","Policy Entropy","Value Function Loss"\n100,3.5,0.2\n200,3.4,',
+                 encoding="utf-8")
+    rows = read_rows(p)
+    assert len(rows) == 1
+    assert has_non_finite(rows, ["Value Function Loss"]) == []
 
 
 # --- check_abort ---------------------------------------------------------------
@@ -82,7 +106,25 @@ def test_nan_aborts_immediately(tmp_path):
     write_metrics(p, 5, **{"Policy Entropy": lambda i: "nan" if i == 4 else 3.5})
     code, msgs = check_abort.evaluate(read_rows(p))
     assert code == check_abort.ABORT
-    assert "nan/inf" in msgs[0] and "Policy Entropy" in msgs[0]
+    assert "nan/inf/leer" in msgs[0] and "Policy Entropy" in msgs[0]
+
+
+@pytest.mark.parametrize("key", check_abort.NAN_KEYS)
+def test_empty_field_in_a_learning_metric_aborts(tmp_path, key):
+    p = tmp_path / "metrics.csv"
+    write_metrics(p, 5, **{key: lambda i: "" if i == 2 else 0.5})
+    code, msgs = check_abort.evaluate(read_rows(p))
+    assert code == check_abort.ABORT, msgs
+    assert key in msgs[0]
+
+
+def test_nan_episode_reward_does_not_abort_but_is_counted(tmp_path):
+    """Nutzerentscheidung zu R5: nan im Episoden-Reward = keine Episode beendet, kein Abbruch."""
+    p = tmp_path / "metrics.csv"
+    write_metrics(p, 40, **{"Average Episode Reward": lambda i: "nan" if i in (5, 31) else 2000.0})
+    code, msgs = check_abort.evaluate(read_rows(p))
+    assert code == check_abort.OK, msgs
+    assert summarize.summarize_metrics(read_rows(p))["ep_reward_nan_iterations"] == 2
 
 
 def test_value_loss_explosion_aborts_only_after_warmup(tmp_path):
@@ -167,6 +209,7 @@ def make_result(folder: Path, name: str, goal: float, entropy: float, duel=None,
 def test_compare_table_marks_baseline_and_deltas(tmp_path):
     base = tmp_path / "exp_baseline_2026-10-01"
     exp = tmp_path / "exp_h2_2026-10-01"
+    # Einzel-Ladder des Lauf-Ordners: darf in compare NICHT auftauchen (Review R12)
     make_result(base, "baseline", 0.30, 3.58,
                 ratings={"exp_baseline/2704829056": {"mu": 25, "sigma": 8.3, "conservative": 0.1},
                          "exp_baseline/2804829056": {"mu": 30, "sigma": 2.0, "conservative": 24.0}})
@@ -174,18 +217,20 @@ def test_compare_table_marks_baseline_and_deltas(tmp_path):
                 duel={"games": 100, "goals_a": 70, "goals_b": 40, "wins_a": 60, "wins_b": 30, "draws": 10,
                       "goal_share_a": 70 / 110, "goal_share_se": math.sqrt((70 / 110) * (40 / 110) / 110)})
     experiments = [compare.load_experiment(base), compare.load_experiment(exp)]
-    table = compare.build_table(experiments, experiments[0])
+    table = compare.build_table(experiments, experiments[0], None)
     lines = table.splitlines()
     assert lines[0].startswith("| Experiment |")
+    assert "Gewinnrate [95-%-KI]" in lines[0]
     assert "baseline (Baseline)" in lines[2]
-    assert "24.00 ± 2.00" in lines[2]              # TrueSkill des End-Checkpoints (höchste Steps)
+    assert "24.00" not in table                   # keine Einzel-Ladder
     assert "0.360 (+0.060 (+20.0%))" in lines[3]  # Delta gegen Baseline
-    assert "63.6% ±" in lines[3]                  # Duell-Toranteil
+    assert "**65.0%** [" in lines[3]              # Gewinnrate (60 + 10/2) / 100
+    assert "63.6% ±" in lines[3]                  # Duell-Toranteil (nebenbei)
     hints = compare.verdict_hints(experiments, experiments[0])
-    assert "signifikant besser" in hints
+    assert "Hauptkriterium Duell: **besser**" in hints
 
 
-def test_compare_hint_reports_insignificant_duel(tmp_path):
+def test_compare_hint_reports_unclear_duel(tmp_path):
     base = tmp_path / "exp_baseline_x"
     exp = tmp_path / "exp_h3_x"
     make_result(base, "baseline", 0.30, 3.58)
@@ -194,10 +239,205 @@ def test_compare_hint_reports_insignificant_duel(tmp_path):
                       "goal_share_a": 0.55, "goal_share_se": math.sqrt(0.55 * 0.45 / 20)})
     experiments = [compare.load_experiment(base), compare.load_experiment(exp)]
     hints = compare.verdict_hints(experiments, experiments[0])
-    assert "kein signifikanter Unterschied" in hints
+    assert "Hauptkriterium Duell: **unklar**" in hints and "enthält 50 %" in hints
 
+
+def test_win_rate_ci_matches_the_wilson_interval():
+    """Referenzwerte des 95-%-Wilson-Intervalls: 50/100 -> [0,4038; 0,5962], 0/10 -> [0; 0,2775]."""
+    from metrics_util import win_rate_ci
+    rate, low, high = win_rate_ci(50, 50, 0)
+    assert rate == pytest.approx(0.5) and low == pytest.approx(0.4038, abs=1e-4) and high == pytest.approx(0.5962, abs=1e-4)
+    rate, low, high = win_rate_ci(0, 10, 0)
+    assert rate == 0 and low == 0 and high == pytest.approx(0.2775, abs=1e-4)
+    assert win_rate_ci(60, 30, 10)[0] == pytest.approx(0.65)   # Remis = halber Sieg
+    assert math.isnan(win_rate_ci(0, 0, 0)[0])
+
+
+def test_summarize_duel_has_win_rate_and_ci(tmp_path):
+    d = tmp_path / "duel.json"
+    d.write_text(json.dumps({"games": 100, "goals_a": 60, "goals_b": 40, "wins_a": 55, "wins_b": 40,
+                             "draws": 5}), encoding="utf-8")
+    out = summarize.load_duel(d)
+    assert out["win_rate"] == pytest.approx(0.575)
+    assert out["win_rate_ci_low"] < 0.575 < out["win_rate_ci_high"]
+
+
+DUEL_EXE = BUILD_DIR / ("duel.exe" if sys.platform == "win32" else "duel")
+MAIN_CKPTS = ROOT / "runs" / "lucy_1v1" / "checkpoints"
+
+
+def _real_checkpoints(n: int) -> list[Path]:
+    if not MAIN_CKPTS.exists():
+        return []
+    c = sorted((p for p in MAIN_CKPTS.iterdir() if (p / "PPO_POLICY.lt").exists()), key=lambda p: int(p.name))
+    return c[-n:] if len(c) >= n else []
+
+
+@pytest.mark.skipif(not DUEL_EXE.exists() or not _real_checkpoints(3), reason="duel.exe oder echte Checkpoints fehlen")
+def test_compare_plays_one_joint_ladder_with_baseline_start_and_end(tmp_path, capsys):
+    """Echter Pfad: compare.py spielt die gemeinsame Ladder mit duel.exe auf echten Checkpoints
+    (nur gelesen). Teilnehmer: Baseline-Start, Baseline-Ende, Experiment-Ende; Einzel-Ladders der
+    Lauf-Ordner werden ignoriert."""
+    start, base_end, exp_end = _real_checkpoints(3)
+    base = tmp_path / "exp_baseline_x"
+    exp = tmp_path / "exp_h2_x"
+    make_result(base, "baseline", 0.30, 3.58,
+                ratings={"exp_baseline_x/999": {"mu": 99, "sigma": 0.5, "conservative": 97.5}})
+    make_result(exp, "h2_ent_coef_0004", 0.33, 3.40)
+    for folder, s_ckpt, e_ckpt in ((base, start, base_end), (exp, start, exp_end)):
+        s = json.loads((folder / "summary.json").read_text(encoding="utf-8"))
+        s["start_checkpoint"], s["end_checkpoint"] = str(s_ckpt), str(e_ckpt)
+        (folder / "summary.json").write_text(json.dumps(s), encoding="utf-8")
+    out = tmp_path / "compare.md"
+    sys.argv = ["compare.py", str(base), str(exp), "--ladder-games", "2", "--exe", str(DUEL_EXE), "--out", str(out)]
+    assert compare.main() == 0
+    ladder = json.loads((tmp_path / "joint_ladder.json").read_text(encoding="utf-8"))
+    assert set(ladder["ratings"]) == {"Baseline-Start", "Baseline-Ende", "h2_ent_coef_0004-Ende"}
+    assert len(ladder["duels"]) == 3 and all(d["games"] == 2 for d in ladder["duels"])
+    md = out.read_text(encoding="utf-8")
+    assert "## Gemeinsame TrueSkill-Ladder" in md and "Baseline-Start" in md
+    assert "97.50" not in md                       # Einzel-Ladder des Lauf-Ordners nicht benutzt
 
 def test_compare_requires_summary(tmp_path):
     (tmp_path / "leer").mkdir()
     with pytest.raises(SystemExit):
         compare.load_experiment(tmp_path / "leer")
+
+
+# --- R5 End-to-End: echte CSV aus dem C++-Writer -> check_abort.py ----------------------------
+
+import os  # noqa: E402
+import subprocess  # noqa: E402
+
+BUILD = Path(os.environ.get("RLBOT_BUILD_DIR", str(ROOT / "build" / "cpp_cu128")))
+WRITER = BUILD / ("write_metrics_csv.exe" if os.name == "nt" else "write_metrics_csv")
+needs_writer = pytest.mark.skipif(not WRITER.exists(), reason=f"{WRITER} fehlt (bench/cpp/build.ps1)")
+
+
+def _cpp_csv(path: Path, iterations: int, *extra: str) -> None:
+    r = subprocess.run([str(WRITER), str(path), str(iterations), *extra], capture_output=True, text=True)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def _check_abort_cli(path: Path) -> subprocess.CompletedProcess:
+    return subprocess.run([sys.executable, str(ROOT / "tools" / "experiments" / "check_abort.py"), str(path)],
+                          capture_output=True, text=True)
+
+
+@needs_writer
+@pytest.mark.parametrize("value", ["nan", "inf", "-inf"])
+def test_cpp_writer_nan_triggers_check_abort(tmp_path, value):
+    p = tmp_path / "metrics.csv"
+    _cpp_csv(p, 30)
+    assert _check_abort_cli(p).returncode == check_abort.OK
+    _cpp_csv(p2 := tmp_path / "bad.csv", 30, "--set", "17", "Policy Entropy", value)
+    assert value in p2.read_text(encoding="utf-8").splitlines()[18]   # wörtlich geschrieben
+    r = _check_abort_cli(p2)
+    assert r.returncode == check_abort.ABORT, r.stdout + r.stderr
+    assert "Policy Entropy" in r.stdout
+
+
+@needs_writer
+def test_cpp_writer_missing_key_is_empty_and_triggers_check_abort(tmp_path):
+    p = tmp_path / "metrics.csv"
+    _cpp_csv(p, 30, "--drop", "12", "Value Function Loss")
+    r = _check_abort_cli(p)
+    assert r.returncode == check_abort.ABORT, r.stdout + r.stderr
+    assert "Value Function Loss" in r.stdout
+
+
+@needs_writer
+def test_cpp_writer_nan_episode_reward_does_not_abort(tmp_path):
+    p = tmp_path / "metrics.csv"
+    _cpp_csv(p, 30, "--set", "9", "Average Episode Reward", "nan")
+    r = _check_abort_cli(p)
+    assert r.returncode == check_abort.OK, r.stdout + r.stderr
+
+
+# --- R11: Bündel (mehr als eine Änderung gegenüber der Baseline) -----------------------------
+
+EXP_CONFIGS = ROOT / "train" / "configs" / "experiments"
+
+
+def make_result_with_config(folder: Path, name: str, config: str):
+    """Ergebnisordner wie von run_experiment.ps1: summary.json plus config.json (hier die echte
+    Experiment-Config, mit BOM wie von PowerShell geschrieben)."""
+    make_result(folder, name, 0.3, 3.5)
+    raw = (EXP_CONFIGS / f"{config}.json").read_text(encoding="utf-8")
+    (folder / "config.json").write_bytes(b"\xef\xbb\xbf" + raw.encode("utf-8"))
+
+
+def test_compare_marks_k3_as_a_bundle_of_seven_values(tmp_path, capsys):
+    base = tmp_path / "exp_baseline_x"
+    make_result_with_config(base, "baseline", "baseline")
+    make_result_with_config(tmp_path / "exp_k3_x", "k3_rewards", "k3_rewards")
+    make_result_with_config(tmp_path / "exp_h2_x", "h2_ent_coef_0004", "h2_ent_coef_0004")
+    make_result_with_config(tmp_path / "exp_zs_x", "zero_sum", "zero_sum")
+    sys.argv = ["compare.py", str(base), str(tmp_path / "exp_k3_x"), str(tmp_path / "exp_h2_x"),
+                str(tmp_path / "exp_zs_x")]
+    assert compare.main() == 0
+    md = capsys.readouterr().out
+    k3_row = next(line for line in md.splitlines() if line.startswith("| k3_rewards"))
+    assert "Bündel: 7 Werte" in k3_row
+    h2_row = next(line for line in md.splitlines() if line.startswith("| h2_ent_coef_0004"))
+    assert "Bündel" not in h2_row
+    zs_row = next(line for line in md.splitlines() if line.startswith("| zero_sum"))
+    assert "Bündel: 3 Werte" in zs_row
+    assert "**Bündel aus 7 Änderungen**" in md and "rewards.in_air" in md
+    assert "`learner.ent_coef` 0.01 → 0.004" in md
+
+
+# --- R17: compare.py löst Glob-Muster selbst auf ------------------------------------------
+
+def test_compare_expands_the_glob_pattern_itself_like_under_powershell(tmp_path):
+    """PowerShell übergibt results/exp_* wörtlich an python.exe; subprocess mit Argumentliste
+    macht genau das (keine Shell-Expansion). Zip-Dateien mit gleichem Präfix fallen heraus."""
+    import subprocess
+    make_result(tmp_path / "exp_baseline_x", "baseline", 0.30, 3.58)
+    make_result(tmp_path / "exp_h2_x", "h2_ent_coef_0004", 0.33, 3.40)
+    (tmp_path / "exp_baseline_x.zip").write_bytes(b"PK")
+    (tmp_path / "exp_halb").mkdir()                      # abgebrochener Ordner ohne summary.json
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+    r = subprocess.run([sys.executable, str(ROOT / "tools" / "experiments" / "compare.py"),
+                        str(tmp_path / "exp_*"), "--ladder-games", "0"],
+                       capture_output=True, text=True, encoding="utf-8", env=env)
+    assert r.returncode == 0, r.stderr
+    assert "| baseline (Baseline)" in r.stdout and "| h2_ent_coef_0004" in r.stdout
+    assert "exp_baseline_x.zip" in r.stderr and "exp_halb" in r.stderr   # übersprungen, gemeldet
+
+    r = subprocess.run([sys.executable, str(ROOT / "tools" / "experiments" / "compare.py"),
+                        str(tmp_path / "gibtsnicht_*")], capture_output=True, text=True, encoding="utf-8", env=env)
+    assert r.returncode != 0 and "trifft keinen" in r.stderr
+
+
+# --- R4 Nachtrag: K1b-Diagnose im Smoke-Lauf (echte CSV aus dem C++-Writer) -------------------
+
+def _check_k1b(path: Path) -> subprocess.CompletedProcess:
+    return subprocess.run([sys.executable, str(ROOT / "tools" / "local" / "check_k1b.py"), str(path)],
+                          capture_output=True, text=True, encoding="utf-8", errors="replace",
+                          env={**os.environ, "PYTHONIOENCODING": "utf-8"})
+
+
+@needs_writer
+def test_check_k1b_passes_only_when_timeouts_bootstrap_from_the_final_obs(tmp_path):
+    ok = tmp_path / "ok.csv"
+    _cpp_csv(ok, 10, "--set", "0", "Timeout Truncations", "0",
+             *[x for i in range(1, 10) for x in ("--set", str(i), "Timeout Truncations", "64",
+                                                 "--set", str(i), "Trunc Bootstrap Reset Share", "0",
+                                                 "--set", str(i), "Trunc Bootstrap V Diff", "0.3")])
+    r = _check_k1b(ok)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "576" in r.stdout and "OK" in r.stdout
+
+    bad = tmp_path / "bad.csv"
+    _cpp_csv(bad, 5, *[x for i in range(5) for x in ("--set", str(i), "Timeout Truncations", "64",
+                                                     "--set", str(i), "Trunc Bootstrap Reset Share", "1")])
+    assert _check_k1b(bad).returncode == 1
+
+    none = tmp_path / "none.csv"
+    _cpp_csv(none, 5, *[x for i in range(5) for x in ("--set", str(i), "Timeout Truncations", "0")])
+    assert _check_k1b(none).returncode == 2
+
+    old = tmp_path / "old.csv"                            # Trainer ohne Diagnose-Spalten
+    _cpp_csv(old, 5)
+    assert _check_k1b(old).returncode == 1

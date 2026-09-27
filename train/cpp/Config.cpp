@@ -13,9 +13,17 @@ using nlohmann::json;
 #define READ(obj, seen, target, name) \
 	do { seen.insert(name); if ((obj).contains(name)) target = (obj).at(name).get<decltype(target)>(); } while (0)
 
+// Felder mit führendem "_" sind Anmerkungen (_comment) oder Metadaten, die main.cpp in
+// config_used.json schreibt (_git, _started). Sie werden überall ignoriert, damit
+// config_used.json wieder als Config ladbar ist (Review-Befund R7). Alle anderen unbekannten
+// Felder bleiben ein Fehler (Tippfehler sollen auffallen).
+static bool IsAnnotation(const std::string& key) {
+	return !key.empty() && key[0] == '_';
+}
+
 static void CheckUnknown(const json& obj, const std::set<std::string>& known, const std::string& where) {
 	for (auto& item : obj.items())
-		if (!known.count(item.key()))
+		if (!known.count(item.key()) && !IsAnnotation(item.key()))
 			RG_ERR_CLOSE("Unbekanntes Config-Feld \"" << item.key() << "\" in " << where);
 }
 
@@ -46,6 +54,7 @@ TrainConfig TrainConfig::FromFile(const std::string& path) {
 			READ(e, seen, cfg.gameTimeoutSecs, "game_timeout_secs");
 			READ(e, seen, cfg.shuffleSlots, "shuffle_slots");
 			READ(e, seen, cfg.seedEnvs, "seed_envs");
+			READ(e, seen, cfg.timeoutsAsTruncation, "timeouts_as_truncation");
 			seen.insert("mode_mix");
 			if (e.contains("mode_mix")) {
 				auto mix = e.at("mode_mix").get<std::vector<float>>();
@@ -140,7 +149,6 @@ TrainConfig TrainConfig::FromFile(const std::string& path) {
 			CheckUnknown(m, seen, "metrics");
 		}
 	}
-	top.insert("_comment");
 	CheckUnknown(j, top, "Wurzel");
 
 	// Plausibilität
@@ -167,6 +175,13 @@ TrainConfig TrainConfig::FromFile(const std::string& path) {
 	return cfg;
 }
 
+std::string TrainConfig::ToUsedJSONString(const std::string& gitHash, const std::string& started) const {
+	json used = json::parse(ToJSONString());
+	used["_git"] = gitHash;
+	used["_started"] = started;
+	return used.dump(2);
+}
+
 std::string TrainConfig::ToJSONString() const {
 	json j;
 	j["env"] = {
@@ -175,6 +190,7 @@ std::string TrainConfig::ToJSONString() const {
 		{ "no_touch_timeout_secs", noTouchTimeoutSecs }, { "game_timeout_secs", gameTimeoutSecs },
 		{ "mode_mix", { modeMix[0], modeMix[1], modeMix[2] } },
 		{ "shuffle_slots", shuffleSlots }, { "seed_envs", seedEnvs },
+		{ "timeouts_as_truncation", timeoutsAsTruncation },
 	};
 	j["rewards"] = {
 		{ "goal", rewards.goal }, { "concede", rewards.concede },

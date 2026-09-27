@@ -34,15 +34,34 @@ def diff(a: dict, b: dict) -> dict[str, tuple]:
 EXPECTED = {
     "h2_ent_coef_0004": {"learner.ent_coef": (0.01, 0.004)},
     "h3_no_shuffle": {"env.shuffle_slots": (None, False)},
-    "team_spirit_01": {"rewards.team_spirit": (0.0, 0.1)},
+    # Review R10: Zero-Sum im 1v1 (tau wirkungslos), Tor/Gegentor halbiert -> nach dem Wrapper +-10
+    "zero_sum": {"rewards.team_spirit": (0.0, 0.1), "rewards.goal": (10.0, 5.0), "rewards.concede": (10.0, 5.0)},
 }
+
+
+def test_zero_sum_replaces_team_spirit_01_and_says_what_it_measures():
+    assert not (EXP / "team_spirit_01.json").exists()
+    raw = json.loads((EXP / "zero_sum.json").read_text(encoding="utf-8"))
+    assert raw["metrics"]["run"] == "zero_sum"
+    comment = raw["_comment"]
+    assert "WIRKUNGSLOS" in comment and "r_i - r_j" in comment and "raw_step_reward" in comment
 
 
 def test_baseline_equals_main_config_except_run_and_folder():
     main = flatten(json.loads((ROOT / "train" / "configs" / "lucy_1v1.json").read_text(encoding="utf-8")))
     d = diff(main, load("baseline"))
-    assert set(d) == {"learner.checkpoint_folder", "metrics.group"}, d
+    # seed_envs: Default false (altes Verhalten, R6), Experimente setzen es ausdrücklich
+    assert set(d) == {"learner.checkpoint_folder", "metrics.group", "env.seed_envs"}, d
+    assert d["env.seed_envs"] == (None, True)
     assert load("baseline")["env.game_timeout_secs"] == 900.0          # K1a ist drin
+
+
+def test_every_experiment_config_seeds_its_envs_explicitly():
+    """Review-Befund R6: Default ist false (Hauptlauf unverändert), Experimente brauchen true."""
+    configs = sorted(EXP.glob("*.json"))
+    assert len(configs) >= 8
+    for path in configs:
+        assert flatten(json.loads(path.read_text(encoding="utf-8"))).get("env.seed_envs") is True, path.name
 
 
 @pytest.mark.parametrize("name,expected", list(EXPECTED.items()))

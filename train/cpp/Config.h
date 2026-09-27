@@ -25,8 +25,14 @@ struct TrainConfig {
 	// Verhalten; false ist als Experiment gedacht (train/configs/experiments/h3_no_shuffle.json).
 	bool shuffleSlots = true;
 	// Eigene State-Setter und den Slot-Shuffle aus learner.random_seed + Env-Index seeden
-	// (Audit H6). false = RocketSims zeitgeseedeter Engine wie vor dem Audit.
-	bool seedEnvs = true;
+	// (Audit H6). false = RocketSims zeitgeseedeter Engine wie vor dem Audit. Default false
+	// (Review-Befund R6): bestehende Configs wie lucy_1v1.json verhalten sich unverändert; die
+	// Experiment-Configs (train/configs/experiments/) setzen true ausdrücklich.
+	bool seedEnvs = false;
+	// NoTouch- und Spielzeit-Timeout als Truncation melden (Audit K1, Review-Befund R4): der
+	// Learner bootstrappt dann vom Wert der letzten Beobachtung der Episode. false = Timeouts
+	// sind wieder echte Episodenenden mit Ziel 0 wie vor dem Audit (Rückweg, A/B-Vergleich).
+	bool timeoutsAsTruncation = true;
 
 	RewardWeights rewards = {};
 	StateSetterWeights states = {};
@@ -79,8 +85,12 @@ struct TrainConfig {
 	int skillUpdateInterval = 16;
 
 	// Lädt eine JSON-Datei; unbekannte Felder sind ein Fehler (Tippfehler sollen auffallen).
+	// Felder mit führendem "_" (_comment, _git, _started) werden auf jeder Ebene ignoriert.
 	static TrainConfig FromFile(const std::string& path);
 	std::string ToJSONString() const;
+	// Inhalt von config_used.json (Audit H4): ToJSONString() plus _git und _started. Mit
+	// FromFile wieder ladbar (Review-Befund R7), z. B. um einen Lauf exakt zu wiederholen.
+	std::string ToUsedJSONString(const std::string& gitHash, const std::string& started) const;
 };
 
 // Überträgt die Learner-Felder in die RLGymPPO-Config.

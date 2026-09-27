@@ -13,6 +13,8 @@
 //   ep_end_truncated Anteil, den der Upstream als Truncation meldet (nur mit K1-Patch)
 //   ep_length_steps  mittlere Episodenlänge in Steps (Steps * tick_skip / 120 = Sekunden)
 //   scene_<name>_goal, scene_<name>_length   dasselbe je State-Setter-Szene
+//   raw_step_reward  Reward pro Spieler und Step VOR einem Zero-Sum-Wrapper (Review R10); ohne
+//                    Wrapper gleich "Average Step Reward", mit Zero-Sum im 1v1 ist der sonst 0
 #pragma once
 
 #include <RLGymPPO_CPP/Threading/GameInst.h>
@@ -27,6 +29,9 @@ namespace RLbot {
 
 // Pro-Step-Metriken über alle Spieler und den Ball.
 void AccumStepMetrics(const RLGSC::GameState& state, RLGPC::Report& metrics);
+
+// raw_step_reward aus dem RawRewardTap des Matches (nichts, wenn es keinen gibt).
+void AccumRawReward(const RLGSC::Match* match, RLGPC::Report& metrics);
 
 // Wie eine Episode geendet hat, abgeleitet aus dem Zustand und den Terminal-Bedingungen.
 struct EpisodeEnd {
@@ -68,7 +73,9 @@ void AggregateGameMetrics(const std::vector<RLGPC::Report>& gameReports, RLGPC::
 //  - taucht ein neuer Schlüssel auf (z. B. "Skill Rating 2v2" nach der ersten Eval), wird er
 //    hinten angehängt und die Kopfzeile in Zeile 1 einmal neu geschrieben; ältere Zeilen
 //    bleiben kürzer, was CSV-Leser als leere Felder lesen
-//  - nicht-endliche Werte (nan, inf) werden als leeres Feld geschrieben
+//  - nicht-endliche Werte werden wörtlich als nan, inf, -inf geschrieben (Review-Befund R5:
+//    vorher als leeres Feld, das tools/experiments/check_abort.py nicht als Abbruch erkannte).
+//    Ein leeres Feld heißt nur noch: Schlüssel fehlte in dieser Iteration.
 //  - Zahlen mit 12 signifikanten Stellen, damit "Cumulative Timesteps" exakt bleibt
 class MetricsCSVWriter {
 public:

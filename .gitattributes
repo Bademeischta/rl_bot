@@ -1,0 +1,26 @@
+# Zeilenenden (Review-Befund B1, CRLF): Im Repo liegt alles mit LF. Im Arbeitsverzeichnis
+# entscheidet core.autocrlf (Windows: CRLF), außer bei den Typen unten, die ein festes Format
+# brauchen.
+* text=auto
+
+# Upstream-Patches: git apply vergleicht Zeile für Zeile. Mit CRLF scheitern alle Hunks am
+# Dateiende ohne Newline ("\ No newline at end of file"), deshalb immer LF.
+*.patch text eol=lf
+*.diff  text eol=lf
+
+# Windows PowerShell 5.1 und cmd: CRLF
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Shell-Skripte: LF, sonst bricht bash
+*.sh text eol=lf
+
+# Binärdateien nie konvertieren
+*.exe binary
+*.dll binary
+*.lt  binary
+*.pt  binary
+*.zip binary
+*.png binary
+*.jpg binary

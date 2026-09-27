@@ -6,6 +6,7 @@
     "action_stack_size": 5,
     "no_touch_timeout_secs": 30.0,
     "game_timeout_secs": 900.0,
+    "seed_envs": true,
     "mode_mix": [
       1.0,
       0.0,
