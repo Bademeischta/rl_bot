@@ -23,3 +23,6 @@ build_*.log
 # heruntergeladener Visualizer, siehe deploy/watch.py
 rlviser.exe
 settings.txt
+
+# vom Export neben policy.pt geschrieben (tools/export_policy.py), wie policy.pt nicht versionieren
+deploy/rlbot/policy.json
