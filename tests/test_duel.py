@@ -84,6 +84,47 @@ def test_duel_refuses_more_deterministic_games_than_distinct_starts(tmp_path):
 
 
 @needs_duel
+def test_duel_reports_play_stats_per_side_and_action_modes(tmp_path):
+    """Spieltest-Auftrag: Kennzahlen je Seite (Anstoß, Angriffsdrittel, Schüsse, Luftkontakte) und
+    wählbare Aktionsauswahl je Seite. Vorher gab es nur Tore und eine gemeinsame --deterministic."""
+    r, d = _duel(tmp_path, "modes", "--games", "4", "--max-seconds", "90",
+                 "--a-mode", "argmax_group", "--b-mode", "sample")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert d["mode_a"] == "argmax_group" and d["mode_b"] == "sample"
+    assert d["deterministic"] is False                                   # B zieht: Spiele verschieden
+    a, b = d["stats"]["a"], d["stats"]["b"]
+    kickoffs = sum(g["kickoffs"] for g in d["per_game"])
+    assert a["kickoffs"] == b["kickoffs"] == kickoffs                    # jeder Anstoß wird ausgewertet
+    assert a["kickoff_first_touches"] + b["kickoff_first_touches"] + a["kickoff_untouched"] == kickoffs
+    assert a["kickoff_goals_10s"] + b["kickoff_goals_10s"] <= d["goals_a"] + d["goals_b"]
+    assert a["touches"] > 0 and b["touches"] > 0
+    assert 0 < a["touch_height_mean"] < 2100
+    for key in ("kickoff_first_touch_rate", "kickoff_ball_half_rate", "off_third_conversion",
+                "off_third_long_share", "shots_per_min", "air_touch_per_min", "aerial_touch_per_min"):
+        assert key in a and key in b, key
+    assert "double_commit" not in a                                      # 1v1: keine Team-Kennzahlen
+
+
+@needs_duel
+def test_duel_refuses_repeated_games_when_no_side_samples(tmp_path):
+    """argmax_group ist so deterministisch wie argmax: ohne ziehende Seite gilt dieselbe Sperre."""
+    r, d = _duel(tmp_path, "grp", "--games", "12", "--a-mode", "argmax", "--b-mode", "argmax_group")
+    assert r.returncode == 2 and d is None and "Wiederholungen" in r.stderr
+    r, d = _duel(tmp_path, "bad", "--games", "2", "--a-mode", "greedy")
+    assert r.returncode == 2 and "Aktionsauswahl" in r.stderr
+
+
+@needs_duel
+def test_duel_2v2_reports_team_stats(tmp_path):
+    r, d = _duel(tmp_path, "2v2", "--games", "2", "--max-seconds", "30", "--team-size", "2")
+    assert r.returncode == 0, r.stdout + r.stderr
+    for side in ("a", "b"):
+        s = d["stats"][side]
+        assert 0 <= s["double_commit"] <= 1 and 0 <= s["last_back"] <= 1
+        assert s["mate_dist"] > 0
+
+
+@needs_duel
 def test_ladder_duels_use_300_second_games(tmp_path):
     sys.path.insert(0, str(ROOT))
     from eval.ladder import run_duel

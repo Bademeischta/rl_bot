@@ -68,6 +68,7 @@ add_executable(rlbot_tests
     tests/cpp/test_truncation.cpp
     tests/cpp/test_zero_sum.cpp
     tests/cpp/test_play_stats.cpp
+    tests/cpp/test_action_select.cpp
     train/cpp/Config.cpp
     train/cpp/EnvFactory.cpp
     train/cpp/Metrics.cpp
