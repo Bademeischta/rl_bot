@@ -38,6 +38,7 @@ static RLbot::EnvFactory* g_factory = nullptr;
 static RLbot::MetricsCSVWriter g_metricsCSV;
 
 static RLbot::EpisodeLengthTracker g_episodeLengths;
+static int g_tickSkip = 8;
 
 // Wird aus vielen Threads gleichzeitig aufgerufen: nur die Argumente und den
 // (intern gesperrten) Längen-Tracker anfassen.
@@ -48,6 +49,9 @@ static void OnStep(GameInst* gameInst, const Gym::StepResult& stepResult, Report
 
 	RLbot::AccumStepMetrics(stepResult.state, gameMetrics);
 	RLbot::AccumRawReward(gameInst->match, gameMetrics);
+	// Spielanalyse: Anstoß, Angriffsdrittel, Luftkontakte, Team (env/cpp/PlayStats.h)
+	auto play = RLbot::PlayTrackerFor(gameInst, g_tickSkip).Step(stepResult.state, stepResult.done);
+	RLbot::AccumPlayMetrics(play, gameInst->match->teamSize, g_tickSkip, gameMetrics);
 
 	if (stepResult.done) {
 		// GameInst::Step erhöht totalSteps erst nach dem Callback, der aktuelle Step zählt also mit.
@@ -137,6 +141,7 @@ int main(int argc, char** argv) {
 	}
 
 	RocketSim::Init(meshDir);
+	g_tickSkip = cfg.tickSkip;
 
 	RLbot::EnvFactory factory(cfg);
 	g_factory = &factory;

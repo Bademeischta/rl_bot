@@ -36,6 +36,7 @@ add_library(rlbot_env STATIC
     env/cpp/Rewards.cpp
     env/cpp/Obs.cpp
     env/cpp/StateSetters.cpp
+    env/cpp/PlayStats.cpp
 )
 set_target_properties(rlbot_env PROPERTIES CXX_STANDARD 20)
 target_include_directories(rlbot_env PUBLIC "${CMAKE_SOURCE_DIR}")
@@ -66,6 +67,7 @@ add_executable(rlbot_tests
     tests/cpp/test_env.cpp
     tests/cpp/test_truncation.cpp
     tests/cpp/test_zero_sum.cpp
+    tests/cpp/test_play_stats.cpp
     train/cpp/Config.cpp
     train/cpp/EnvFactory.cpp
     train/cpp/Metrics.cpp

@@ -11,6 +11,7 @@
 #include <fstream>
 #include <iomanip>
 #include <map>
+#include <memory>
 #include <sstream>
 
 namespace RLbot {
@@ -79,6 +80,89 @@ std::string CurrentSceneName(const Match* match) {
 	if (!setter || setter->lastPicked < 0 || setter->lastPicked >= (int)setter->names.size())
 		return {};
 	return setter->names[setter->lastPicked];
+}
+
+namespace {
+
+// Schlüsselnamen je Präfix einmal bauen (der Callback läuft pro Step in 16 Threads)
+struct PlayKeys {
+	std::string goalsPerMin, shotsPerMin, airPerMin, aerialPerMin, touchHeight, airHeight, airShare,
+		koTime, koSpeed, koLoserSpeed, koBoost, koGoal, koUntouched,
+		thirdShare, spell, conversion, noGoal, longSpell, mateDist, doubleCommit, lastBack;
+
+	explicit PlayKeys(const std::string& p)
+		: goalsPerMin(p + "goals_per_min"), shotsPerMin(p + "shots_per_min"),
+		  airPerMin(p + "air_touch_per_min"), aerialPerMin(p + "aerial_touch_per_min"),
+		  touchHeight(p + "touch_height_mean"), airHeight(p + "air_touch_height_mean"),
+		  airShare(p + "air_touch_share"),
+		  koTime(p + "kickoff_first_touch_s"), koSpeed(p + "kickoff_touch_speed"),
+		  koLoserSpeed(p + "kickoff_loser_speed"), koBoost(p + "kickoff_boost_used"),
+		  koGoal(p + "kickoff_goal_10s"), koUntouched(p + "kickoff_untouched"),
+		  thirdShare(p + "off_third_share"), spell(p + "off_third_spell_s"),
+		  conversion(p + "off_third_conversion"), noGoal(p + "off_third_nogoal_s"),
+		  longSpell(p + "off_third_long"),
+		  mateDist(p + "mate_dist"), doubleCommit(p + "double_commit"), lastBack(p + "last_back") {}
+};
+
+const PlayKeys& KeysFor(int teamSize) {
+	static const PlayKeys k1(""), k2("2v2_"), k3("3v3_");
+	return teamSize >= 3 ? k3 : (teamSize == 2 ? k2 : k1);
+}
+
+} // namespace
+
+void AccumPlayMetrics(const PlayEvents& ev, int teamSize, int tickSkip, Report& m) {
+	const PlayKeys& k = KeysFor(teamSize);
+	const double stepsPerMin = 60.0 * 120.0 / tickSkip;
+	const double players = ev.players > 0 ? ev.players : 1;
+
+	int air = 0, aerial = 0;
+	for (auto& t : ev.touches) {
+		m.AccumAvg(k.touchHeight, t.ballHeight);
+		m.AccumAvg(k.airShare, t.carInAir ? 1 : 0);
+		if (t.carInAir) {
+			air++;
+			m.AccumAvg(k.airHeight, t.ballHeight);
+			if (t.ballHeight >= AERIAL_TOUCH_MIN_HEIGHT)
+				aerial++;
+		}
+	}
+	m.AccumAvg(k.goalsPerMin, ev.goalTeam >= 0 ? stepsPerMin : 0.0);
+	m.AccumAvg(k.shotsPerMin, (ev.shots[0] + ev.shots[1]) * stepsPerMin / players);
+	m.AccumAvg(k.airPerMin, air * stepsPerMin / players);
+	m.AccumAvg(k.aerialPerMin, aerial * stepsPerMin / players);
+	m.AccumAvg(k.thirdShare, ev.ballThirdTeam >= 0 ? 1 : 0);
+
+	for (auto& ko : ev.kickoffs) {
+		m.AccumAvg(k.koUntouched, ko.firstTeam < 0 ? 1 : 0);
+		m.AccumAvg(k.koGoal, ko.goalTeam >= 0 ? 1 : 0);
+		m.AccumAvg(k.koBoost, (ko.boostUsed[0] + ko.boostUsed[1]) / 2.0);
+		if (ko.firstTeam >= 0) {
+			m.AccumAvg(k.koTime, ko.timeToTouch);
+			m.AccumAvg(k.koSpeed, ko.touchSpeed);
+			m.AccumAvg(k.koLoserSpeed, ko.loserSpeed);
+		}
+	}
+	for (auto& s : ev.spells) {
+		m.AccumAvg(k.spell, s.seconds);
+		m.AccumAvg(k.conversion, s.goal ? 1 : 0);
+		m.AccumAvg(k.longSpell, s.seconds >= OFF_THIRD_LONG_SECS ? 1 : 0);
+		if (!s.goal)
+			m.AccumAvg(k.noGoal, s.seconds);
+	}
+	for (auto& t : ev.teams) {
+		m.AccumAvg(k.mateDist, t.mateDist);
+		m.AccumAvg(k.doubleCommit, t.doubleCommit ? 1 : 0);
+		m.AccumAvg(k.lastBack, t.lastBack ? 1 : 0);
+	}
+}
+
+PlayTracker& PlayTrackerFor(const void* gameKey, int tickSkip) {
+	thread_local std::unordered_map<const void*, std::unique_ptr<PlayTracker>> trackers;
+	auto& tracker = trackers[gameKey];
+	if (!tracker)
+		tracker = std::make_unique<PlayTracker>(tickSkip);
+	return *tracker;
 }
 
 uint64_t EpisodeLengthTracker::OnEpisodeEnd(const void* gameKey, uint64_t stepsDone) {
