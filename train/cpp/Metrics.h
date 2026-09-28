@@ -18,7 +18,7 @@
 //
 // Spielanalyse (env/cpp/PlayStats.h, AccumPlayMetrics). In Envs mit 2v2/3v3 tragen die Schlüssel
 // das Präfix "2v2_"/"3v3_", damit ein Modus-Mix die 1v1-Werte nicht verwässert:
-//   goals_per_min, shots_per_min          Tore je Spiel-Minute, Schüsse je Spieler und Minute
+//   goals_per_min, shots_per_min          Tore je Spiel-Minute, Schüsse aufs Tor je Spieler und Minute
 //   air_touch_per_min, aerial_touch_per_min  Ballkontakte in der Luft je Spieler und Minute
 //                                         (aerial: Ball mindestens AERIAL_TOUCH_MIN_HEIGHT hoch)
 //   touch_height_mean, air_touch_height_mean, air_touch_share   Ballhöhe bei Kontakten, Luftanteil

@@ -15,6 +15,22 @@ int PlayTracker::AttackingThird(float y) {
 	return -1;
 }
 
+bool PlayTracker::HeadingIntoGoal(const PhysObj& ball, int attackingTeam, float maxTime) {
+	// Wie Arena::IsBallProbablyGoingIn: Wurfparabel bis zur Torlinie, Tor 892,755 breit (halb), 642,775 hoch
+	constexpr float GOAL_Y = 5124.25f, GOAL_HALF_WIDTH = 892.755f, GOAL_HEIGHT = 642.775f, GRAVITY_Z = -650.f;
+	constexpr float MARGIN = 91.25f * 0.1f;
+	float dir = attackingTeam == 0 ? 1.f : -1.f;
+	float vy = ball.vel.y * dir;
+	if (vy < 1e-3f)
+		return false;
+	float t = (GOAL_Y - ball.pos.y * dir) / vy;
+	if (t < 0 || t > maxTime)
+		return false;
+	float x = ball.pos.x + ball.vel.x * t;
+	float z = ball.pos.z + ball.vel.z * t + GRAVITY_Z * t * t / 2;
+	return z <= GOAL_HEIGHT + MARGIN && std::abs(x) <= GOAL_HALF_WIDTH + MARGIN;
+}
+
 void PlayTracker::BeginEpisode(const GameState& state) {
 	step = 0;
 	// Gym::Step schiebt die Arena 1 Tick (tickSkip - actionDelay) vor dem Snapshot weiter
@@ -22,7 +38,7 @@ void PlayTracker::BeginEpisode(const GameState& state) {
 	kickoffOpen = false;
 	kickoffTouchStep = -1;
 	spellOpen = false;
-	lastShots.clear();
+	wasHeading[0] = wasHeading[1] = false;
 	lastBoost.clear();
 	lastSpeed.clear();
 }
@@ -56,17 +72,24 @@ PlayEvents PlayTracker::Step(const GameState& state, bool done) {
 	for (auto& p : state.players)
 		ev.playersPerTeam[TeamOf(p)]++;
 
-	// Ballkontakte und Schüsse. ballTouchedStep zählt jeden Kontakt genau einmal: RocketSim schreibt
-	// einen Kontakt mit dem Tick vor dem Weiterzählen, die Fenster zweier Snapshots überlappen nicht.
+	// Ballkontakte. ballTouchedStep zählt jeden Kontakt genau einmal: RocketSim schreibt einen Kontakt
+	// mit dem Tick vor dem Weiterzählen, die Fenster zweier Snapshots überlappen nicht.
+	bool touchedBy[2] = { false, false };
 	for (auto& p : state.players) {
 		int team = TeamOf(p);
 		const auto& hit = p.carState.ballHitInfo;
-		if (p.ballTouchedStep && hit.isValid && hit.tickCountWhenHit >= resetTick)
+		if (p.ballTouchedStep && hit.isValid && hit.tickCountWhenHit >= resetTick) {
 			ev.touches.push_back({ team, p.carId, !p.carState.isOnGround, hit.ballPos.z, hit.tickCountWhenHit });
-		int& prevShots = lastShots[p.carId];
-		if (p.matchShots > prevShots)
-			ev.shots[team] += p.matchShots - prevShots;
-		prevShots = p.matchShots;
+			touchedBy[team] = true;
+		}
+	}
+	// Schuss aufs Tor: ein Kontakt, nach dem der Ball aufs gegnerische Tor fliegt und vorher nicht flog.
+	// Ein Tor im selben Schritt zählt auch (der Ball ist dann schon drin).
+	for (int team = 0; team < 2; team++) {
+		bool heading = HeadingIntoGoal(state.ball, team) || ev.goalTeam == team;
+		if (touchedBy[team] && heading && !wasHeading[team])
+			ev.shots[team]++;
+		wasHeading[team] = heading;
 	}
 
 	// Anstoß: erste Episode-Schritt mit ruhendem Ball in der Mitte

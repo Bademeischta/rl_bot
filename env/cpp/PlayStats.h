@@ -28,6 +28,9 @@ constexpr float AERIAL_TOUCH_MIN_HEIGHT = 450.f;
 // Anstoß-Auswertung: Ballbesitz so lange nach der ersten Berührung, Tore bis so lange nach dem Anstoß.
 constexpr float KICKOFF_POSSESSION_SECS = 3.f;
 constexpr float KICKOFF_GOAL_SECS = 10.f;
+// Schuss aufs Tor: Nach dem Kontakt fliegt der Ball laut Wurfparabel in höchstens so vielen Sekunden
+// ins gegnerische Tor (Rechnung wie RocketSims Arena::IsBallProbablyGoingIn, ohne Tempo-Untergrenze).
+constexpr float SHOT_MAX_TIME = 3.f;
 // Team: "fährt zum Ball" = näher als COMMIT_DIST und Tempo Richtung Ball über COMMIT_SPEED;
 // "sichert ab" = mindestens BACK_MARGIN näher am eigenen Tor (in y) als der Ball.
 constexpr float COMMIT_DIST = 1500.f, COMMIT_SPEED = 500.f, BACK_MARGIN = 500.f;
@@ -69,7 +72,7 @@ struct PlayEvents {
 	std::vector<OffenseSpell> spells;
 	std::vector<TouchEvent> touches;
 	std::vector<TeamSample> teams;
-	int shots[2] = { 0, 0 };         // neue Schüsse je Team (RocketSims Schuss-Ereignis)
+	int shots[2] = { 0, 0 };         // Schüsse aufs Tor je Team (Kontakt, nach dem der Ball aufs Tor geht)
 	int goalTeam = -1;               // Tor in diesem Schritt
 	int ballThirdTeam = -1;          // Ball im Angriffsdrittel dieses Teams, -1 = Mittelfeld
 	int players = 0;
@@ -88,6 +91,8 @@ public:
 	static int TeamOf(const PlayerData& p) { return p.team == Team::BLUE ? 0 : 1; }
 	// Team, in dessen Angriffsdrittel diese y-Position liegt (-1 = Mittelfeld)
 	static int AttackingThird(float y);
+	// Fliegt der Ball (ohne weitere Berührung) in höchstens maxTime Sekunden ins Tor, das dieses Team angreift?
+	static bool HeadingIntoGoal(const PhysObj& ball, int attackingTeam, float maxTime = SHOT_MAX_TIME);
 
 private:
 	int tickSkip;
@@ -105,8 +110,9 @@ private:
 	OffenseSpell spell;
 	int64_t spellStart = 0, spellLastIn = 0;
 
-	// Je Auto: Schüsse, Boost und Tempo im vorigen Schritt
-	std::unordered_map<uint32_t, int> lastShots;
+	// Ball flog im vorigen Schritt schon aufs Tor des Teams (dann ist ein weiterer Kontakt kein neuer Schuss)
+	bool wasHeading[2] = { false, false };
+	// Je Auto: Boost und Tempo im vorigen Schritt
 	std::unordered_map<uint32_t, float> lastBoost, lastSpeed;
 
 	float Seconds(int64_t steps) const { return steps * tickSkip / 120.f; }

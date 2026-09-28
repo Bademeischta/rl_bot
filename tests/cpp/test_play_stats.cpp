@@ -261,6 +261,45 @@ TEST(Spielanalyse_Angriffsdrittel_Aufenthalt_ohne_und_mit_Tor) {
 	CHECK_GT(agg["shots_per_min"], 0);
 }
 
+TEST(Spielanalyse_langsamer_Schuss_aufs_Tor_zaehlt) {
+	if (!g_arenaReady) return;
+	// Blau schiebt den Ball mit ~900 uu/s ins Tor. RocketSims Schuss-Ereignis verlangt 1750 uu/s und
+	// hätte das nicht gezählt; ein Schuss aufs Tor ist es trotzdem (Ecken-Schleife: Tore werden oft geschoben).
+	Env env(new FuncSetter([](Arena* a) {
+		a->ResetToRandomKickoff(0);
+		BallState bs = {};
+		bs.pos = Vec(0, 4300, 93);
+		a->ball->SetState(bs);
+		for (Car* car : a->_cars) {
+			CarState cs = {};
+			if (car->team == Team::BLUE) {
+				cs.rotMat = Angle(M_PI / 2, 0, 0).ToRotMat();
+				cs.pos = Vec(0, 4100, 17);
+				cs.vel = Vec(0, 900, 0);
+			} else {
+				cs.rotMat = RotMat::GetIdentity();
+				cs.pos = Vec(-3000, -3000, 17);
+			}
+			car->SetState(cs);
+		}
+	}), 1);
+	env.gym->Reset();
+	PlayTracker tracker;
+	PlayEvents all;
+	float maxBallSpeed = 0;
+	Gym::StepResult r = {};
+	for (int i = 0; i < 60 && !r.done; i++) {
+		r = env.Step([](const PlayerData& p) { return p.team == Team::BLUE ? ActionIndex({ 1, 0, 0, 0, 0, 0, 0, 0 }) : IDLE; });
+		maxBallSpeed = std::max(maxBallSpeed, r.state.ball.vel.Length());
+		Append(all, tracker.Step(r.state, r.done));
+	}
+	CHECK(r.done);
+	CHECK_EQ(all.goalTeam, 0);
+	CHECK_GT(1750, maxBallSpeed);
+	CHECK_EQ(all.shots[0], 1);                        // einmal, auch wenn Blau weiter schiebt
+	CHECK_EQ(all.shots[1], 0);
+}
+
 TEST(Spielanalyse_Team_2v2_Double_Commit_Absicherung_und_Praefix) {
 	if (!g_arenaReady) return;
 	// Blau: beide Autos knapp vor dem eigenen Tor-Rand des Balls (y = -300, weniger als BACK_MARGIN dahinter)
