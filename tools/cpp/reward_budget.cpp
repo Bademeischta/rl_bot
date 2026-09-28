@@ -123,13 +123,17 @@ std::vector<Scene> StaticScenes() {
 
 // Kennzahlen einer Lage aus Sicht des Angreifers (Blau in den festen Lagen)
 json LageJSON(const std::vector<std::string>& names, const std::vector<double>& rawA, const std::vector<double>& rawD,
-              const std::vector<double>& zsA, double goalValue, float gamma, int tickSkip) {
+              const std::vector<double>& zsA, double goalValue, float gamma, int tickSkip,
+              const std::vector<double>* absA = nullptr) {
 	double stepsPerSec = 120.0 / tickSkip;
 	json comps = json::object();
 	double sumRawA = 0, sumRawD = 0, sumZs = 0;
 	for (size_t c = 0; c < names.size(); c++) {
 		comps[names[c]] = { { "attacker_raw", rawA[c] }, { "defender_raw", rawD[c] },
 		                    { "zero_sum", zsA[c] }, { "zero_sum_per_s", zsA[c] * stepsPerSec } };
+		// Mittlerer Betrag je Schritt: Größe des Lernsignals (Kalibrierung von potential_shaping_scale)
+		if (absA)
+			comps[names[c]]["abs_zero_sum"] = (*absA)[c];
 		sumRawA += rawA[c];
 		sumRawD += rawD[c];
 		sumZs += zsA[c];
@@ -147,26 +151,29 @@ json LageJSON(const std::vector<std::string>& names, const std::vector<double>& 
 }
 
 struct Accum {
-	std::vector<double> rawA, rawD, zsA;
+	std::vector<double> rawA, rawD, zsA, absA;
 	int64_t steps = 0;
 	void Add(const std::vector<std::vector<double>>& raw, const std::vector<std::vector<double>>& zs,
 	         const std::vector<int>& attackers, const std::vector<int>& defenders) {
 		size_t n = raw.size();
-		if (rawA.empty()) { rawA.assign(n, 0); rawD.assign(n, 0); zsA.assign(n, 0); }
+		if (rawA.empty()) { rawA.assign(n, 0); rawD.assign(n, 0); zsA.assign(n, 0); absA.assign(n, 0); }
 		for (size_t c = 0; c < n; c++) {
-			double a = 0, d = 0, z = 0;
-			for (int i : attackers) { a += raw[c][i]; z += zs[c][i]; }
+			double a = 0, d = 0, z = 0, za = 0;
+			for (int i : attackers) { a += raw[c][i]; z += zs[c][i]; za += std::abs(zs[c][i]); }
 			for (int i : defenders) d += raw[c][i];
 			rawA[c] += a / attackers.size();
 			rawD[c] += d / std::max<size_t>(defenders.size(), 1);
 			zsA[c] += z / attackers.size();
+			absA[c] += za / attackers.size();
 		}
 		steps++;
 	}
 	void Merge(const Accum& o) {
 		if (o.steps == 0) return;
 		if (rawA.empty()) { *this = o; return; }
-		for (size_t c = 0; c < rawA.size(); c++) { rawA[c] += o.rawA[c]; rawD[c] += o.rawD[c]; zsA[c] += o.zsA[c]; }
+		for (size_t c = 0; c < rawA.size(); c++) {
+			rawA[c] += o.rawA[c]; rawD[c] += o.rawD[c]; zsA[c] += o.zsA[c]; absA[c] += o.absA[c];
+		}
 		steps += o.steps;
 	}
 	std::vector<double> Mean(const std::vector<double>& v) const {
@@ -342,7 +349,9 @@ int main(int argc, char** argv) {
 		int64_t allSteps = 0;
 		for (auto& [k, v] : total) allSteps += k == "angriffsdrittel_alle" ? 0 : v.steps;
 		for (auto& [k, v] : total) {
-			json j = LageJSON(names, v.Mean(v.rawA), v.Mean(v.rawD), v.Mean(v.zsA), goalValue, cfg.gaeGamma, cfg.tickSkip);
+			auto absMean = v.Mean(v.absA);
+			json j = LageJSON(names, v.Mean(v.rawA), v.Mean(v.rawD), v.Mean(v.zsA), goalValue, cfg.gaeGamma, cfg.tickSkip,
+			                  &absMean);
 			j["steps"] = v.steps;
 			j["time_share"] = allSteps ? (double)v.steps / allSteps : 0.0;
 			played[k] = j;

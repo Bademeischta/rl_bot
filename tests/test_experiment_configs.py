@@ -125,3 +125,29 @@ def test_h5_configs_change_only_epochs_and_buffer(name, expected):
     assert cfg["learner.ppo_batch_size"] == cfg["learner.timesteps_per_iteration"]
     updates = expected[0] * expected[1]
     assert str(updates) in name
+
+
+# --- Spieltest, Phase C (AUDIT.md §8): je genau eine Änderung gegenüber zero_sum.json -------------
+
+SPIELTEST_EXPECTED = {
+    "sp_kickoff_drill": {"state_setters.kickoff_drill": (None, 4.0)},
+    "sp_kickoff_first_touch": {"rewards.kickoff_first_touch": (None, 2.0)},
+    "sp_potential_shaping": {"rewards.potential_shaping_scale": (None, 8.0)},
+    # symmetrischer Torwert: goal und concede gemeinsam (wie in zero_sum.json)
+    "sp_goal_x3": {"rewards.goal": (5.0, 15.0), "rewards.concede": (5.0, 15.0)},
+    "sp_air_touch": {"rewards.air_touch": (None, 3.0)},
+    "sp_aerial_share": {"state_setters.aerial": (0.5, 2.0)},
+    "sp_no_in_air": {"rewards.in_air": (0.02, 0.0)},
+    "sp_mode_2v2": {"env.mode_mix": ([1.0, 0.0, 0.0], [3.0, 1.0, 0.0])},
+}
+
+
+@pytest.mark.parametrize("name,expected", list(SPIELTEST_EXPECTED.items()))
+def test_spieltest_experiment_changes_exactly_one_thing_against_zero_sum(name, expected):
+    assert diff(load("zero_sum"), load(name)) == expected
+    assert load(name)["metrics.run"] == name
+    assert "NICHT gestartet" in load(name)["_comment"]
+
+
+def test_team_spirit_experiment_changes_only_tau_against_the_2v2_run():
+    assert diff(load("sp_mode_2v2"), load("sp_mode_2v2_tau05")) == {"rewards.team_spirit": (0.1, 0.5)}

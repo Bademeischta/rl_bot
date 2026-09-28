@@ -36,8 +36,10 @@ param(
     # Anstoß-Auswertung (eval\kickoff_eval.py): Ende gegen Start und gegen Baseline-Ende, je so viele
     # Anstöße (1000: 95-%-KI der Rate "zuerst am Ball" etwa +-3 Prozentpunkte); 0 = aus
     [int]$KickoffGames = 1000,
-    # Zusätzlich 2v2-Duelle (Teamspiel-Experimente); gleiche Spielzahl wie -DuelGames
+    # Zusätzlich 2v2-Duelle (Teamspiel-Experimente). 500 Spiele: 2v2 dauert je Spiel etwa doppelt so
+    # lange; Nullmessung 2v2 (Phase B) SD ~1,7 Tore/Spiel -> 95-%-KI etwa +-0,15
     [switch]$TeamDuel,
+    [int]$TeamDuelGames = 500,
     [int]$LadderGames = 50,
     [int]$PollSeconds = 30,
     [int]$MinFreeGB = 20,
@@ -236,8 +238,8 @@ try {
             $t2Pairs = @(,@("$ResDir\duel2_end_vs_start.json", "$startDst\PPO_POLICY.lt"))
             if ($basePolicy) { $t2Pairs += ,@("$ResDir\duel2_end_vs_baseline.json", $basePolicy) }
             foreach ($pair in $t2Pairs) {
-                Write-Host "2v2-Duell Ende gegen $(Split-Path (Split-Path $pair[1] -Parent) -Leaf) ($DuelGames Spiele)..."
-                Invoke-Native $Duel @('--a', $endPolicy, '--b', $pair[1], '--games', $DuelGames, '--team-size', 2,
+                Write-Host "2v2-Duell Ende gegen $(Split-Path (Split-Path $pair[1] -Parent) -Leaf) ($TeamDuelGames Spiele)..."
+                Invoke-Native $Duel @('--a', $endPolicy, '--b', $pair[1], '--games', $TeamDuelGames, '--team-size', 2,
                     '--meshes', "$Root\collision_meshes", '--out', $pair[0]) -MergeStdErr | Select-Object -Last 2 | ForEach-Object { Write-Host $_ }
             }
         }
