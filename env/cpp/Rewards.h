@@ -9,6 +9,10 @@
 #include <RLGymSim_CPP/Utils/RewardFunctions/RewardFunction.h>
 #include <RLGymSim_CPP/Utils/RewardFunctions/CommonRewards.h>
 
+#include <string>
+#include <unordered_map>
+#include <vector>
+
 namespace RLbot {
 using namespace RLGSC;
 
@@ -187,6 +191,58 @@ public:
 	}
 };
 
+// Spieltest-Experimente (Default aus, nur per Config aktiv) ---------------------
+
+// Erste Ballberührung nach einem Anstoß: 1 für den (tickgenau) ersten Berührer, sonst 0, einmal je
+// Episode. Anstoß = Episode beginnt mit ruhendem Ball in der Mitte (wie PlayTracker). Mit Zero-Sum
+// bekommt der andere Spieler im 1v1 dasselbe negativ.
+class KickoffFirstTouchReward : public RewardFunction {
+public:
+	bool armed = false;
+	uint64_t resetTick = 0;
+	std::vector<uint32_t> winners;   // Car-IDs mit der ersten Berührung in diesem Schritt
+
+	virtual void Reset(const GameState& initialState);
+	virtual void PreStep(const GameState& state);
+	virtual float GetReward(const PlayerData& player, const GameState& state, const Action& prevAction);
+};
+
+// Potenzialbasierte Form eines zustandsabhängigen Rewards Phi (Ng et al. 1999): r = gamma*Phi(s') - Phi(s).
+// Über eine Episode summiert sich das (diskontiert) zu gamma^T*Phi(s_T) - Phi(s_0): Wer eine gute
+// Lage nur hält, bekommt (gamma-1)*Phi, also leicht negativ; belohnt wird nur die Verbesserung.
+// Am Tor (echtes Episodenende) ist Phi(s') = 0; bei Truncation (Zeitlimits) läuft die Welt weiter,
+// dort gilt Phi(s'). Phi muss zustandslos sein (die KRC-Terme sind es).
+class PotentialReward : public RewardFunction {
+public:
+	RewardFunction* phi;
+	float gamma;
+	std::unordered_map<uint32_t, float> last;
+
+	PotentialReward(RewardFunction* phi, float gamma) : phi(phi), gamma(gamma) {}
+	RG_NO_COPY(PotentialReward);
+	virtual ~PotentialReward() { delete phi; }
+
+	virtual void Reset(const GameState& initialState);
+	virtual void PreStep(const GameState& state) { phi->PreStep(state); }
+	virtual float GetReward(const PlayerData& player, const GameState& state, const Action& prevAction);
+	virtual float GetFinalReward(const PlayerData& player, const GameState& state, const Action& prevAction);
+private:
+	float Step(const PlayerData& player, float next);
+};
+
+// Ballberührung in der Luft, skaliert mit der Ballhöhe beim Kontakt: (z - Ballradius) / (Decke -
+// Ballradius), also ~0,05 für einen Sprung an den rollenden Ball und ~0,5 bei 1000 uu. Nur wenn das
+// Auto nicht auf dem Boden ist. Je Auto höchstens einmal in COOLDOWN_TICKS (0,5 s), damit
+// Dauerkontakt (Luftdribbling) nicht pro Schritt zahlt.
+class AirTouchReward : public RewardFunction {
+public:
+	static constexpr uint64_t COOLDOWN_TICKS = 60;
+	std::unordered_map<uint32_t, uint64_t> lastRewardTick;
+
+	virtual void Reset(const GameState& initialState) { lastRewardTick.clear(); }
+	virtual float GetReward(const PlayerData& player, const GameState& state, const Action& prevAction);
+};
+
 // ---------------------------------------------------------------------------
 // Zusammenbau
 // ---------------------------------------------------------------------------
@@ -204,6 +260,13 @@ struct RewardWeights {
 	float saveBoost = 0.3f;
 	float inAir = 0.02f;
 	float teamSpirit = 0.f;        // 0 = rein eigennützig, 1 = volle Teamteilung
+	// Spieltest-Experimente, 0 = aus (bisheriges Verhalten)
+	float kickoffFirstTouch = 0.f;         // KickoffFirstTouchReward
+	float airTouch = 0.f;                  // AirTouchReward
+	// > 0: offensive_potential_krc und dist_weighted_align_krc als PotentialReward mit diesem
+	// Zusatzfaktor (Gewicht * Faktor); 0 = direkte Form wie bisher
+	float potentialShapingScale = 0.f;
+	float potentialGamma = 0.9954f;        // = learner.gae_gamma (setzt TrainConfig)
 };
 
 // KRC(Align, VelocityPlayerToBall, Distance) - "Offensive Potential"

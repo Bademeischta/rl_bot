@@ -54,6 +54,8 @@ EpisodeEnd ClassifyEpisodeEnd(const GameState& state, const Match* match, bool t
 				end.noTouch |= noTouch->stepsSinceTouch >= noTouch->maxSteps;
 			else if (auto* timeout = dynamic_cast<TimeoutCondition*>(cond))
 				end.timeLimit |= timeout->steps >= timeout->maxSteps;
+			else if (auto* drill = dynamic_cast<SceneTimeoutCondition*>(cond))
+				end.drill |= drill->Fired();
 		}
 	}
 	return end;
@@ -61,10 +63,13 @@ EpisodeEnd ClassifyEpisodeEnd(const GameState& state, const Match* match, bool t
 
 void AccumEpisodeEnd(const EpisodeEnd& end, uint64_t episodeSteps, const std::string& sceneName,
                      Report& metrics) {
+	// Ein Anstoß-Drill endet planmäßig: kein Timeout im Sinn von K1 (ep_end_timeout zählt nur Zeitlimits)
+	bool drill = !end.goal && end.drill && !end.noTouch && !end.timeLimit;
 	metrics.AccumAvg("ep_end_goal", end.goal ? 1 : 0);
-	metrics.AccumAvg("ep_end_timeout", end.goal ? 0 : 1);
+	metrics.AccumAvg("ep_end_timeout", (end.goal || drill) ? 0 : 1);
 	metrics.AccumAvg("ep_end_notouch", (!end.goal && end.noTouch) ? 1 : 0);
 	metrics.AccumAvg("ep_end_time", (!end.goal && !end.noTouch && end.timeLimit) ? 1 : 0);
+	metrics.AccumAvg("ep_end_drill", drill ? 1 : 0);
 	metrics.AccumAvg("ep_end_truncated", end.truncated ? 1 : 0);
 	metrics.AccumAvg("ep_length_steps", (double)episodeSteps);
 	if (!sceneName.empty()) {

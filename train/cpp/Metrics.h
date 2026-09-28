@@ -11,6 +11,7 @@
 //   ep_end_notouch   Anteil NoTouch-Timeout
 //   ep_end_time      Anteil Spielzeit-Timeout (game_timeout_secs)
 //   ep_end_truncated Anteil, den der Upstream als Truncation meldet (nur mit K1-Patch)
+//   ep_end_drill     Anteil der Anstoß-Drills, die planmäßig abgeschnitten wurden (kein Timeout)
 //   ep_length_steps  mittlere Episodenlänge in Steps (Steps * tick_skip / 120 = Sekunden)
 //   scene_<name>_goal, scene_<name>_length   dasselbe je State-Setter-Szene
 //   raw_step_reward  Reward pro Spieler und Step VOR einem Zero-Sum-Wrapper (Review R10); ohne
@@ -55,6 +56,7 @@ struct EpisodeEnd {
 	bool noTouch = false;    // NoTouchCondition hat ausgelöst
 	bool timeLimit = false;  // TimeoutCondition (game_timeout_secs) hat ausgelöst
 	bool truncated = false;  // vom Upstream gemeldet (K1-Patch), sonst false
+	bool drill = false;      // Anstoß-Drill abgeschnitten (SceneTimeoutCondition)
 };
 EpisodeEnd ClassifyEpisodeEnd(const RLGSC::GameState& state, const RLGSC::Match* match, bool truncatedFlag);
 
