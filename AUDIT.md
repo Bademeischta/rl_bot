@@ -1924,7 +1924,7 @@ Episoden beginnen mit Anstoß; bei ~107 s Episodenlänge sind ~0,8 % der Trainin
 sein, der selbst nie schnell ist. (3) Nicht die Ursache: Timing oder Deployment (Nutzer: pünktlich bei
 „GO“; die Beobachtung beim Anstoß ist wie im Training, der Paketpuffer wird beim Anstoß geleert).
 
-**Geskripteter Anstoß im Deployment (Bewertung, nicht eingebaut):**
+**Geskripteter Anstoß im Deployment (Bewertung; auf Wunsch des Nutzers als Option eingebaut, Standard aus):**
 * Nutzen: sofort und groß. In RocketSim gewinnt der Speedflip jede erste Berührung gegen die
   aktuelle Policy; gegen einen Menschen mindestens Gleichstand.
 * Aufwand: mittel. Das Skript existiert und ist getestet, es braucht nur, was RLBot liefert. Einbau
@@ -1937,6 +1937,11 @@ sein, der selbst nie schnell ist. (3) Nicht die Ursache: Timing oder Deployment 
   den Anstoß nie selbst.
 * Einschätzung: Für Spiele gegen Menschen der schnellste Hebel. Der gelernte Weg (Phase C, K1/K2)
   bleibt sinnvoll, wird aber in 300 Mio. Steps kaum 0,5–0,9 s aufholen.
+* Umgesetzt (KO4, 28.09.2026): `$env:RLBOT_SCRIPTED_KICKOFF = "speedflip"` vor dem Start von RLBot.
+  Das Skript steuert pro Tick, solange die Phase „Kickoff“ ist und der Ball ruhend in der Mitte liegt
+  (höchstens 4 s), im Teamspiel nur beim ballnächsten Mitspieler; danach entscheidet sofort die
+  Policy, mit den Skript-Eingaben als nächste Tabelleneinträge im Aktions-Stack. Test in RocketSim
+  über echte RLBot-Pakete: erste Berührung diagonal unter 2,0 s. Im echten Spiel ungeprüft.
 
 ### 8.5 Ecken-Schleife vor dem gegnerischen Tor
 
