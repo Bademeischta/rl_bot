@@ -40,7 +40,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from metrics_util import duel_stats, read_rows, window_mean  # noqa: E402
+from metrics_util import PLAY_KEYS, duel_stats, read_rows, window_mean  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -57,6 +57,16 @@ COMPARE_COLUMNS = [
     ("val_target", "Val Target", 2, None),
     ("truncated_steps", "Trunc. Steps", 0, None),
     ("sps", "SPS", 0, None),
+]
+
+# Spieltest-Trainingsmetriken (eigene Tabelle, damit die Haupttabelle lesbar bleibt)
+PLAY_TRAIN_COLUMNS = [
+    ("ko_time", "Anstoß Zeit s", 2), ("ko_speed", "Anstoß Tempo", 0), ("ko_goal10", "Anstoß-Tor 10 s", 3),
+    ("goals_min", "Tore/min", 3), ("shots_min", "Schüsse/min", 3), ("third_conv", "Drittel-Konv.", 3),
+    ("third_nogoal_s", "Drittel ohne Tor s", 1), ("third_long", "Drittel lang", 3),
+    ("air_min", "Luft/min", 2), ("aerial_min", "Aerials/min", 3), ("air_touch_h", "Höhe Luft", 0),
+    ("t2_goals_min", "2v2 Tore/min", 3), ("t2_double_commit", "2v2 Double-C.", 3),
+    ("t2_last_back", "2v2 Absich.", 3), ("t2_mate_dist", "2v2 Abstand", 0),
 ]
 
 # Felder, die run_experiment.ps1 pro Lauf setzt, und Anmerkungen: kein Unterschied zwischen
@@ -270,6 +280,46 @@ def build_table(experiments: list[dict], baseline: dict, ladder: dict | None) ->
     return "\n".join(lines)
 
 
+def play_section(experiments: list[dict], baseline: dict) -> str:
+    """Spieltest-Kennzahlen: Trainingsmetriken, Duell-Kennzahlen je Seite, Anstöße, 2v2."""
+    out = ["", "## Spieltest-Kennzahlen", "", "Trainingsmetriken (letztes Fünftel, env/cpp/PlayStats.h):", ""]
+    cols = [c for c in PLAY_TRAIN_COLUMNS
+            if any(s.get("metrics", {}).get("last_20pct", {}).get(c[0]) is not None for s in experiments)]
+    if cols:
+        out.append("| Experiment | " + " | ".join(name for _, name, _ in cols) + " |")
+        out.append("|" + "---|" * (len(cols) + 1))
+        for s in experiments:
+            last = s.get("metrics", {}).get("last_20pct", {})
+            out.append(f"| {s['name']} | " + " | ".join(fmt(last.get(k), d) for k, _, d in cols) + " |")
+    else:
+        out.append("(keine Spieltest-Spalten in metrics.csv)")
+    out += ["", "Duell gegen das Baseline-Ende, je Seite (A = Experiment-Ende, B = Baseline-Ende):", ""]
+    rows = [(s, s.get("duel_baseline", {}) or {}) for s in experiments if s is not baseline]
+    rows = [(s, d["stats"]) for s, d in rows if d.get("stats")]
+    if rows:
+        out.append("| Experiment | " + " | ".join(label for _, label, _ in PLAY_KEYS) + " |")
+        out.append("|" + "---|" * (len(PLAY_KEYS) + 1))
+        for s, st in rows:
+            cells = [f"{fmt(st['a'].get(k), d)} : {fmt(st['b'].get(k), d)}" if st['a'].get(k) is not None else "-"
+                     for k, _, d in PLAY_KEYS]
+            out.append(f"| {s['name']} | " + " | ".join(cells) + " |")
+    else:
+        out.append("(keine Duell-Kennzahlen je Seite, duel.exe vor dem Spieltest-Umbau)")
+    out += ["", "Anstöße (eval/kickoff_eval.py) und 2v2-Duell gegen das Baseline-Ende:", ""]
+    out.append("| Experiment | Anstoß zuerst [95-%-KI] | Ballhälfte 3 s | Tore in 10 s | 2v2: Tordifferenz/Spiel [95-%-KI] |")
+    out.append("|---|---|---|---|---|")
+    for s in experiments:
+        if s is baseline:
+            continue
+        k = (s.get("kickoff_baseline") or {}).get("summary", {}).get("all")
+        ko = (f"{k['a_first_rate']:.1%} [{k['a_first_ci'][0]:.1%}, {k['a_first_ci'][1]:.1%}]", f"{k['a_ball_half_rate']:.1%}",
+              f"{k['goals_a_10s']}:{k['goals_b_10s']}") if k else ("-", "-", "-")
+        d2 = duel_summary(s.get("duel2_baseline"))
+        t2 = (f"{d2['goal_diff']:+.3f} [{d2['goal_diff_ci_low']:+.3f}, {d2['goal_diff_ci_high']:+.3f}]" if d2 else "-")
+        out.append(f"| {s['name']} | {ko[0]} | {ko[1]} | {ko[2]} | {t2} |")
+    return "\n".join(out)
+
+
 def ladder_section(ladder: dict | None, reason: str | None) -> str:
     out = ["", "## Gemeinsame TrueSkill-Ladder", ""]
     if not ladder:
@@ -431,6 +481,7 @@ def main() -> int:
            "95-%-t-Intervall (Spiele à 300 s). Dazu Gewinnrate (Remis = halber Sieg, Wilson) und "
            "Tore pro Minute. TrueSkill nur aus der gemeinsamen Ladder unten.\n\n")
     md += build_table(experiments, baseline, ladder) + "\n"
+    md += play_section(experiments, baseline) + "\n"
     md += ladder_section(ladder, reason) + "\n"
     md += changes_section(experiments, baseline) + "\n"
     md += verdict_hints(experiments, baseline) + "\n"

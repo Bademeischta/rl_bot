@@ -33,6 +33,11 @@ param(
     # 1000 Spiele à 300 s: 95-%-KI der Tordifferenz +-0,053 Tore/Spiel bei der gemessenen
     # Streuung (SD 0,85, Nullmessung); ~6 min je Duell mit 8 Threads (AUDIT.md §7.8)
     [int]$DuelGames = 1000,
+    # Anstoß-Auswertung (eval\kickoff_eval.py): Ende gegen Start und gegen Baseline-Ende, je so viele
+    # Anstöße (1000: 95-%-KI der Rate "zuerst am Ball" etwa +-3 Prozentpunkte); 0 = aus
+    [int]$KickoffGames = 1000,
+    # Zusätzlich 2v2-Duelle (Teamspiel-Experimente); gleiche Spielzahl wie -DuelGames
+    [switch]$TeamDuel,
     [int]$LadderGames = 50,
     [int]$PollSeconds = 30,
     [int]$MinFreeGB = 20,
@@ -211,6 +216,31 @@ try {
                 Write-Host "Baseline-Endcheckpoint nicht gefunden ($($bs.end_checkpoint)), Duell uebersprungen" -ForegroundColor Yellow
             }
         }
+        # Spieltest: Anstöße (Bot-Code, Python-RocketSim) und optional 2v2-Duelle
+        $endPolicy = "$($endCkpt.FullName)\PPO_POLICY.lt"
+        $basePolicy = $null
+        if ($Baseline -ne "" -and (Test-Path "$Baseline\summary.json")) {
+            $bsj = Get-Content "$Baseline\summary.json" -Raw | ConvertFrom-Json
+            if ($bsj.end_checkpoint -and (Test-Path "$($bsj.end_checkpoint)\PPO_POLICY.lt")) { $basePolicy = "$($bsj.end_checkpoint)\PPO_POLICY.lt" }
+        }
+        if ($KickoffGames -gt 0) {
+            $koPairs = @(,@("$ResDir\kickoff_end_vs_start.json", "$startDst\PPO_POLICY.lt"))
+            if ($basePolicy) { $koPairs += ,@("$ResDir\kickoff_end_vs_baseline.json", $basePolicy) }
+            foreach ($pair in $koPairs) {
+                Write-Host "Anstoesse Ende gegen $(Split-Path (Split-Path $pair[1] -Parent) -Leaf) ($KickoffGames)..."
+                Invoke-Native $Py @("$Root\eval\kickoff_eval.py", '--a', "policy:$endPolicy", '--b', "policy:$($pair[1])",
+                    '--kickoffs', $KickoffGames, '--seed', $Seed, '--out', $pair[0]) -MergeStdErr | Select-Object -Last 1 | ForEach-Object { Write-Host $_ }
+            }
+        }
+        if ($TeamDuel) {
+            $t2Pairs = @(,@("$ResDir\duel2_end_vs_start.json", "$startDst\PPO_POLICY.lt"))
+            if ($basePolicy) { $t2Pairs += ,@("$ResDir\duel2_end_vs_baseline.json", $basePolicy) }
+            foreach ($pair in $t2Pairs) {
+                Write-Host "2v2-Duell Ende gegen $(Split-Path (Split-Path $pair[1] -Parent) -Leaf) ($DuelGames Spiele)..."
+                Invoke-Native $Duel @('--a', $endPolicy, '--b', $pair[1], '--games', $DuelGames, '--team-size', 2,
+                    '--meshes', "$Root\collision_meshes", '--out', $pair[0]) -MergeStdErr | Select-Object -Last 2 | ForEach-Object { Write-Host $_ }
+            }
+        }
         if (-not $SkipLadder) {
             Write-Host "Ladder ($LadderGames Spiele je Paarung)..."
             Invoke-Native $Py @("$Root\eval\ladder.py", '--run', $RunDir, '--games', $LadderGames, '--exe', $Duel) -MergeStdErr | ForEach-Object { Write-Host $_ }
@@ -228,6 +258,10 @@ try {
                  "--wall-seconds", $wall)
     if (Test-Path $duelStart) { $sumArgs += @("--duel-start", $duelStart) }
     if (Test-Path $duelBase) { $sumArgs += @("--duel-baseline", $duelBase) }
+    foreach ($extra in @(@("--kickoff-start", "kickoff_end_vs_start.json"), @("--kickoff-baseline", "kickoff_end_vs_baseline.json"),
+                         @("--duel2-start", "duel2_end_vs_start.json"), @("--duel2-baseline", "duel2_end_vs_baseline.json"))) {
+        if (Test-Path "$ResDir\$($extra[1])") { $sumArgs += @($extra[0], "$ResDir\$($extra[1])") }
+    }
     if ($abortReason) { $sumArgs += @("--abort-reason", $abortReason) }
     Invoke-Native $Py $sumArgs -MergeStdErr | ForEach-Object { Write-Host $_ }
 }

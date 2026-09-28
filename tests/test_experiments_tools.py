@@ -531,3 +531,48 @@ def test_check_k1b_passes_only_when_timeouts_bootstrap_from_the_final_obs(tmp_pa
     old = tmp_path / "old.csv"                            # Trainer ohne Diagnose-Spalten
     _cpp_csv(old, 5)
     assert _check_k1b(old).returncode == 1
+
+
+# --- Spieltest: Kennzahlen je Seite, Anstöße, 2v2 in summarize/compare ------------------------
+
+@pytest.mark.skipif(not DUEL_EXE.exists() or not _real_checkpoints(1), reason="duel.exe oder echte Checkpoints fehlen")
+def test_summarize_and_compare_show_play_stats_kickoffs_and_2v2(tmp_path):
+    """Echte Ausgaben von duel.exe (1v1 und 2v2) und eval/kickoff_eval.py laufen durch summarize und
+    compare; vorher kannten beide nur Tore und Gewinnrate."""
+    import subprocess as sp
+    policy = _real_checkpoints(1)[0] / "PPO_POLICY.lt"
+    res = tmp_path / "exp_k1_x"
+    res.mkdir()
+    for name, extra in (("duel_end_vs_baseline.json", []), ("duel2_end_vs_baseline.json", ["--team-size", "2"])):
+        r = sp.run([str(DUEL_EXE), "--a", str(policy), "--b", str(policy), "--games", "2", "--max-seconds", "60",
+                    "--meshes", str(ROOT / "collision_meshes"), "--out", str(res / name), *extra],
+                   capture_output=True, text=True, encoding="utf-8", errors="replace")
+        assert r.returncode == 0, r.stdout + r.stderr
+    sys.path.insert(0, str(ROOT))
+    from eval import kickoff_eval as ke
+    ko = ke.evaluate(ke.Spec.parse(f"policy:{policy}"), ke.Spec.parse(f"policy:{policy}@argmax"), 6)
+    (res / "kickoff_end_vs_baseline.json").write_text(json.dumps(ko, default=float), encoding="utf-8")
+
+    run = tmp_path / "run"
+    run.mkdir()
+    r = sp.run([sys.executable, str(ROOT / "tools" / "experiments" / "summarize.py"), "--run", str(run), "--out", str(res),
+                "--name", "k1", "--duel-baseline", str(res / "duel_end_vs_baseline.json"),
+                "--duel2-baseline", str(res / "duel2_end_vs_baseline.json"),
+                "--kickoff-baseline", str(res / "kickoff_end_vs_baseline.json")],
+               capture_output=True, text=True, encoding="utf-8", errors="replace")
+    assert r.returncode == 0, r.stdout + r.stderr
+    s = json.loads((res / "summary.json").read_text(encoding="utf-8"))
+    assert s["duel_baseline"]["stats"]["a"]["kickoffs"] >= 2
+    assert "double_commit" in s["duel2_baseline"]["stats"]["a"]
+    assert s["kickoff_baseline"]["summary"]["all"]["kickoffs"] == 6
+    md = (res / "summary.md").read_text(encoding="utf-8")
+    assert "Anstoß zuerst" in md and "2v2-Duell Ende gegen Baseline-Ende" in md and "Anstöße Ende gegen Baseline-Ende" in md
+
+    base = tmp_path / "exp_baseline_x"
+    make_result(base, "baseline", 0.3, 3.0)
+    experiments = [compare.load_experiment(base), compare.load_experiment(res)]
+    section = compare.play_section(experiments, experiments[0])
+    row = next(line for line in section.splitlines() if line.startswith("| k1 |") and " : " in line)
+    assert row.count(" : ") >= 5                                         # Kennzahlen je Seite A : B
+    ko_row = [line for line in section.splitlines() if line.startswith("| k1 |")][-1]
+    assert "%" in ko_row and "[" in ko_row                              # Anstoß-Rate mit KI und 2v2-Tordifferenz

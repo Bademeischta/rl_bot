@@ -17,7 +17,8 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from metrics_util import KEY_COLUMNS, column, count_bad, duel_stats, mean, read_rows, window_mean  # noqa: E402
+from metrics_util import (KEY_COLUMNS, PLAY_KEYS, column, count_bad, duel_stats, mean, read_rows,  # noqa: E402
+                          window_mean)
 
 
 def running_stats(checkpoint: Path | None) -> dict:
@@ -69,6 +70,37 @@ def load_duel(path: Path | None) -> dict | None:
     return d
 
 
+def load_kickoff(path: Path | None) -> dict | None:
+    """Ergebnis von eval/kickoff_eval.py (ohne Einzelzeilen, die stehen in der Datei)."""
+    if not path or not path.exists():
+        return None
+    d = json.loads(path.read_text(encoding="utf-8"))
+    return {"a": d.get("a"), "b": d.get("b"), "kickoffs": d.get("kickoffs"), "summary": d.get("summary")}
+
+
+def play_table(d: dict) -> list[str]:
+    """Spielkennzahlen je Seite eines Duells (A = Experiment-Ende)."""
+    stats = d.get("stats")
+    if not stats:
+        return []
+    lines = ["| Kennzahl | A | B |", "|---|---|---|"]
+    for key, label, digits in PLAY_KEYS:
+        a, b = stats["a"].get(key), stats["b"].get(key)
+        if a is None and b is None:
+            continue
+        lines.append(f"| {label} | {fmt(a, digits)} | {fmt(b, digits)} |")
+    return lines + [""]
+
+
+def kickoff_line(k: dict) -> str:
+    s = k["summary"]["all"]
+    low, high = s["a_first_ci"]
+    return (f"A zuerst am Ball {s['a_first_rate']:.1%} [{low:.1%}, {high:.1%}], Ballhälfte nach 3 s "
+            f"{s['a_ball_half_rate']:.1%}, näher am Ball {s['a_closer_rate']:.1%}, Tore in 10 s "
+            f"{s['goals_a_10s']}:{s['goals_b_10s']}, erste Berührung A {fmt(s['a_time_to_touch'], 2)} s / "
+            f"B {fmt(s['b_time_to_touch'], 2)} s ({s['kickoffs']} Anstöße)")
+
+
 def fmt(v, digits=4) -> str:
     if v is None or (isinstance(v, float) and math.isnan(v)):
         return "-"
@@ -99,7 +131,9 @@ def to_markdown(s: dict) -> str:
         lines += ["## RUNNING_STATS.json des Start-Checkpoints", "",
                   f"Return-std {fmt(rs.get('return_std'))}, Zähler {rs.get('count')}, "
                   f"Steps {rs.get('cumulative_timesteps')}, Updates {rs.get('cumulative_model_updates')}", ""]
-    for label, key in (("Duell Ende gegen Start", "duel_start"), ("Duell Ende gegen Baseline-Ende", "duel_baseline")):
+    for label, key in (("Duell Ende gegen Start", "duel_start"), ("Duell Ende gegen Baseline-Ende", "duel_baseline"),
+                       ("2v2-Duell Ende gegen Start", "duel2_start"),
+                       ("2v2-Duell Ende gegen Baseline-Ende", "duel2_baseline")):
         d = s.get(key)
         if d:
             lines += [f"## {label}", "",
@@ -110,6 +144,11 @@ def to_markdown(s: dict) -> str:
                       f"(Siege {d['wins_a']}:{d['wins_b']}, {d['draws']} remis); "
                       f"Tore {d['goals_a']}:{d['goals_b']}, {fmt(d['goals_per_minute'], 3)} Tore/min "
                       f"(A {fmt(d['goals_per_minute_a'], 3)}, B {fmt(d['goals_per_minute_b'], 3)})", ""]
+            lines += play_table(d)
+    for label, key in (("Anstöße Ende gegen Start", "kickoff_start"), ("Anstöße Ende gegen Baseline-Ende", "kickoff_baseline")):
+        k = s.get(key)
+        if k:
+            lines += [f"## {label} (eval/kickoff_eval.py)", "", kickoff_line(k), ""]
     if s.get("ratings"):
         lines += ["## TrueSkill (Ladder nur innerhalb dieses Laufs; nicht mit anderen Läufen vergleichbar, "
                   "dafür die gemeinsame Ladder in compare.py)", "",
@@ -130,6 +169,10 @@ def main() -> int:
     ap.add_argument("--end-checkpoint", type=Path, default=None)
     ap.add_argument("--duel-start", type=Path, default=None)
     ap.add_argument("--duel-baseline", type=Path, default=None)
+    ap.add_argument("--duel2-start", type=Path, default=None, help="2v2-Duell Ende gegen Start")
+    ap.add_argument("--duel2-baseline", type=Path, default=None, help="2v2-Duell Ende gegen Baseline-Ende")
+    ap.add_argument("--kickoff-start", type=Path, default=None, help="kickoff_eval Ende gegen Start")
+    ap.add_argument("--kickoff-baseline", type=Path, default=None, help="kickoff_eval Ende gegen Baseline-Ende")
     ap.add_argument("--wall-seconds", type=float, default=None)
     ap.add_argument("--abort-reason", default=None)
     a = ap.parse_args()
@@ -150,6 +193,10 @@ def main() -> int:
         "running_stats_start": running_stats(a.start_checkpoint),
         "duel_start": load_duel(a.duel_start),
         "duel_baseline": load_duel(a.duel_baseline),
+        "duel2_start": load_duel(a.duel2_start),
+        "duel2_baseline": load_duel(a.duel2_baseline),
+        "kickoff_start": load_kickoff(a.kickoff_start),
+        "kickoff_baseline": load_kickoff(a.kickoff_baseline),
         "ratings": json.loads(ratings_path.read_text(encoding="utf-8")) if ratings_path.exists() else None,
     }
     a.out.mkdir(parents=True, exist_ok=True)

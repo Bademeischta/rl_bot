@@ -41,6 +41,45 @@ KEY_COLUMNS = [
     ("Skill Rating 1v1", "skill_rating"),
     ("Cumulative Model Updates", "model_updates"),
     ("Total Iteration Time", "iter_s"),
+    # Spieltest (env/cpp/PlayStats.h, train/cpp/Metrics.h): Anstoß, Angriffsdrittel, Luft, Team
+    ("kickoff_first_touch_s", "ko_time"),
+    ("kickoff_touch_speed", "ko_speed"),
+    ("kickoff_goal_10s", "ko_goal10"),
+    ("kickoff_boost_used", "ko_boost"),
+    ("goals_per_min", "goals_min"),
+    ("shots_per_min", "shots_min"),
+    ("off_third_share", "third_share"),
+    ("off_third_conversion", "third_conv"),
+    ("off_third_nogoal_s", "third_nogoal_s"),
+    ("off_third_long", "third_long"),
+    ("air_touch_per_min", "air_min"),
+    ("aerial_touch_per_min", "aerial_min"),
+    ("touch_height_mean", "touch_h"),
+    ("air_touch_height_mean", "air_touch_h"),
+    ("ep_end_drill", "drill_end"),
+    ("2v2_goals_per_min", "t2_goals_min"),
+    ("2v2_double_commit", "t2_double_commit"),
+    ("2v2_last_back", "t2_last_back"),
+    ("2v2_mate_dist", "t2_mate_dist"),
+    ("2v2_kickoff_first_touch_s", "t2_ko_time"),
+    ("2v2_aerial_touch_per_min", "t2_aerial_min"),
+]
+
+# Spielkennzahlen je Seite aus duel.exe ("stats", env/cpp/PlayStats.h): (Schlüssel, Anzeige, Stellen)
+PLAY_KEYS = [
+    ("kickoff_first_touch_rate", "Anstoß zuerst", 3),
+    ("kickoff_ball_half_rate", "Anstoß Ballhälfte 3 s", 3),
+    ("kickoff_goal_rate", "Anstoß-Tore/Anstoß", 3),
+    ("kickoff_first_touch_s", "Anstoß Zeit s", 2),
+    ("off_third_conversion", "Drittel-Konversion", 3),
+    ("off_third_long_share", "Drittel lang (>= 8 s)", 3),
+    ("off_third_nogoal_s_per_min", "Drittel ohne Tor s/min", 1),
+    ("shots_per_min", "Schüsse/min", 2),
+    ("air_touch_per_min", "Luftkontakte/min", 2),
+    ("aerial_touch_per_min", "Aerials/min", 3),
+    ("air_touch_height_mean", "Höhe Luftkontakt", 0),
+    ("double_commit", "Double-Commit", 3),
+    ("last_back", "Absicherung", 3),
 ]
 
 
