@@ -211,6 +211,17 @@ RewardFunction* MakeOffensivePotential();
 // KRC(Align, Distance) - "Distance-weighted Alignment"
 RewardFunction* MakeDistWeightedAlignment();
 
+// Ein Summand des Lucy-Rewards mit Namen (für die Reward-Bilanz, tools/cpp/reward_budget.cpp).
+struct RewardPart {
+	std::string name;
+	RewardFunction* fn;
+	float weight;
+};
+
+// Die Summanden in der Reihenfolge, in der BuildLucyReward sie kombiniert (nur Gewichte != 0).
+// Der Aufrufer übernimmt die Objekte.
+std::vector<RewardPart> BuildLucyRewardParts(const RewardWeights& w);
+
 // Baut den vollständigen Lucy-nahen Reward. Der Aufrufer übernimmt das Objekt.
 RewardFunction* BuildLucyReward(const RewardWeights& w);
 

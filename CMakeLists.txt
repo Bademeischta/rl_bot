@@ -103,3 +103,9 @@ target_link_libraries(duel PRIVATE rlbot_env "${TORCH_LIBRARIES}")
 
 enable_testing()
 add_test(NAME cpp_unit_tests COMMAND rlbot_tests)
+
+# --- Reward-Bilanz je Komponente über den echten Reward-Code (Spieltest, Ecken-Schleife) ---
+add_executable(reward_budget tools/cpp/reward_budget.cpp train/cpp/Config.cpp)
+set_target_properties(reward_budget PROPERTIES CXX_STANDARD 20)
+target_include_directories(reward_budget PRIVATE "${JSON_INCLUDE}" "${CMAKE_SOURCE_DIR}/eval/cpp")
+target_link_libraries(reward_budget PRIVATE rlbot_env RLGymPPO_CPP "${TORCH_LIBRARIES}")

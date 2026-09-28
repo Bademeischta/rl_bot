@@ -26,8 +26,8 @@ RewardFunction* MakeDistWeightedAlignment() {
 	});
 }
 
-RewardFunction* BuildLucyReward(const RewardWeights& w) {
-	std::vector<std::pair<RewardFunction*, float>> parts;
+std::vector<RewardPart> BuildLucyRewardParts(const RewardWeights& w) {
+	std::vector<RewardPart> parts;
 
 	// Ereignis-Rewards: Tor, Gegentor, Demo. teamGoal deckt auch das eigene Tor ab,
 	// deshalb kein separates "goal", sonst zählt ein eigenes Tor doppelt.
@@ -37,20 +37,27 @@ RewardFunction* BuildLucyReward(const RewardWeights& w) {
 	scales.demo = w.demo;
 	scales.demoed = -w.demoed;
 	if (w.goal != 0 || w.concede != 0 || w.demo != 0 || w.demoed != 0)
-		parts.push_back({ new EventReward(scales), 1.f });
+		parts.push_back({ "event", new EventReward(scales), 1.f });
 
 	if (w.touchBallToGoalAccel != 0)
-		parts.push_back({ new TouchBallToGoalAccelReward(), w.touchBallToGoalAccel });
+		parts.push_back({ "touch_ball_to_goal_accel", new TouchBallToGoalAccelReward(), w.touchBallToGoalAccel });
 	if (w.offensivePotential != 0)
-		parts.push_back({ MakeOffensivePotential(), w.offensivePotential });
+		parts.push_back({ "offensive_potential_krc", MakeOffensivePotential(), w.offensivePotential });
 	if (w.distWeightedAlign != 0)
-		parts.push_back({ MakeDistWeightedAlignment(), w.distWeightedAlign });
+		parts.push_back({ "dist_weighted_align_krc", MakeDistWeightedAlignment(), w.distWeightedAlign });
 	if (w.velocityPlayerToBall != 0)
-		parts.push_back({ new VelocityPlayerToBallReward(), w.velocityPlayerToBall });
+		parts.push_back({ "velocity_player_to_ball", new VelocityPlayerToBallReward(), w.velocityPlayerToBall });
 	if (w.saveBoost != 0)
-		parts.push_back({ new SaveBoostReward(0.5f), w.saveBoost });
+		parts.push_back({ "save_boost", new SaveBoostReward(0.5f), w.saveBoost });
 	if (w.inAir != 0)
-		parts.push_back({ new InAirReward(), w.inAir });
+		parts.push_back({ "in_air", new InAirReward(), w.inAir });
+	return parts;
+}
+
+RewardFunction* BuildLucyReward(const RewardWeights& w) {
+	std::vector<std::pair<RewardFunction*, float>> parts;
+	for (auto& part : BuildLucyRewardParts(w))
+		parts.push_back({ part.fn, part.weight });
 
 	// Der Tap merkt sich die Rewards vor einem Zero-Sum-Wrapper (raw_step_reward, Review R10)
 	RewardFunction* combined = new RawRewardTap(new CombinedReward(parts, true));
