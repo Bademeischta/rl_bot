@@ -151,3 +151,18 @@ def test_spieltest_experiment_changes_exactly_one_thing_against_zero_sum(name, e
 
 def test_team_spirit_experiment_changes_only_tau_against_the_2v2_run():
     assert diff(load("sp_mode_2v2"), load("sp_mode_2v2_tau05")) == {"rewards.team_spirit": (0.1, 0.5)}
+
+
+# --- Spieltest: Hauptlauf-Vorschläge (AUDIT.md §8.10), nicht gestartet ------------------------
+
+def test_main_run_proposals_add_only_the_kept_changes():
+    main = flatten(json.loads((ROOT / "train" / "configs" / "lucy_1v1_zero_sum.json").read_text(encoding="utf-8")))
+    one = flatten(json.loads((ROOT / "train" / "configs" / "lucy_1v1_zero_sum_drill.json").read_text(encoding="utf-8")))
+    team = flatten(json.loads((ROOT / "train" / "configs" / "lucy_team_zero_sum.json").read_text(encoding="utf-8")))
+    assert diff(main, one) == {"state_setters.kickoff_drill": (None, 4.0)}
+    assert diff(one, team) == {"env.mode_mix": ([1.0, 0.0, 0.0], [3.0, 1.0, 0.0]), "rewards.team_spirit": (0.1, 0.5),
+                               "learner.checkpoint_folder": ("runs/lucy_1v1/checkpoints", "runs/lucy_team/checkpoints")}
+    for cfg in (one, team):
+        assert cfg["env.max_players"] == 3 and cfg["env.action_stack_size"] == 5
+        assert cfg["learner.policy_layer_sizes"] == [512, 512, 512]
+        assert "NICHT gestartet" in cfg["_comment"]

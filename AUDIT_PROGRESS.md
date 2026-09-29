@@ -55,9 +55,36 @@ Checkpoint 6.037.692.544, Rohdaten und Bericht `results\phase_b_2026-09-28\` (`r
 * 2v2 (1v1-Checkpoint gegen sich selbst): Double-Commit 10,8 %, Absicherung 68 %, 7,8 Kontakte je
   Spielerminute; Mitspieler-Gewichte der ersten Schicht exakt auf Initialisierung.
 
-### Phase C: Experimente (Plan in AUDIT.md §8.8, wartet auf OK des Nutzers)
+### Phase C: Kernserie (erledigt, 28.09. 21:32 bis 29.09. 09:25)
 
-Nichts gestartet. Befehle je Lauf (Start-Checkpoint wird kopiert, `runs\lucy_1v1` nur gelesen):
+Vom Nutzer freigegeben: `zero_sum` + Wiederholung, `sp_kickoff_drill`, `sp_potential_shaping`,
+`sp_air_touch`, `sp_mode_2v2`, `sp_mode_2v2_tau05` (Referenz `sp_mode_2v2`), je 300 Mio. Steps ab
+6.037.692.544, Seed 123, Build `7d144df` (`run_all_checks.ps1` davor grün: 106/106 C++, 179/179
+Python je zweimal, Smoke und Deployment-Smoke OK). Treiber `results\phase_c_2026-09-28\run_phase_c.ps1`,
+alle sieben Läufe Exit 0, kein Abbruchkriterium. Vergleich `results\phase_c_2026-09-28\compare_kern.md`
+und `compare_team.md`. Bewertung und Zahlen: AUDIT.md §8.9.
+
+| Lauf | Duell gegen Start [95-%-KI] | Entscheidung |
+|---|---|---|
+| zero_sum / Wiederholung | −3,24 [−3,44; −3,04] / +0,19 [+0,07; +0,32] | Rauschen: Referenzlauf in langsamen Anstoß abgedriftet |
+| sp_kickoff_drill | +0,28 [+0,18; +0,39] | **behalten** (jede Anstoß-Kennzahl besser als beide Referenzen) |
+| sp_potential_shaping | −14,15 [−14,35; −13,95] | **verwerfen** (Entropie 2,8 → 3,95, Ballkontakt → 0) |
+| sp_air_touch | +0,74 [+0,62; +0,87] | **verwerfen** als Luftspiel-Hebel (keine Aerials); Konversion im Rauschen besser |
+| sp_mode_2v2 | 1v1 +0,39 [+0,27; +0,50], 2v2 +8,02 [+7,71; +8,33] | **behalten**, wenn Teamspiel gewollt |
+| sp_mode_2v2_tau05 | gegen sp_mode_2v2: 1v1 −0,03, 2v2 +0,58 [+0,39; +0,77] | **behalten** (vorläufig, kein 2v2-Replikat) |
+
+Nachmessung SPS bei freiem PC (die Serie lief anfangs neben VALORANT): je 3 × 15 Mio. Steps
+abwechselnd, 1v1 72.050 ± 260, mit 2v2-Anteil 73.320 ± 290 (+1,8 %),
+`results\phase_c_2026-09-28\bench_sps.sh` und `bench_sps\`. Dabei angelegt (nicht gelöscht):
+`runs\bench_sps_{zero_sum,sp_mode_2v2}_{1,2,3}\`.
+
+Hauptlauf-Vorschläge (nicht gestartet, AUDIT.md §8.10/8.11): `train/configs/lucy_1v1_zero_sum_drill.json`
+(1v1-only) und `train/configs/lucy_team_zero_sum.json` (Teamspiel, eigener Ordner `runs\lucy_team`).
+Empfehlung: Teamspiel. Offen (AUDIT.md §8.12): `sp_goal_x3`, `sp_aerial_share`, `sp_no_in_air`,
+`sp_kickoff_first_touch` vorbereitet, nicht gelaufen; der geskriptete Anstoß ist im echten Spiel
+ungetestet.
+
+Befehle je Lauf (so gelaufen, Start-Checkpoint wird kopiert, `runs\lucy_1v1` nur gelesen):
 
 ```powershell
 $C = "runs\lucy_1v1\checkpoints\6037692544"
@@ -383,6 +410,9 @@ Review-Fixes oben; hier unverändert als Stand der Cloud-Session.
 * 25.09.2026 — Schritt 2 (Experiment-Configs, Runner, Abbruchkriterien, compare), Schritt 3 (H5,
   N6/M6 dokumentiert), Schritt 4 (`run_all_checks.ps1`, Deployment-Smoke, Runbook). Stand:
   75 C++-Tests, 97 Python-Tests grün in der VM; alle PowerShell-Skripte syntaktisch geparst.
+* 28./29.09.2026 (lokal) — Spieltest: Phase A (Werkzeuge, Metriken, Bausteine, Tests), Phase B
+  (Messungen ohne Training), Phase C Kernserie (7 × 300 Mio.), SPS-Nachmessung, Hauptlauf-Vorschläge,
+  geskripteter Anstoß als Bot-Option. Details im Abschnitt Spieltest oben und in AUDIT.md §8.
 * 25.09.2026 (lokal, Trainings-PC) — Review-Befunde R1-R18 plus Nebenbefund R19 behoben, je ein
   Commit (plus vier Nachträge). Erster MSVC-cu128-Build beider Patches. K1b-Fehler (Bootstrap von
   der Reset-Obs) am echten Pfad reproduziert und korrigiert. `run_all_checks.ps1` unter
