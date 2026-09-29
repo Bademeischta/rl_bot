@@ -1,3 +1,61 @@
+diff --git a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/PPO/ExperienceBuffer.cpp b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/PPO/ExperienceBuffer.cpp
+index f718202..f2667a8 100644
+--- a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/PPO/ExperienceBuffer.cpp
++++ b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/PPO/ExperienceBuffer.cpp
+@@ -45,7 +45,8 @@ void RLGPC::ExperienceBuffer::SubmitExperience(ExperienceTensors& _data) {
+ 			auto sizes = addTen.sizes();
+ 			auto newSizes = std::vector<int64_t>(sizes.begin(), sizes.end());
+ 			newSizes[0] = maxSize;
+-			ourTen = torch::zeros(newSizes);
++			// RLbot patch (speed, G4): default dtype (float) as before, on the store device
++			ourTen = torch::zeros(newSizes, torch::TensorOptions().device(StoreDevice()));
+ 
+ 			// Make ourTen NAN, such that it is obvious if uninitialized data is being used
+ 			ourTen.add_(NAN);
+@@ -92,6 +93,8 @@ RLGPC::ExperienceBuffer::SampleSet RLGPC::ExperienceBuffer::_GetSamples(const in
+ 	
+ 	// TODO: Slow, use blob
+ 	Tensor tIndices = torch::tensor(IList(indices, indices + size));
++	if (storeOnDevice)
++		tIndices = tIndices.to(device); // RLbot patch (speed, G4): gather on the GPU
+ 
+ 	// TODO: Reptitive
+ 	SampleSet result;
+@@ -121,7 +124,9 @@ std::vector<RLGPC::ExperienceBuffer::SampleSet> RLGPC::ExperienceBuffer::GetAllB
+ }
+ 
+ void RLGPC::ExperienceBuffer::Clear() {
++	bool onDevice = storeOnDevice;
+ 	*this = ExperienceBuffer(maxSize, seed, device);
++	storeOnDevice = onDevice;
+ }
+ 
+ Tensor RLGPC::ExperienceBuffer::_Concat(torch::Tensor t1, torch::Tensor t2, int64_t size) {
+diff --git a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/PPO/ExperienceBuffer.h b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/PPO/ExperienceBuffer.h
+index a8311bb..c115134 100644
+--- a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/PPO/ExperienceBuffer.h
++++ b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/PPO/ExperienceBuffer.h
+@@ -19,12 +19,19 @@ namespace RLGPC {
+ 	};
+ 
+ 	// https://github.com/AechPro/rlgym-ppo/blob/main/rlgym_ppo/ppo/experience_buffer.py
+-	class ExperienceBuffer {
++	// RLbot patch (speed, G4): exported for the tests (tests/cpp/test_speed.cpp)
++	class RG_IMEXPORT ExperienceBuffer {
+ 	public:
+ 
+ 		torch::Device device;
+ 		int seed;
+ 
++		// RLbot patch (speed, G4): keep the buffer on `device` (GPU) instead of the CPU. The PPO
++		// batches are then gathered on the GPU and need no host-to-device copy per minibatch; the
++		// sampled values are the same. Default false = upstream behaviour.
++		bool storeOnDevice = false;
++		torch::Device StoreDevice() const { return storeOnDevice ? device : torch::Device(torch::kCPU); }
++
+ 		ExperienceTensors data;
+ 
+ 		int64_t curSize = 0;
 diff --git a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/PPO/PPOLearner.cpp b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/PPO/PPOLearner.cpp
 index 00a599a..e7ef011 100644
 --- a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/PPO/PPOLearner.cpp
@@ -78,6 +136,20 @@ index 00a599a..e7ef011 100644
  
  	if (config.measureGradientNoise) {
  		if (noiseTrackerPolicy->lastNoiseScale != 0)
+diff --git a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/PPO/PPOLearner.h b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/PPO/PPOLearner.h
+index fda74cb..8b37087 100644
+--- a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/PPO/PPOLearner.h
++++ b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/PPO/PPOLearner.h
+@@ -14,7 +14,8 @@
+ 
+ namespace RLGPC {
+ 	// https://github.com/AechPro/rlgym-ppo/blob/main/rlgym_ppo/ppo/ppo_learner.py
+-	class PPOLearner {
++	// RLbot patch (speed, G4): exported for the tests (tests/cpp/test_speed.cpp)
++	class RG_IMEXPORT PPOLearner {
+ 	public:
+ 		DiscretePolicy* policy, *policyHalf;
+ 		ValueEstimator* valueNet, *valueNetHalf;
 diff --git a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/GameTrajectory.h b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/GameTrajectory.h
 index ca5ddff..d9c91a4 100644
 --- a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/GameTrajectory.h
@@ -611,16 +683,17 @@ index e0b1c88..3f09499 100644
  }
 \ No newline at end of file
 diff --git a/RLGymPPO_CPP/src/public/RLGymPPO_CPP/Learner.cpp b/RLGymPPO_CPP/src/public/RLGymPPO_CPP/Learner.cpp
-index fca7dc3..3a067cb 100644
+index fca7dc3..3fd7088 100644
 --- a/RLGymPPO_CPP/src/public/RLGymPPO_CPP/Learner.cpp
 +++ b/RLGymPPO_CPP/src/public/RLGymPPO_CPP/Learner.cpp
-@@ -1,4 +1,5 @@
+@@ -1,4 +1,6 @@
  #include "Learner.h"
++#include <atomic>
 +#include <mutex>
  #include "Learner.h"
  
  #include "../../private/RLGymPPO_CPP/Util/SkillTracker.h"
-@@ -6,6 +7,7 @@
+@@ -6,6 +8,7 @@
  #include <RLGymPPO_CPP/PPO/PPOLearner.h>
  #include <RLGymPPO_CPP/PPO/ExperienceBuffer.h>
  #include <RLGymPPO_CPP/Threading/ThreadAgentManager.h>
@@ -628,7 +701,25 @@ index fca7dc3..3a067cb 100644
  
  #include <torch/cuda.h>
  #include "../libsrc/json/nlohmann/json.hpp"
-@@ -89,7 +91,10 @@ RLGPC::Learner::Learner(EnvCreateFn envCreateFn, LearnerConfig _config) :
+@@ -15,11 +18,16 @@
+ #include <c10/cuda/CUDACachingAllocator.h>
+ #endif
+ 
++static std::atomic<int> g_learnerInterpreterUsers{ 0 }; // RLbot patch (speed, G4)
++
+ RLGPC::Learner::Learner(EnvCreateFn envCreateFn, LearnerConfig _config) :
+ 	envCreateFn(envCreateFn),
+ 	config(_config)
+ {
+-	pybind11::initialize_interpreter();
++	// RLbot patch (speed, G4): several Learners may exist at once (tests/cpp/test_speed.cpp); the
++	// embedded interpreter is started by the first and stopped by the last one
++	if (g_learnerInterpreterUsers++ == 0)
++		pybind11::initialize_interpreter();
+ 
+ #ifndef NDEBUG
+ 	RG_LOG("===========================");
+@@ -89,7 +97,10 @@ RLGPC::Learner::Learner(EnvCreateFn envCreateFn, LearnerConfig _config) :
  		device = at::Device(at::kCPU);
  	}
  
@@ -640,7 +731,15 @@ index fca7dc3..3a067cb 100644
  	torch::set_num_threads(1);
  
  	if (RocketSim::GetStage() != RocketSimStage::INITIALIZED) {
-@@ -123,6 +128,8 @@ RLGPC::Learner::Learner(EnvCreateFn envCreateFn, LearnerConfig _config) :
+@@ -111,6 +122,7 @@ RLGPC::Learner::Learner(EnvCreateFn envCreateFn, LearnerConfig _config) :
+ 
+ 	RG_LOG("\tCreating experience buffer...");
+ 	expBuffer = new ExperienceBuffer(config.expBufferSize, config.randomSeed, device);
++	expBuffer->storeOnDevice = config.expBufferOnDevice && !device.is_cpu(); // RLbot patch (speed, G4)
+ 
+ 	RG_LOG("\tCreating PPO Learner...");
+ 	ppo = new PPOLearner(obsSize, actionAmount, config.ppo, device);
+@@ -123,6 +135,8 @@ RLGPC::Learner::Learner(EnvCreateFn envCreateFn, LearnerConfig _config) :
  		device
  	);
  
@@ -649,7 +748,7 @@ index fca7dc3..3a067cb 100644
  	RG_LOG("\tCreating " << config.numThreads << " agents...");
  	agentMgr->CreateAgents(envCreateFn, config.numThreads, config.numGamesPerThread);
  
-@@ -450,14 +457,23 @@ void RLGPC::Learner::Learn() {
+@@ -450,14 +464,23 @@ void RLGPC::Learner::Learn() {
  	RG_LOG("\tBeginning learning loop:");
  	int64_t tsSinceSave = 0;
  	Timer epochTimer = {};
@@ -673,7 +772,7 @@ index fca7dc3..3a067cb 100644
  		uint64_t timestepsCollected = timesteps.size; // Use actual size instead of target size
  
  		totalTimesteps += timestepsCollected;
-@@ -475,11 +491,14 @@ void RLGPC::Learner::Learn() {
+@@ -475,11 +498,14 @@ void RLGPC::Learner::Learn() {
  			agentMgr->disableCollection = true;
  
  		// Add it to our experience buffer, also computing GAE in the process
@@ -688,7 +787,7 @@ index fca7dc3..3a067cb 100644
  
  		Timer ppoLearnTimer = {};
  
-@@ -514,10 +533,12 @@ void RLGPC::Learner::Learn() {
+@@ -514,10 +540,12 @@ void RLGPC::Learner::Learn() {
  		}
  
  		// Free CUDA cache
@@ -701,7 +800,7 @@ index fca7dc3..3a067cb 100644
  
  		double ppoLearnTime = ppoLearnTimer.Elapsed();
  		double relEpochTime = epochTimer.Elapsed();
-@@ -525,6 +546,8 @@ void RLGPC::Learner::Learn() {
+@@ -525,6 +553,8 @@ void RLGPC::Learner::Learn() {
  
  		double consumptionTime = relEpochTime - relCollectionTime;
  
@@ -710,7 +809,7 @@ index fca7dc3..3a067cb 100644
  		if (skillTracker) {
  			RG_LOG("Running skill eval game(s)...");
  
-@@ -538,6 +561,8 @@ void RLGPC::Learner::Learn() {
+@@ -538,6 +568,8 @@ void RLGPC::Learner::Learn() {
  			}
  		}
  
@@ -719,7 +818,7 @@ index fca7dc3..3a067cb 100644
  		// Get all metrics from agent manager
  		agentMgr->GetMetrics(report);
  
-@@ -571,10 +596,12 @@ void RLGPC::Learner::Learn() {
+@@ -571,10 +603,12 @@ void RLGPC::Learner::Learn() {
  		}
  
  		// Call iteration callback
@@ -732,7 +831,7 @@ index fca7dc3..3a067cb 100644
  
  		{ // Print results
  			constexpr const char* DIVIDER = "======================";
-@@ -591,14 +618,17 @@ void RLGPC::Learner::Learn() {
+@@ -591,14 +625,17 @@ void RLGPC::Learner::Learn() {
  			metricSender->Send(report);
  
  		// Save if needed
@@ -750,7 +849,7 @@ index fca7dc3..3a067cb 100644
  	}
  	
  	RG_LOG("Learner: Timestep limit of " << config.timestepLimit << " reached, stopping");
-@@ -618,6 +648,7 @@ void RLGPC::Learner::AddNewExperience(GameTrajectory& gameTraj, Report& report)
+@@ -618,6 +655,7 @@ void RLGPC::Learner::AddNewExperience(GameTrajectory& gameTraj, Report& report)
  	
  	// Construct input to the value function estimator that includes the final state (which an action was not taken in)
  	size_t valPredCount = count + 1;
@@ -758,7 +857,28 @@ index fca7dc3..3a067cb 100644
  
  #if 0 // Does everything in one go, but can use too much VRAM
  	auto valInput = 
-@@ -642,6 +673,7 @@ void RLGPC::Learner::AddNewExperience(GameTrajectory& gameTraj, Report& report)
+@@ -625,14 +663,18 @@ void RLGPC::Learner::AddNewExperience(GameTrajectory& gameTraj, Report& report)
+ 		.to(ppo->device, true);
+ 	auto valPredsTensor = ppo->valueNet->Forward(valInput).cpu().flatten();
+ #else
++	// RLbot patch (speed, G4): with the buffer on the GPU, copy the states there once; the value
++	// predictions below and the buffer (SubmitExperience) use this copy
++	torch::Tensor statesSrc = expBuffer->storeOnDevice ? trajData.states.to(ppo->device) : trajData.states;
++
+ 	// Uses minibatching
+ 	auto valPredsTensor = torch::zeros({ (int64_t)valPredCount });
+ 	for (int i = 0; i < valPredCount; i += ppo->config.miniBatchSize) {
+ 		int start = i;
+ 		int end = RS_MIN(i + ppo->config.miniBatchSize, valPredCount);
+-		torch::Tensor statesPart = trajData.states.slice(0, start, RS_MIN(count, end));
++		torch::Tensor statesPart = statesSrc.slice(0, start, RS_MIN(count, end));
+ 		if (end == valPredCount) {
+-			auto finalNextState = torch::unsqueeze(trajData.nextStates[count - 1], 0);
++			auto finalNextState = torch::unsqueeze(trajData.nextStates[count - 1], 0).to(statesSrc.device());
+ 			statesPart = torch::cat({ statesPart, finalNextState });
+ 		}
+ 		auto valPredsPart = ppo->valueNet->Forward(statesPart.to(ppo->device, true, true)).cpu().flatten();
+@@ -642,6 +684,7 @@ void RLGPC::Learner::AddNewExperience(GameTrajectory& gameTraj, Report& report)
  #endif
  
  	FList valPreds = TENSOR_TO_FLIST(valPredsTensor);
@@ -766,7 +886,7 @@ index fca7dc3..3a067cb 100644
  
  	// Free CUDA cache
  #ifdef RG_CUDA_SUPPORT
-@@ -650,6 +682,7 @@ void RLGPC::Learner::AddNewExperience(GameTrajectory& gameTraj, Report& report)
+@@ -650,6 +693,7 @@ void RLGPC::Learner::AddNewExperience(GameTrajectory& gameTraj, Report& report)
  #endif
  	
  	float retStd = (config.standardizeReturns ? returnStats.GetSTD()[0] : 1);
@@ -774,7 +894,7 @@ index fca7dc3..3a067cb 100644
  
  	// RLbot patch (truncation): value of the next state at every truncated step, so that
  	// timeouts (and the boundaries between concatenated game trajectories) bootstrap from the
-@@ -765,6 +798,8 @@ void RLGPC::Learner::AddNewExperience(GameTrajectory& gameTraj, Report& report)
+@@ -765,9 +809,11 @@ void RLGPC::Learner::AddNewExperience(GameTrajectory& gameTraj, Report& report)
  		int numToIncrement = RS_MIN(config.maxReturnsPerStatsInc, returns.size());
  		returnStats.Increment(returns, numToIncrement);
  	}
@@ -782,8 +902,12 @@ index fca7dc3..3a067cb 100644
 +	expPartTimer.Reset();
  
  	auto expTensors = ExperienceTensors{
- 			trajData.states,
-@@ -785,6 +820,8 @@ void RLGPC::Learner::AddNewExperience(GameTrajectory& gameTraj, Report& report)
+-			trajData.states,
++			statesSrc,
+ 			trajData.actions,
+ 			trajData.logProbs,
+ 			trajData.rewards,
+@@ -785,6 +831,8 @@ void RLGPC::Learner::AddNewExperience(GameTrajectory& gameTraj, Report& report)
  	expBuffer->SubmitExperience(
  		expTensors
  	);
@@ -792,14 +916,27 @@ index fca7dc3..3a067cb 100644
  }
  
  void RLGPC::Learner::UpdateLearningRates(float policyLR, float criticLR) {
+@@ -825,5 +873,6 @@ RLGPC::Learner::~Learner() {
+ 	delete expBuffer;
+ 	delete metricSender;
+ 	delete renderSender;
+-	pybind11::finalize_interpreter();
++	if (--g_learnerInterpreterUsers == 0)
++		pybind11::finalize_interpreter();
+ }
+\ No newline at end of file
 diff --git a/RLGymPPO_CPP/src/public/RLGymPPO_CPP/LearnerConfig.h b/RLGymPPO_CPP/src/public/RLGymPPO_CPP/LearnerConfig.h
-index e011294..3858aff 100644
+index e011294..092c11f 100644
 --- a/RLGymPPO_CPP/src/public/RLGymPPO_CPP/LearnerConfig.h
 +++ b/RLGymPPO_CPP/src/public/RLGymPPO_CPP/LearnerConfig.h
-@@ -78,5 +78,9 @@ namespace RLGPC {
+@@ -78,5 +78,13 @@ namespace RLGPC {
  		std::string metricsRunName = "rlgymppo-cpp-run"; // Run name for the python metrics receiver
  
  		SkillTrackerConfig skillTrackerConfig = {};
++
++		// RLbot patch (speed, G4): experience buffer in GPU memory (PPO batches without host-to-device
++		// copies, shuffle gather on the GPU; ~0.65 GB VRAM at 300k steps). Same results.
++		bool expBufferOnDevice = false;
 +
 +		// RLbot patch (speed, G2): test hook, fills the old per-step torch trajectories as well so
 +		// that tests can compare both (ThreadAgentManager::lastLegacyResult). Slow; off in training.

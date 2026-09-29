@@ -64,6 +64,10 @@ struct TrainConfig {
 	// exp_buffer_iterations Batches pro Epoche, also ppo_epochs * exp_buffer_iterations
 	// Gradientenschritte pro Iteration (Default 3 * 2 = 6, wie bisher hartkodiert).
 	int expBufferIterations = 3;
+	// Experience-Puffer im GPU-Speicher (Geschwindigkeit G4, AUDIT.md §9): PPO-Batches ohne
+	// Host-zu-GPU-Kopie je Minibatch, Shuffle-Gather auf der GPU; gleiche Ergebnisse, ~0,65 GB VRAM
+	// mehr. Default false = bisheriges Verhalten.
+	bool expBufferOnDevice = false;
 	int64_t ppoBatchSize = 100000;
 	int64_t ppoMiniBatchSize = 50000;
 	float entCoef = 0.01f;

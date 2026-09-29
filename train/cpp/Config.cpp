@@ -126,6 +126,7 @@ TrainConfig TrainConfig::FromFile(const std::string& path) {
 			READ(l, seen, cfg.criticLayerSizes, "critic_layer_sizes");
 			READ(l, seen, cfg.ppoEpochs, "ppo_epochs");
 			READ(l, seen, cfg.expBufferIterations, "exp_buffer_iterations");
+			READ(l, seen, cfg.expBufferOnDevice, "exp_buffer_on_device");
 			READ(l, seen, cfg.ppoBatchSize, "ppo_batch_size");
 			READ(l, seen, cfg.ppoMiniBatchSize, "ppo_mini_batch_size");
 			READ(l, seen, cfg.entCoef, "ent_coef");
@@ -231,6 +232,7 @@ std::string TrainConfig::ToJSONString() const {
 		{ "checkpoint_folder", checkpointFolder },
 		{ "policy_layer_sizes", policyLayerSizes }, { "critic_layer_sizes", criticLayerSizes },
 		{ "ppo_epochs", ppoEpochs }, { "exp_buffer_iterations", expBufferIterations },
+		{ "exp_buffer_on_device", expBufferOnDevice },
 		{ "ppo_batch_size", ppoBatchSize },
 		{ "ppo_mini_batch_size", ppoMiniBatchSize }, { "ent_coef", entCoef },
 		{ "clip_range", clipRange }, { "policy_lr", policyLR }, { "critic_lr", criticLR },
@@ -264,6 +266,7 @@ RLGPC::LearnerConfig MakeLearnerConfig(const TrainConfig& cfg) {
 	lc.gaeLambda = cfg.gaeLambda;
 	lc.gaeGamma = cfg.gaeGamma;
 	lc.expBufferSize = cfg.timestepsPerIteration * cfg.expBufferIterations;
+	lc.expBufferOnDevice = cfg.expBufferOnDevice;
 
 	lc.ppo.policyLayerSizes = cfg.policyLayerSizes;
 	lc.ppo.criticLayerSizes = cfg.criticLayerSizes;

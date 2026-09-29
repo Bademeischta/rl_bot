@@ -7,9 +7,13 @@
 
 #include <RLGymPPO_CPP/Learner.h>
 #include <RLGymPPO_CPP/Threading/ThreadAgentManager.h>
+#include <RLGymPPO_CPP/PPO/PPOLearner.h>
+#include <torch/cuda.h>
 
 #include <atomic>
 #include <chrono>
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <thread>
 
@@ -121,4 +125,92 @@ TEST(G3_StopAgents_haengt_nicht_am_Sammel_Limit) {
 	if (!*stopped)
 		FAIL_AT("StopAgents() haengt: der Agent wartet am Sammel-Limit ohne shouldRun zu pruefen");
 	delete learner;
+}
+
+static std::vector<torch::Tensor> AllParams(RLGPC::Learner& l) {
+	std::vector<torch::Tensor> out;
+	for (auto& p : l.ppo->policy->parameters()) out.push_back(p.detach().cpu().clone());
+	for (auto& p : l.ppo->valueNet->parameters()) out.push_back(p.detach().cpu().clone());
+	return out;
+}
+
+static RLGPC::GameTrajectory CloneTrajectory(const RLGPC::GameTrajectory& t) {
+	RLGPC::GameTrajectory c = t;
+	for (size_t i = 0; i < RLGPC::TrajectoryTensors::TENSOR_AMOUNT; i++)
+		c.data[i] = t.data[i].clone();
+	return c;
+}
+
+// G4: Experience-Puffer im GPU-Speicher. Zwei Learner mit demselben Seed (Puffer auf der CPU wie
+// bisher / auf der GPU) bekommen dieselben echt gesammelten Trajektorien und lernen darauf fünf
+// Iterationen: Netze und Kennzahlen müssen bitgleich bleiben (gleiche Shuffle-Reihenfolge, gleiche
+// Batches, nur ohne Host-zu-GPU-Kopie je Minibatch).
+TEST(G4_Puffer_auf_der_GPU_lernt_bitgleich_zum_Puffer_auf_der_CPU) {
+	if (!g_arenaReady || !torch::cuda::is_available()) return;
+	TrainConfig cfg = SpeedTestConfig();
+	EnvFactory factory(cfg);
+	auto make = [&](bool onDevice) {
+		RLGPC::LearnerConfig lc = SmallLearner(cfg);
+		lc.deviceType = RLGPC::LearnerDeviceType::GPU_CUDA;
+		lc.expBufferOnDevice = onDevice;
+		lc.ppo.policyLayerSizes = { 64, 64 };
+		lc.ppo.criticLayerSizes = { 64, 64 };
+		lc.ppo.epochs = 2;
+		return std::make_unique<RLGPC::Learner>([&]() { return factory.Create(); }, lc);
+	};
+	auto cpuBuf = make(false);
+	auto gpuBuf = make(true);
+	CHECK(!cpuBuf->expBuffer->storeOnDevice);
+	CHECK(gpuBuf->expBuffer->storeOnDevice);
+
+	auto sameParams = [&](const char* when) {
+		auto pa = AllParams(*cpuBuf), pb = AllParams(*gpuBuf);
+		CHECK_EQ(pa.size(), pb.size());
+		for (size_t i = 0; i < pa.size(); i++)
+			if (!torch::equal(pa[i], pb[i]))
+				FAIL_AT(when << ": Parameter " << i << " unterscheidet sich");
+	};
+	sameParams("Start");
+
+	auto* mgr = cpuBuf->agentMgr;
+	mgr->StartAgents();
+	AgentStopper stopper{ mgr };
+	// 5 Iterationen: ab der dritten ist der Puffer (1800) voll, alte Daten werden verschoben
+	for (int it = 0; it < 5; it++) {
+		RLGPC::GameTrajectory traj = mgr->CollectTimesteps(600);
+		mgr->disableCollection = true;   // wie im Learner: nicht sammeln, während gelernt wird
+		RLGPC::GameTrajectory copy = CloneTrajectory(traj);
+		RLGPC::Report ra, rb;
+		cpuBuf->AddNewExperience(traj, ra);
+		gpuBuf->AddNewExperience(copy, rb);
+		CHECK(gpuBuf->expBuffer->data.states.is_cuda());
+		CHECK(!cpuBuf->expBuffer->data.states.is_cuda());
+		cpuBuf->ppo->Learn(cpuBuf->expBuffer, ra);
+		gpuBuf->ppo->Learn(gpuBuf->expBuffer, rb);
+		mgr->disableCollection = false;
+		sameParams("nach Iteration");
+		for (const char* key : { "Avg Advantage", "Avg Val Target", "Policy Entropy", "Mean KL Divergence",
+		                         "Value Function Loss", "SB3 Clip Fraction", "Policy Update Magnitude" })
+			CHECK_EQ(ra[key], rb[key]);
+	}
+}
+
+static TrainConfig LoadSpeedConfig(const std::string& json) {
+	static int counter = 0;
+	auto path = std::filesystem::temp_directory_path() / ("rlbot_speed_cfg_" + std::to_string(counter++) + ".json");
+	std::ofstream(path) << json;
+	TrainConfig cfg = TrainConfig::FromFile(path.string());
+	std::filesystem::remove(path);
+	return cfg;
+}
+
+TEST(G4_Config_exp_buffer_on_device_Default_aus_und_kommt_im_Learner_an) {
+	TrainConfig def = {};
+	CHECK(!def.expBufferOnDevice);
+	CHECK(!MakeLearnerConfig(def).expBufferOnDevice);
+	TrainConfig cfg = LoadSpeedConfig(R"({"learner": {"exp_buffer_on_device": true}})");
+	CHECK(cfg.expBufferOnDevice);
+	CHECK(MakeLearnerConfig(cfg).expBufferOnDevice);
+	// config_used.json trägt den Wert und ist wieder ladbar (R7)
+	CHECK(LoadSpeedConfig(cfg.ToJSONString()).expBufferOnDevice);
 }
