@@ -131,6 +131,7 @@ TrainConfig TrainConfig::FromFile(const std::string& path) {
 			READ(l, seen, cfg.collectLimitFactor, "collect_limit_factor");
 			READ(l, seen, cfg.tf32, "tf32");
 			READ(l, seen, cfg.autocastLearn, "autocast_learn");
+			READ(l, seen, cfg.learnerHighPriorityStream, "learner_high_priority_stream");
 			READ(l, seen, cfg.ppoBatchSize, "ppo_batch_size");
 			READ(l, seen, cfg.ppoMiniBatchSize, "ppo_mini_batch_size");
 			READ(l, seen, cfg.entCoef, "ent_coef");
@@ -243,6 +244,7 @@ std::string TrainConfig::ToJSONString() const {
 		{ "exp_buffer_on_device", expBufferOnDevice },
 		{ "infer_during_learn", inferDuringLearn }, { "collect_limit_factor", collectLimitFactor },
 		{ "tf32", tf32 }, { "autocast_learn", autocastLearn },
+		{ "learner_high_priority_stream", learnerHighPriorityStream },
 		{ "ppo_batch_size", ppoBatchSize },
 		{ "ppo_mini_batch_size", ppoMiniBatchSize }, { "ent_coef", entCoef },
 		{ "clip_range", clipRange }, { "policy_lr", policyLR }, { "critic_lr", criticLR },
@@ -281,6 +283,7 @@ RLGPC::LearnerConfig MakeLearnerConfig(const TrainConfig& cfg) {
 	lc.collectLimitFactor = cfg.collectLimitFactor;
 	lc.tf32 = cfg.tf32;
 	lc.ppo.autocastLearn = cfg.autocastLearn;
+	lc.learnerHighPriorityStream = cfg.learnerHighPriorityStream;
 
 	lc.ppo.policyLayerSizes = cfg.policyLayerSizes;
 	lc.ppo.criticLayerSizes = cfg.criticLayerSizes;

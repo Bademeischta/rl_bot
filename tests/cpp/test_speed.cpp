@@ -7,6 +7,7 @@
 #include <RLGymPPO_CPP/Threading/ThreadAgentManager.h>
 #include <RLGymPPO_CPP/PPO/PPOLearner.h>
 #include <torch/cuda.h>
+#include <c10/cuda/CUDAStream.h>
 
 #include <atomic>
 #include <chrono>
@@ -392,4 +393,51 @@ TEST(G7_Config_autocast_learn_Default_aus_und_kommt_im_Learner_an) {
 	TrainConfig cfg = LoadSpeedConfig(R"({"learner": {"autocast_learn": true}})");
 	CHECK(MakeLearnerConfig(cfg).ppo.autocastLearn);
 	CHECK(LoadSpeedConfig(cfg.ToJSONString()).autocastLearn);
+}
+
+// G8: Mit infer_during_learn und learner_high_priority_stream läuft die GPU-Arbeit des Lern-Threads
+// auf einem Stream hoher Priorität (die GPU plant PPO-Kernel vor den Inferenz-Kerneln ein); ohne
+// den Schalter bleibt es beim Standard-Stream.
+TEST(G8_Lern_Thread_auf_Stream_hoher_Prioritaet) {
+	if (!g_arenaReady || !torch::cuda::is_available()) return;
+	TrainConfig cfg = SpeedTestConfig();
+	EnvFactory factory(cfg);
+	for (bool prio : { false, true }) {
+		RLGPC::LearnerConfig lc = SmallLearner(cfg);
+		lc.deviceType = RLGPC::LearnerDeviceType::GPU_CUDA;
+		lc.collectionDuringLearn = true;
+		lc.inferDuringLearn = true;
+		lc.collectLimitFactor = 1.0f;
+		lc.learnerHighPriorityStream = prio;
+		lc.timestepLimit = 600 * 2;
+		int priority = 99;
+		bool defaultStream = false;
+		{
+			RLGPC::Learner learner([&]() { return factory.Create(); }, lc);
+			learner.iterationCallback = [&](RLGPC::Learner*, RLGPC::Report&) {
+				auto s = c10::cuda::getCurrentCUDAStream();
+				priority = s.priority();
+				defaultStream = s == c10::cuda::getDefaultCUDAStream();
+			};
+			learner.Learn();
+		}
+		auto range = c10::cuda::CUDAStream::priority_range();   // (niedrigste, höchste) Priorität
+		if (prio) {
+			CHECK(!defaultStream);
+			CHECK_EQ(priority, (int)std::get<1>(range));
+		} else {
+			CHECK(defaultStream);
+		}
+		// nach Learn() ist der Thread wieder auf dem Standard-Stream
+		CHECK(c10::cuda::getCurrentCUDAStream() == c10::cuda::getDefaultCUDAStream());
+	}
+}
+
+TEST(G8_Config_learner_high_priority_stream_Default_aus) {
+	TrainConfig def = {};
+	CHECK(!def.learnerHighPriorityStream);
+	CHECK(!MakeLearnerConfig(def).learnerHighPriorityStream);
+	TrainConfig cfg = LoadSpeedConfig(R"({"learner": {"learner_high_priority_stream": true}})");
+	CHECK(MakeLearnerConfig(cfg).learnerHighPriorityStream);
+	CHECK(LoadSpeedConfig(cfg.ToJSONString()).learnerHighPriorityStream);
 }

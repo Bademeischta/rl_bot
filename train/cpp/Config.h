@@ -82,6 +82,9 @@ struct TrainConfig {
 	// Gemischte Präzision im PPO-Lernschritt (Geschwindigkeit G7): Vorwärtsrechnung unter
 	// Autocast in BF16, Gewichte, Optimierer und Verluste in FP32, ohne Grad-Scaler. Default false.
 	bool autocastLearn = false;
+	// Mit infer_during_learn: Lern-Thread auf einem CUDA-Stream hoher Priorität (Geschwindigkeit
+	// G8), die GPU plant PPO-Kernel vor den Inferenz-Kerneln der Sammel-Threads ein. Default false.
+	bool learnerHighPriorityStream = false;
 	int64_t ppoBatchSize = 100000;
 	int64_t ppoMiniBatchSize = 50000;
 	float entCoef = 0.01f;
