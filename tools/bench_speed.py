@@ -48,6 +48,9 @@ TIME_COLUMNS = [
     "Collect Concat Time", "Add Experience Time", "Exp Value Pred Time", "Exp GAE Time", "Exp Submit Time",
     "PPO Learn Time", "PPO Shuffle Time", "PPO Minibatch Time", "PPO Optim Time", "PPO Param Copy Time",
     "Empty Cache Time", "Prev Tail Time", "Prev Skill Eval Time", "Prev Iteration Callback Time", "Prev Save Time",
+    "Infer Policy Sync Time",
+    # keine Zeiten: Iterationsgröße und wie viel davon während der Lernphase gesammelt wurde (G5)
+    "Timesteps Collected", "Steps Collected During Learn",
 ]
 
 

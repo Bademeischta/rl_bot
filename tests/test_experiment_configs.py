@@ -166,3 +166,22 @@ def test_main_run_proposals_add_only_the_kept_changes():
         assert cfg["env.max_players"] == 3 and cfg["env.action_stack_size"] == 5
         assert cfg["learner.policy_layer_sizes"] == [512, 512, 512]
         assert "NICHT gestartet" in cfg["_comment"]
+
+
+# --- Geschwindigkeit (AUDIT.md §9): Lernvergleich, nur Learner-Schalter gegenüber sp_kickoff_drill ---
+
+SPEED_OVERLAP = {"learner.collection_during_learn": (False, True), "learner.exp_buffer_on_device": (None, True),
+                 "learner.infer_during_learn": (None, True), "learner.collect_limit_factor": (None, 1.0)}
+SPEED_EXPECTED = {
+    "speed_overlap": SPEED_OVERLAP,
+    "speed_overlap_amp": {**SPEED_OVERLAP, "learner.autocast_learn": (None, True)},
+}
+
+
+@pytest.mark.parametrize("name,expected", list(SPEED_EXPECTED.items()))
+def test_speed_experiments_change_only_speed_switches_against_the_drill_run(name, expected):
+    """Referenz ist sp_kickoff_drill (= Hauptlauf-Config lucy_1v1_zero_sum_drill als Experiment, Phase C);
+    Rewards, Szenen, Netz und PPO-Hyperparameter bleiben gleich."""
+    assert diff(load("sp_kickoff_drill"), load(name)) == expected
+    assert load(name)["metrics.run"] == name
+    assert "NICHT gestartet" in load(name)["_comment"]
