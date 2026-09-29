@@ -42,13 +42,19 @@ int EnvFactory::TeamSizeForIndex(int index) const {
 	return schedule[((index % SCHEDULE_SIZE) + SCHEDULE_SIZE) % SCHEDULE_SIZE];
 }
 
-static std::vector<TerminalCondition*> MakeTerminalConditions(const TrainConfig& cfg) {
+static std::vector<TerminalCondition*> MakeTerminalConditions(const TrainConfig& cfg,
+                                                              const WeightedStateSetter* setter = nullptr) {
 	int ticksPerStep = cfg.tickSkip;
-	return {
+	std::vector<TerminalCondition*> conds = {
 		new NoTouchTruncation((int)(cfg.noTouchTimeoutSecs * 120 / ticksPerStep), cfg.timeoutsAsTruncation),
 		new TimeoutCondition((int)(cfg.gameTimeoutSecs * 120 / ticksPerStep), cfg.timeoutsAsTruncation),
 		new GoalScoreCondition(),
 	};
+	// Anstoß-Drill: Episoden dieser Szene nach kickoff_drill_secs abschneiden
+	if (setter && cfg.states.kickoffDrill > 0)
+		conds.push_back(new SceneTimeoutCondition(setter, "kickoff_drill",
+		                                          std::max(1, (int)(cfg.kickoffDrillSecs * 120 / ticksPerStep))));
+	return conds;
 }
 
 // Seed-Ströme je Environment: 0 = State-Setter, 1 = Obs-Shuffle (Audit H6).
@@ -74,7 +80,7 @@ RLGPC::EnvCreateResult EnvFactory::Create() {
 
 	auto* match = new Match(
 		BuildLucyReward(cfg.rewards),
-		MakeTerminalConditions(cfg),
+		MakeTerminalConditions(cfg, setter),
 		MakeObs(cfg, index),
 		new DiscreteAction(),
 		setter,

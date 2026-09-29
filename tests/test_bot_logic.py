@@ -321,3 +321,37 @@ def test_obs_delay_zero_is_exactly_the_behaviour_before_h1(monkeypatch):
     assert seen[-2:] == [32.0, 40.0]                       # im Replay weiter entschieden
     assert len(agent.action_history) == ACTION_STACK       # 6 Entscheidungen, Stack voll, nie geleert
     assert len(agent.packet_buffer) == 0                   # Puffer wird gar nicht benutzt
+
+
+# --- Teamspiel: zwei Bot-Instanzen im selben Team (Spieltest, Punkt 4) ---------------------------
+
+def test_two_bots_in_one_team_see_their_teammate_and_both_opponents():
+    """2v2 mit zwei Instanzen des Bots: Jede Instanz baut die Obs aus ihrer eigenen Sicht
+    (self.index), der Mitspieler landet im Mitspieler-Slot, beide Gegner in Gegner-Slots.
+    Bisher prüften die Bot-Tests nur 1v1-Pakete."""
+    from env.obs_python import BALL_FEATURES, BOOST_LOCATIONS_AMOUNT, PLAYER_FEATURES, POS_COEF
+    players = [make_player(pos=(-1000, -3000, 17)), make_player(pos=(1500, -2000, 17)),
+               make_player(pos=(-500, 3000, 17), team=1), make_player(pos=(800, 2500, 17), team=1)]
+    self_start = BALL_FEATURES + BOOST_LOCATIONS_AMOUNT
+    mates_start = self_start + PLAYER_FEATURES + ACTION_STACK * 8
+    opp_start = mates_start + 2 * PLAYER_FEATURES
+    for index, mate_index in ((0, 1), (1, 0)):
+        agent = make_agent()
+        agent.index = index
+        seen = {}
+
+        def capture(obs, deterministic=True):
+            seen["obs"] = obs
+            return 3
+
+        agent.policy.act = capture  # type: ignore[assignment]
+        agent.get_output(make_packet(players, frame=0))
+        obs = seen["obs"]
+        pos = lambda start: obs[start:start + 3] / POS_COEF
+        assert np.allclose(pos(self_start), [players[index].physics.location.x, players[index].physics.location.y, 17], atol=1e-3)
+        assert np.allclose(pos(mates_start), [players[mate_index].physics.location.x,
+                                              players[mate_index].physics.location.y, 17], atol=1e-3)
+        assert not obs[mates_start + PLAYER_FEATURES:opp_start].any()           # zweiter Mitspieler-Slot leer
+        assert np.allclose(pos(opp_start)[:2], [-500, 3000], atol=1e-3)         # Blau: nicht gespiegelt
+        assert np.allclose(pos(opp_start + PLAYER_FEATURES)[:2], [800, 2500], atol=1e-3)
+        assert not obs[opp_start + 2 * PLAYER_FEATURES:].any()                  # dritter Gegner-Slot leer

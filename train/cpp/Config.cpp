@@ -55,6 +55,7 @@ TrainConfig TrainConfig::FromFile(const std::string& path) {
 			READ(e, seen, cfg.shuffleSlots, "shuffle_slots");
 			READ(e, seen, cfg.seedEnvs, "seed_envs");
 			READ(e, seen, cfg.timeoutsAsTruncation, "timeouts_as_truncation");
+			READ(e, seen, cfg.kickoffDrillSecs, "kickoff_drill_secs");
 			seen.insert("mode_mix");
 			if (e.contains("mode_mix")) {
 				auto mix = e.at("mode_mix").get<std::vector<float>>();
@@ -82,6 +83,9 @@ TrainConfig TrainConfig::FromFile(const std::string& path) {
 			READ(r, seen, w.saveBoost, "save_boost");
 			READ(r, seen, w.inAir, "in_air");
 			READ(r, seen, w.teamSpirit, "team_spirit");
+			READ(r, seen, w.kickoffFirstTouch, "kickoff_first_touch");
+			READ(r, seen, w.airTouch, "air_touch");
+			READ(r, seen, w.potentialShapingScale, "potential_shaping_scale");
 			CheckUnknown(r, seen, "rewards");
 		}
 	}
@@ -98,6 +102,7 @@ TrainConfig TrainConfig::FromFile(const std::string& path) {
 			READ(s, seen, w.wallPlay, "wall_play");
 			READ(s, seen, w.recovery, "recovery");
 			READ(s, seen, w.defense, "defense");
+			READ(s, seen, w.kickoffDrill, "kickoff_drill");
 			CheckUnknown(s, seen, "state_setters");
 		}
 	}
@@ -150,6 +155,8 @@ TrainConfig TrainConfig::FromFile(const std::string& path) {
 		}
 	}
 	CheckUnknown(j, top, "Wurzel");
+	// Potenzialbasiertes Shaping diskontiert mit demselben gamma wie die GAE
+	cfg.rewards.potentialGamma = cfg.gaeGamma;
 
 	// Plausibilität
 	if (cfg.maxPlayers < 1 || cfg.maxPlayers > 4)
@@ -171,6 +178,10 @@ TrainConfig TrainConfig::FromFile(const std::string& path) {
 		RG_ERR_CLOSE("learner.extra_steps darf nicht negativ sein");
 	if (cfg.expBufferIterations < 1)
 		RG_ERR_CLOSE("learner.exp_buffer_iterations muss >= 1 sein");
+	if (cfg.states.kickoffDrill > 0 && cfg.kickoffDrillSecs <= 0)
+		RG_ERR_CLOSE("env.kickoff_drill_secs muss > 0 sein, wenn state_setters.kickoff_drill aktiv ist");
+	if (cfg.rewards.potentialShapingScale < 0)
+		RG_ERR_CLOSE("rewards.potential_shaping_scale darf nicht negativ sein");
 
 	return cfg;
 }
@@ -191,6 +202,7 @@ std::string TrainConfig::ToJSONString() const {
 		{ "mode_mix", { modeMix[0], modeMix[1], modeMix[2] } },
 		{ "shuffle_slots", shuffleSlots }, { "seed_envs", seedEnvs },
 		{ "timeouts_as_truncation", timeoutsAsTruncation },
+		{ "kickoff_drill_secs", kickoffDrillSecs },
 	};
 	j["rewards"] = {
 		{ "goal", rewards.goal }, { "concede", rewards.concede },
@@ -201,11 +213,14 @@ std::string TrainConfig::ToJSONString() const {
 		{ "velocity_player_to_ball", rewards.velocityPlayerToBall },
 		{ "save_boost", rewards.saveBoost }, { "in_air", rewards.inAir },
 		{ "team_spirit", rewards.teamSpirit },
+		{ "kickoff_first_touch", rewards.kickoffFirstTouch }, { "air_touch", rewards.airTouch },
+		{ "potential_shaping_scale", rewards.potentialShapingScale },
 	};
 	j["state_setters"] = {
 		{ "kickoff", states.kickoff }, { "random", states.random }, { "aerial", states.aerial },
 		{ "dribble", states.dribble }, { "wall_play", states.wallPlay },
 		{ "recovery", states.recovery }, { "defense", states.defense },
+		{ "kickoff_drill", states.kickoffDrill },
 	};
 	j["learner"] = {
 		{ "num_threads", numThreads }, { "num_games_per_thread", numGamesPerThread },

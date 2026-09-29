@@ -88,16 +88,16 @@ def test_all_experiments_keep_obs_layout_and_actions():
         assert cfg["learner.checkpoint_folder"] == "runs/EXPERIMENT/checkpoints", path.name
 
 
-def test_main_run_proposal_is_main_config_plus_confirmed_winners_only():
-    """Stufe 3, Schritt 3: Vorschlag für den fortgesetzten Hauptlauf = lucy_1v1.json plus die
-    bestätigten Gewinner (nur zero_sum, AUDIT.md §7.9), gleicher Checkpoint-Ordner, Obs/Aktionen
-    unverändert. Nicht gestartet."""
+def test_main_run_config_is_main_config_plus_confirmed_winners_only():
+    """Hauptlauf-Config seit Stufe 3 (AUDIT.md §7.9): lucy_1v1.json plus die bestätigten Gewinner (nur
+    zero_sum), gleicher Checkpoint-Ordner, Obs/Aktionen unverändert. Dazu checkpoints_to_keep 50
+    (Nutzer, 28.09.2026), keine Verhaltensänderung: Ältere Checkpoints bleiben als Duell-Gegner."""
     main = flatten(json.loads((ROOT / "train" / "configs" / "lucy_1v1.json").read_text(encoding="utf-8")))
-    proposal = flatten(json.loads((ROOT / "train" / "configs" / "lucy_1v1_zero_sum.json").read_text(encoding="utf-8")))
-    assert diff(main, proposal) == EXPECTED["zero_sum"]
-    assert proposal["learner.checkpoint_folder"] == "runs/lucy_1v1/checkpoints"
-    assert proposal["env.max_players"] == 3 and proposal["env.action_stack_size"] == 5
-    assert "NICHT gestartet" in proposal["_comment"]
+    config = flatten(json.loads((ROOT / "train" / "configs" / "lucy_1v1_zero_sum.json").read_text(encoding="utf-8")))
+    assert diff(main, config) == {**EXPECTED["zero_sum"], "learner.checkpoints_to_keep": (10, 50)}
+    assert config["learner.checkpoint_folder"] == "runs/lucy_1v1/checkpoints"
+    assert config["env.max_players"] == 3 and config["env.action_stack_size"] == 5
+    assert "checkpoints_to_keep" in config["_comment"]
 
 
 def test_proposed_extension_tests_h3_on_top_of_zero_sum_with_one_change():
@@ -125,3 +125,44 @@ def test_h5_configs_change_only_epochs_and_buffer(name, expected):
     assert cfg["learner.ppo_batch_size"] == cfg["learner.timesteps_per_iteration"]
     updates = expected[0] * expected[1]
     assert str(updates) in name
+
+
+# --- Spieltest, Phase C (AUDIT.md §8): je genau eine Änderung gegenüber zero_sum.json -------------
+
+SPIELTEST_EXPECTED = {
+    "sp_kickoff_drill": {"state_setters.kickoff_drill": (None, 4.0)},
+    "sp_kickoff_first_touch": {"rewards.kickoff_first_touch": (None, 2.0)},
+    "sp_potential_shaping": {"rewards.potential_shaping_scale": (None, 8.0)},
+    # symmetrischer Torwert: goal und concede gemeinsam (wie in zero_sum.json)
+    "sp_goal_x3": {"rewards.goal": (5.0, 15.0), "rewards.concede": (5.0, 15.0)},
+    "sp_air_touch": {"rewards.air_touch": (None, 3.0)},
+    "sp_aerial_share": {"state_setters.aerial": (0.5, 2.0)},
+    "sp_no_in_air": {"rewards.in_air": (0.02, 0.0)},
+    "sp_mode_2v2": {"env.mode_mix": ([1.0, 0.0, 0.0], [3.0, 1.0, 0.0])},
+}
+
+
+@pytest.mark.parametrize("name,expected", list(SPIELTEST_EXPECTED.items()))
+def test_spieltest_experiment_changes_exactly_one_thing_against_zero_sum(name, expected):
+    assert diff(load("zero_sum"), load(name)) == expected
+    assert load(name)["metrics.run"] == name
+    assert "NICHT gestartet" in load(name)["_comment"]
+
+
+def test_team_spirit_experiment_changes_only_tau_against_the_2v2_run():
+    assert diff(load("sp_mode_2v2"), load("sp_mode_2v2_tau05")) == {"rewards.team_spirit": (0.1, 0.5)}
+
+
+# --- Spieltest: Hauptlauf-Vorschläge (AUDIT.md §8.10), nicht gestartet ------------------------
+
+def test_main_run_proposals_add_only_the_kept_changes():
+    main = flatten(json.loads((ROOT / "train" / "configs" / "lucy_1v1_zero_sum.json").read_text(encoding="utf-8")))
+    one = flatten(json.loads((ROOT / "train" / "configs" / "lucy_1v1_zero_sum_drill.json").read_text(encoding="utf-8")))
+    team = flatten(json.loads((ROOT / "train" / "configs" / "lucy_team_zero_sum.json").read_text(encoding="utf-8")))
+    assert diff(main, one) == {"state_setters.kickoff_drill": (None, 4.0)}
+    assert diff(one, team) == {"env.mode_mix": ([1.0, 0.0, 0.0], [3.0, 1.0, 0.0]), "rewards.team_spirit": (0.1, 0.5),
+                               "learner.checkpoint_folder": ("runs/lucy_1v1/checkpoints", "runs/lucy_team/checkpoints")}
+    for cfg in (one, team):
+        assert cfg["env.max_players"] == 3 and cfg["env.action_stack_size"] == 5
+        assert cfg["learner.policy_layer_sizes"] == [512, 512, 512]
+        assert "NICHT gestartet" in cfg["_comment"]

@@ -1,12 +1,16 @@
 {
-  "_comment": "Hauptlauf-Config seit Stufe 3 (AUDIT.md §7.9): lucy_1v1.json plus Zero-Sum-Shaping, dem einzigen bestätigten Gewinner. Vom Nutzer ab 3,907 Mrd. Steps benutzt (runs/lucy_1v1 bis ~6,04 Mrd., Stand 28.09.2026). Gegenüber lucy_1v1.json: team_spirit 0 -> 0,1 schaltet ZeroSumReward ein (im 1v1 r_i - r_j, der Wert 0,1 selbst ist wirkungslos), goal/concede 10 -> 5, damit ein Tor nach dem Wrapper weiter +-10 zählt, und checkpoints_to_keep 10 -> 50 (Nutzer, 28.09.2026: ältere Checkpoints bleiben als Duell-Gegner erhalten). Checkpoint-kompatibel (Obs 257, 90 Aktionen, gleiche Netze). Beobachten: Entropie (Warnschwelle 2,5), Value Loss, ep_end_goal; Average Step/Episode Reward sind mit Zero-Sum konstant 0, das Shaping steht in raw_step_reward.",
+  "_comment": "Vorschlag Spieltest (AUDIT.md §8.10), NICHT gestartet: Hauptlauf mit Teamspiel. lucy_1v1_zero_sum_drill.json plus mode_mix [3,1,0] (40 % der Samples 2v2) und team_spirit 0,5. Im 300-Mio.-Experiment: 2v2 gegen den Start +8 bzw. +11 Tore/Spiel, 1v1 ohne messbaren Verlust. Eigener Lauf-Ordner: vorher den neuesten Checkpoint aus runs/lucy_1v1/checkpoints nach runs/lucy_team/checkpoints KOPIEREN (runs/lucy_1v1 bleibt die reine 1v1-Linie). Drill und Teamspiel zusammen sind nicht als Paar getestet.",
   "env": {
     "tick_skip": 8,
     "max_players": 3,
     "action_stack_size": 5,
     "no_touch_timeout_secs": 30.0,
     "game_timeout_secs": 900.0,
-    "mode_mix": [1.0, 0.0, 0.0]
+    "mode_mix": [
+      3.0,
+      1.0,
+      0.0
+    ]
   },
   "rewards": {
     "goal": 5.0,
@@ -19,7 +23,7 @@
     "velocity_player_to_ball": 0.1,
     "save_boost": 0.3,
     "in_air": 0.02,
-    "team_spirit": 0.1
+    "team_spirit": 0.5
   },
   "state_setters": {
     "kickoff": 2.0,
@@ -28,7 +32,8 @@
     "dribble": 0.5,
     "wall_play": 0.5,
     "recovery": 0.5,
-    "defense": 1.0
+    "defense": 1.0,
+    "kickoff_drill": 4.0
   },
   "learner": {
     "num_threads": 16,
@@ -39,9 +44,17 @@
     "timesteps_per_iteration": 100000,
     "timesteps_per_save": 25000000,
     "checkpoints_to_keep": 50,
-    "checkpoint_folder": "runs/lucy_1v1/checkpoints",
-    "policy_layer_sizes": [512, 512, 512],
-    "critic_layer_sizes": [512, 512, 512],
+    "checkpoint_folder": "runs/lucy_team/checkpoints",
+    "policy_layer_sizes": [
+      512,
+      512,
+      512
+    ],
+    "critic_layer_sizes": [
+      512,
+      512,
+      512
+    ],
     "ppo_epochs": 2,
     "ppo_batch_size": 100000,
     "ppo_mini_batch_size": 50000,
@@ -57,7 +70,7 @@
     "send_metrics": false,
     "project": "rlbot",
     "group": "phase3",
-    "run": "lucy_1v1",
+    "run": "lucy_team",
     "skill_tracker": true,
     "skill_timesteps_per_version": 500000000,
     "skill_max_versions": 20,

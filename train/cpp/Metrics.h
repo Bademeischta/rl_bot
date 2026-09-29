@@ -11,11 +11,28 @@
 //   ep_end_notouch   Anteil NoTouch-Timeout
 //   ep_end_time      Anteil Spielzeit-Timeout (game_timeout_secs)
 //   ep_end_truncated Anteil, den der Upstream als Truncation meldet (nur mit K1-Patch)
+//   ep_end_drill     Anteil der Anstoß-Drills, die planmäßig abgeschnitten wurden (kein Timeout)
 //   ep_length_steps  mittlere Episodenlänge in Steps (Steps * tick_skip / 120 = Sekunden)
 //   scene_<name>_goal, scene_<name>_length   dasselbe je State-Setter-Szene
 //   raw_step_reward  Reward pro Spieler und Step VOR einem Zero-Sum-Wrapper (Review R10); ohne
 //                    Wrapper gleich "Average Step Reward", mit Zero-Sum im 1v1 ist der sonst 0
+//
+// Spielanalyse (env/cpp/PlayStats.h, AccumPlayMetrics). In Envs mit 2v2/3v3 tragen die Schlüssel
+// das Präfix "2v2_"/"3v3_", damit ein Modus-Mix die 1v1-Werte nicht verwässert:
+//   goals_per_min, shots_per_min          Tore je Spiel-Minute, Schüsse aufs Tor je Spieler und Minute
+//   air_touch_per_min, aerial_touch_per_min  Ballkontakte in der Luft je Spieler und Minute
+//                                         (aerial: Ball mindestens AERIAL_TOUCH_MIN_HEIGHT hoch)
+//   touch_height_mean, air_touch_height_mean, air_touch_share   Ballhöhe bei Kontakten, Luftanteil
+//   kickoff_first_touch_s, kickoff_touch_speed, kickoff_loser_speed, kickoff_boost_used,
+//   kickoff_goal_10s, kickoff_untouched   je Anstoß (Episode, die mit ruhendem Ball in der Mitte beginnt)
+//   off_third_share                       Anteil der Zeit mit Ball in einem Angriffsdrittel
+//   off_third_spell_s, off_third_conversion, off_third_nogoal_s, off_third_long
+//                                         je Aufenthalt im Angriffsdrittel: Dauer, Anteil mit Tor,
+//                                         Dauer ohne Tor, Anteil ab OFF_THIRD_LONG_SECS
+//   2v2_mate_dist, 2v2_double_commit, 2v2_last_back (bzw. 3v3_)   Teamverhalten je Team und Step
 #pragma once
+
+#include "../../env/cpp/PlayStats.h"
 
 #include <RLGymPPO_CPP/Threading/GameInst.h>
 
@@ -39,6 +56,7 @@ struct EpisodeEnd {
 	bool noTouch = false;    // NoTouchCondition hat ausgelöst
 	bool timeLimit = false;  // TimeoutCondition (game_timeout_secs) hat ausgelöst
 	bool truncated = false;  // vom Upstream gemeldet (K1-Patch), sonst false
+	bool drill = false;      // Anstoß-Drill abgeschnitten (SceneTimeoutCondition)
 };
 EpisodeEnd ClassifyEpisodeEnd(const RLGSC::GameState& state, const RLGSC::Match* match, bool truncatedFlag);
 
@@ -61,6 +79,16 @@ private:
 	std::mutex mutex;
 	std::unordered_map<const void*, uint64_t> lastEnd;
 };
+
+// Aufenthalte im Angriffsdrittel ab dieser Dauer zählen als "lang" (Ecken-Schleife).
+constexpr float OFF_THIRD_LONG_SECS = 8.f;
+
+// Spielanalyse eines Schritts als Metriken (Schlüssel siehe oben). teamSize wählt das Präfix.
+void AccumPlayMetrics(const PlayEvents& ev, int teamSize, int tickSkip, RLGPC::Report& metrics);
+
+// Tracker je Spiel für den Step-Callback. Thread-lokal: Ein GameInst wird immer vom selben
+// ThreadAgent-Thread gestept, damit braucht der Callback keine Sperre.
+PlayTracker& PlayTrackerFor(const void* gameKey, int tickSkip);
 
 // Mittelt alle mit Report::AccumAvg gesammelten Schlüssel über die Spiel-Reports einer Iteration.
 // Anders als eine feste Schlüsselliste nimmt das auch Schlüssel mit, die erst später auftauchen

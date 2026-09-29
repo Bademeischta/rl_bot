@@ -33,6 +33,8 @@ struct TrainConfig {
 	// Learner bootstrappt dann vom Wert der letzten Beobachtung der Episode. false = Timeouts
 	// sind wieder echte Episodenenden mit Ziel 0 wie vor dem Audit (Rückweg, A/B-Vergleich).
 	bool timeoutsAsTruncation = true;
+	// Länge der Anstoß-Drill-Episoden (state_setters.kickoff_drill), danach Truncation
+	float kickoffDrillSecs = 6.f;
 
 	RewardWeights rewards = {};
 	StateSetterWeights states = {};

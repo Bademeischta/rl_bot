@@ -6,7 +6,95 @@ Roadmap-Punkt fortgeschrieben.
 
 Branches: `claude/rlbot-audit-roadmap-c8t7nl` (Audit-Roadmap, abgezweigt von `main` @ `54105bf`,
 als PR #1 in `main` gemergt) und `claude/review-fixes` (Review-Befunde R1-R19, von `main` @
-`bb7f93e`, eigener PR). Regel: ein Commit pro Punkt, ID in der Commit-Message.
+`bb7f93e`, eigener PR), `claude/duel-and-experiments` (Stufe 3); alle drei in `main` gemergt.
+Aktuell: `claude/spieltest-analyse` (Spieltest, ab 28.09.2026). Regel: ein Commit pro Punkt, ID in
+der Commit-Message.
+
+## Spieltest (Branch `claude/spieltest-analyse`, ab 28.09.2026)
+
+Abgezweigt von `main` @ `4e1d4d3` (PRs #2 und #3 gemergt). Auftrag: Ursachen für die Befunde aus dem
+RLBot-Spieltest (Anstoß, Ecken-Schleife, Luftspiel, Teamspiel) finden und mit Experimenten belegen.
+Hauptlauf `runs\lucy_1v1` nur gelesen (neuester Checkpoint 6.037.692.544, gestoppt), Obs 257,
+90 Aktionen und Netzgrößen unverändert. Ergebnisse und Bewertung: AUDIT.md §8.
+
+### Phase A: Werkzeuge, Metriken, Bausteine (erledigt)
+
+| ID | Änderung | Test (ohne die Änderung rot bzw. neu) |
+|---|---|---|
+| SP1 | `env/cpp/PlayStats` (PlayTracker): Anstoß, Angriffsdrittel, Kontakte, Team; in `metrics.csv` (`kickoff_*`, `off_third_*`, `*_touch_per_min`, `touch_height_mean`, `goals/shots_per_min`, 2v2/3v3 mit Präfix plus `mate_dist`, `double_commit`, `last_back`) | `tests/cpp/test_play_stats.cpp` über Arena → Gym → Tracker → Metrik; Gegenprobe: ohne Hysterese am Drittelrand rot |
+| SP2 | Schuss aufs Tor = Kontakt, nach dem der Ball in 3 s ins Tor fliegt (RocketSims Ereignis zählte nur ab 1750 uu/s, weniger Schüsse als Tore) | `Spielanalyse_langsamer_Schuss_aufs_Tor_zaehlt` (mit altem Ereignis 0 statt 1) |
+| AW1 | `duel.exe --a-mode/--b-mode sample|argmax|argmax_group`, `"stats"` je Seite; `env/cpp/ActionSelect.h` | `tests/cpp/test_action_select.cpp` (echte Tabelle), `tests/test_duel.py` (3 neue, echter Checkpoint) |
+| KO1 | `eval/kickoff_eval.py` (Bot-Code, Python-RocketSim, Takt wie Gym::Step), `deploy/scripted_kickoff.py` (Speedflip abgestimmt, **nicht** in `bot.py`), `deploy/action_select.py` | `tests/test_kickoff_eval.py` (7, u. a. Snapshot-Zeitpunkt, Speedflip schneller als Boost auf allen Positionen) |
+| EK1 | `tools/cpp/reward_budget.exe`, `BuildLucyRewardParts` | `tests/test_reward_budget.py`: Komponentensumme = Match-Reward (max. Abweichung 2e-6) |
+| KO2 KO3 EK2 LU1 | per Config, Standard aus: `state_setters.kickoff_drill` + `env.kickoff_drill_secs` (Truncation, `ep_end_drill`), `rewards.kickoff_first_touch`, `rewards.potential_shaping_scale`, `rewards.air_touch` | `tests/cpp/test_spieltest_rewards.cpp` (7): Drill endet nach N Schritten als Truncation, erste Berührung zahlt einmal (Zero-Sum), Potenzialform teleskopiert und fällt am Tor auf 0, Luftberührung mit Höhe und Sperrzeit, bestehende Configs bauen dieselben 7 Summanden |
+| SP3 | `run_experiment.ps1` (`-KickoffGames`, `-TeamDuel`, `-TeamDuelGames`), `summarize.py`, `compare.py` (Abschnitt Spieltest-Kennzahlen) | `test_summarize_and_compare_show_play_stats_kickoffs_and_2v2` (echte Ausgaben); Mini-Lauf `run_experiment.ps1` komplett, 2,1 min |
+| KO4 | `deploy/rlbot/bot.py`: geskripteter Anstoß als Option (`RLBOT_SCRIPTED_KICKOFF`, Standard aus), auf Wunsch des Nutzers nach Phase B | `tests/test_bot_kickoff.py` (6): Standard aus, Übergabe an die Policy mit gefülltem Stack, Sicherheitsgrenze, 2v2 nur ballnächster, Durchlauf in RocketSim über RLBot-Pakete (erste Berührung < 2,0 s) |
+| TE1 | – (nur Test) | `test_two_bots_in_one_team_see_their_teammate_and_both_opponents` (2v2-Paket, beide Instanzen) |
+| SP4 | Phase-C-Configs `train/configs/experiments/sp_*.json` (nicht gestartet), `abs_zero_sum` in der Reward-Bilanz | `test_spieltest_experiment_changes_exactly_one_thing_against_zero_sum` (8), `test_team_spirit_experiment_changes_only_tau_against_the_2v2_run`; alle Configs vom C++-Parser geladen |
+
+Verifikation lokal (28.09.2026): `rlbot_tests` 106/106, Python 169 bestanden. Rot ist nur
+`test_main_run_proposal_is_main_config_plus_confirmed_winners_only`, und zwar wegen der
+uncommitteten lokalen Änderung des Nutzers `checkpoints_to_keep` 10 → 50 in
+`train/configs/lucy_1v1_zero_sum.json` (nicht angefasst). Smoke-Lauf `sanity.json` 3 Mio. Steps:
+alle neuen Spalten in `metrics.csv`, ~70.600 SPS.
+
+### Phase B: Messungen ohne Training (erledigt, 60 min)
+
+Checkpoint 6.037.692.544, Rohdaten und Bericht `results\phase_b_2026-09-28\` (`run_phase_b.sh`,
+`report_phase_b.md`). Kurz (Bewertung AUDIT.md §8.3–8.7):
+
+* Aktionsauswahl: argmax (Bot) schlägt Ziehen +1,21 [+1,11; +1,32] Tore/Spiel, argmax über
+  Wirkungsklassen nur +0,69; Nullmessung Ziehen gegen Ziehen −0,05 [−0,15; +0,05] (SD 1,58).
+  Keine Änderung an `bot.py`.
+* Anstoß: Bot 2,6–3,1 s bis zur ersten Berührung mit 800–1400 uu/s, Speedflip 1,89–2,47 s mit
+  2300; Speedflip-Skript gegen den Bot 100 % zuerst, Tore in 10 s 500:0 (1000 Anstöße).
+* Ecken-Schleife: Shaping im Angriffsdrittel +2,0–2,4 pro Sekunde (gespielt), bis +22 gegen einen
+  passiven Verteidiger; Tor = 10. argmax-Bot: 53 % der Aufenthalte im Angriffsdrittel ≥ 8 s.
+* Luftspiel: 0,01 Aerial-Kontakte je Spielerminute; die Sprungkontakte seit 5,6 Mrd. haben den Bot
+  stärker gemacht (6,04 gegen 5,56 Mrd.: +0,55 [+0,43; +0,66]).
+* 2v2 (1v1-Checkpoint gegen sich selbst): Double-Commit 10,8 %, Absicherung 68 %, 7,8 Kontakte je
+  Spielerminute; Mitspieler-Gewichte der ersten Schicht exakt auf Initialisierung.
+
+### Phase C: Kernserie (erledigt, 28.09. 21:32 bis 29.09. 09:25)
+
+Vom Nutzer freigegeben: `zero_sum` + Wiederholung, `sp_kickoff_drill`, `sp_potential_shaping`,
+`sp_air_touch`, `sp_mode_2v2`, `sp_mode_2v2_tau05` (Referenz `sp_mode_2v2`), je 300 Mio. Steps ab
+6.037.692.544, Seed 123, Build `7d144df` (`run_all_checks.ps1` davor grün: 106/106 C++, 179/179
+Python je zweimal, Smoke und Deployment-Smoke OK). Treiber `results\phase_c_2026-09-28\run_phase_c.ps1`,
+alle sieben Läufe Exit 0, kein Abbruchkriterium. Vergleich `results\phase_c_2026-09-28\compare_kern.md`
+und `compare_team.md`. Bewertung und Zahlen: AUDIT.md §8.9.
+
+| Lauf | Duell gegen Start [95-%-KI] | Entscheidung |
+|---|---|---|
+| zero_sum / Wiederholung | −3,24 [−3,44; −3,04] / +0,19 [+0,07; +0,32] | Rauschen: Referenzlauf in langsamen Anstoß abgedriftet |
+| sp_kickoff_drill | +0,28 [+0,18; +0,39] | **behalten** (jede Anstoß-Kennzahl besser als beide Referenzen) |
+| sp_potential_shaping | −14,15 [−14,35; −13,95] | **verwerfen** (Entropie 2,8 → 3,95, Ballkontakt → 0) |
+| sp_air_touch | +0,74 [+0,62; +0,87] | **verwerfen** als Luftspiel-Hebel (keine Aerials); Konversion im Rauschen besser |
+| sp_mode_2v2 | 1v1 +0,39 [+0,27; +0,50], 2v2 +8,02 [+7,71; +8,33] | **behalten**, wenn Teamspiel gewollt |
+| sp_mode_2v2_tau05 | gegen sp_mode_2v2: 1v1 −0,03, 2v2 +0,58 [+0,39; +0,77] | **behalten** (vorläufig, kein 2v2-Replikat) |
+
+Nachmessung SPS bei freiem PC (die Serie lief anfangs neben VALORANT): je 3 × 15 Mio. Steps
+abwechselnd, 1v1 72.050 ± 260, mit 2v2-Anteil 73.320 ± 290 (+1,8 %),
+`results\phase_c_2026-09-28\bench_sps.sh` und `bench_sps\`. Dabei angelegt (nicht gelöscht):
+`runs\bench_sps_{zero_sum,sp_mode_2v2}_{1,2,3}\`.
+
+Hauptlauf-Vorschläge (nicht gestartet, AUDIT.md §8.10/8.11): `train/configs/lucy_1v1_zero_sum_drill.json`
+(1v1-only) und `train/configs/lucy_team_zero_sum.json` (Teamspiel, eigener Ordner `runs\lucy_team`).
+Empfehlung: Teamspiel. Offen (AUDIT.md §8.12): `sp_goal_x3`, `sp_aerial_share`, `sp_no_in_air`,
+`sp_kickoff_first_touch` vorbereitet, nicht gelaufen; der geskriptete Anstoß ist im echten Spiel
+ungetestet.
+
+Befehle je Lauf (so gelaufen, Start-Checkpoint wird kopiert, `runs\lucy_1v1` nur gelesen):
+
+```powershell
+$C = "runs\lucy_1v1\checkpoints\6037692544"
+powershell -ExecutionPolicy Bypass -File tools\experiments\run_experiment.ps1 -Config train\configs\experiments\zero_sum.json -StartCheckpoint $C -Steps 300000000 -Seed 123
+$Z = "results\exp_zero_sum_<datum>"
+powershell -ExecutionPolicy Bypass -File tools\experiments\run_experiment.ps1 -Config train\configs\experiments\zero_sum.json -Name replicate_zero_sum -StartCheckpoint $C -Steps 300000000 -Seed 123 -Baseline $Z
+powershell -ExecutionPolicy Bypass -File tools\experiments\run_experiment.ps1 -Config train\configs\experiments\sp_kickoff_drill.json -StartCheckpoint $C -Steps 300000000 -Seed 123 -Baseline $Z
+# ... je Config aus AUDIT.md §8.8; Teamläufe zusätzlich mit -TeamDuel
+.\.venv\Scripts\python tools\experiments\compare.py $Z results\exp_replicate_zero_sum_* results\exp_sp_* --baseline $Z --out results\compare_spieltest.md
+```
 
 ## Stufe 3: Duell-Instrument und Experimente (Branch `claude/duel-and-experiments`, ab 26.09.2026)
 
@@ -322,6 +410,9 @@ Review-Fixes oben; hier unverändert als Stand der Cloud-Session.
 * 25.09.2026 — Schritt 2 (Experiment-Configs, Runner, Abbruchkriterien, compare), Schritt 3 (H5,
   N6/M6 dokumentiert), Schritt 4 (`run_all_checks.ps1`, Deployment-Smoke, Runbook). Stand:
   75 C++-Tests, 97 Python-Tests grün in der VM; alle PowerShell-Skripte syntaktisch geparst.
+* 28./29.09.2026 (lokal) — Spieltest: Phase A (Werkzeuge, Metriken, Bausteine, Tests), Phase B
+  (Messungen ohne Training), Phase C Kernserie (7 × 300 Mio.), SPS-Nachmessung, Hauptlauf-Vorschläge,
+  geskripteter Anstoß als Bot-Option. Details im Abschnitt Spieltest oben und in AUDIT.md §8.
 * 25.09.2026 (lokal, Trainings-PC) — Review-Befunde R1-R18 plus Nebenbefund R19 behoben, je ein
   Commit (plus vier Nachträge). Erster MSVC-cu128-Build beider Patches. K1b-Fehler (Bootstrap von
   der Reset-Obs) am echten Pfad reproduziert und korrigiert. `run_all_checks.ps1` unter

@@ -213,6 +213,40 @@ Die Kopie des Start-Checkpoints aus `runs\lucy_1v1` ist nur lesend. Wird der Hau
 fortgesetzt, bleibt 3907335040 trotzdem erhalten, bis zehn neue Checkpoints geschrieben sind (250
 Mio. Steps, ~1 h). Sicherer ist, ihn vorher zu kopieren.
 
+## 5b. Spieltest (29.09.2026, AUDIT.md §8): Vorschläge, nichts davon ist gestartet
+
+**Hauptlauf fortsetzen**, eine der beiden Varianten (Entscheidungsvorlage AUDIT.md §8.11):
+
+```powershell
+# 1v1-only, mit Anstoß-Drill; lädt den neuesten Checkpoint aus runs\lucy_1v1\checkpoints
+.\build\cpp_cu128\train_bot.exe train\configs\lucy_1v1_zero_sum_drill.json
+
+# Teamspiel (2v2-Anteil, team_spirit 0,5, Anstoß-Drill) in eigenem Ordner; runs\lucy_1v1 bleibt die 1v1-Linie
+$C = (Get-ChildItem runs\lucy_1v1\checkpoints -Directory | Sort-Object { [long]$_.Name } | Select-Object -Last 1).FullName
+New-Item -ItemType Directory -Force runs\lucy_team\checkpoints | Out-Null
+Copy-Item $C "runs\lucy_team\checkpoints\$(Split-Path $C -Leaf)" -Recurse
+.\build\cpp_cu128\train_bot.exe train\configs\lucy_team_zero_sum.json
+```
+
+**Geskripteter Anstoß im Bot** (Standard aus), vor dem Start von RLBot in derselben Shell:
+
+```powershell
+$env:RLBOT_SCRIPTED_KICKOFF = "speedflip"   # "0" oder leer = aus
+```
+
+**Werkzeuge** (Beispiele):
+
+```powershell
+.\.venv\Scripts\python eval\kickoff_eval.py --a "script:speedflip+policy:<ckpt>@argmax" --b "policy:<ckpt>@argmax" --kickoffs 1000
+.\.venv\Scripts\python eval\kickoff_eval.py --trajectory "policy:<ckpt>@argmax"
+.\build\cpp_cu128\duel.exe --a <A\PPO_POLICY.lt> --b <B\PPO_POLICY.lt> --games 1000 --a-mode argmax --b-mode sample --out d.json
+.\build\cpp_cu128\reward_budget.exe --config train\configs\lucy_1v1_zero_sum.json --policy <ckpt\PPO_POLICY.lt> --games 300 --mode argmax
+```
+
+Weitere vorbereitete Experimente (nicht gelaufen): `sp_goal_x3`, `sp_aerial_share`, `sp_no_in_air`,
+`sp_kickoff_first_touch`, Aufruf wie in §4 mit `-Baseline` auf den Ergebnisordner des Referenzlaufs
+(Teamläufe zusätzlich `-TeamDuel`).
+
 ## 6. Optional: Stufe 4, Gradientenschritte 6 / 3 / 2 (~1 Stunde)
 
 Erst wenn Stufe 3 entschieden ist:

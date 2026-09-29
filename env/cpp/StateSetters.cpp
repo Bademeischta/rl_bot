@@ -202,6 +202,7 @@ void WeightedStateSetter::Build(const StateSetterWeights& w) {
 	add("wall_play", w.wallPlay, new WallPlaySetter());
 	add("recovery", w.recovery, new RecoverySetter());
 	add("defense", w.defense, new DefenseSetter());
+	add("kickoff_drill", w.kickoffDrill, new KickoffSetter());
 
 	if (setters.empty())
 		RG_ERR_CLOSE("WeightedStateSetter: alle Gewichte sind 0");

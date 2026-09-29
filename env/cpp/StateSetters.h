@@ -78,6 +78,9 @@ struct StateSetterWeights {
 	float wallPlay = 0.f;
 	float recovery = 0.f;
 	float defense = 0.f;
+	// Anstoß-Drill (Spieltest): Anstoß wie "kickoff", die Episode wird nach env.kickoff_drill_secs
+	// abgeschnitten (Truncation, SceneTimeoutCondition). So kommen viel mehr Anstöße ins Training.
+	float kickoffDrill = 0.f;
 };
 
 // Wählt pro Episode eine Szene nach Gewichten aus.

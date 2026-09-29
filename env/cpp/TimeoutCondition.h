@@ -14,8 +14,12 @@
 // und für einen A/B-Vergleich. Ohne Patch ist IsTruncation() eine unbenutzte Methode.
 #pragma once
 
+#include "StateSetters.h"
+
 #include <RLGymSim_CPP/Utils/TerminalConditions/NoTouchCondition.h>
 #include <RLGymSim_CPP/Utils/TerminalConditions/TerminalCondition.h>
+
+#include <string>
 
 namespace RLbot {
 using namespace RLGSC;
@@ -42,6 +46,29 @@ public:
 	explicit NoTouchTruncation(int maxSteps, bool asTruncation = true)
 		: NoTouchCondition(maxSteps), asTruncation(asTruncation) {}
 	virtual bool IsTruncation() const { return asTruncation; }
+};
+
+// Schneidet Episoden einer bestimmten Szene nach maxSteps ab (Anstoß-Drill). Immer Truncation: Die
+// Welt läuft weiter, der Learner bootstrappt vom Wert der letzten Beobachtung (K1b). Die Szene
+// wählt der WeightedStateSetter vor Reset(); er gehört demselben Match und lebt so lange wie es.
+class SceneTimeoutCondition : public TerminalCondition {
+public:
+	const WeightedStateSetter* setter;
+	std::string scene;
+	int maxSteps;
+	int steps = 0;
+	bool active = false;
+
+	SceneTimeoutCondition(const WeightedStateSetter* setter, std::string scene, int maxSteps)
+		: setter(setter), scene(std::move(scene)), maxSteps(maxSteps) {}
+
+	virtual void Reset(const GameState& initialState) {
+		steps = 0;
+		active = setter && setter->lastPicked >= 0 && setter->names[setter->lastPicked] == scene;
+	}
+	virtual bool IsTerminal(const GameState& currentState) { return active && ++steps >= maxSteps; }
+	virtual bool IsTruncation() const { return true; }
+	bool Fired() const { return active && steps >= maxSteps; }
 };
 
 } // namespace RLbot

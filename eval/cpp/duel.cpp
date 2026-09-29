@@ -30,9 +30,19 @@
 //  - Spiele laufen parallel (--threads, Standard: halbe Anzahl logischer Kerne = physische Kerne
 //    auf dem Ryzen 7 8700F). Gemessen: 1,14 s je Spiel à 300 s auf einem Kern; 8 Threads 0,35 s
 //    je Spiel (Faktor 3,2), 16 Threads nicht schneller.
+//
+// Aktionsauswahl je Seite (--a-mode, --b-mode): sample (Standard, wie im Training), argmax (wie
+// der RLBot-Bot bisher) oder argmax_group (argmax über gleichwirkende Einträge, env/cpp/ActionSelect.h).
+// --deterministic setzt beide Seiten auf argmax.
+//
+// Kennzahlen je Seite ("stats" im JSON, env/cpp/PlayStats.h): Anstöße (erste Berührung, Ballbesitz
+// 3 s danach, Tore in 10 s), Aufenthalte im Angriffsdrittel (mit/ohne Tor, lange), Schüsse,
+// Ballkontakte am Boden/in der Luft mit Höhe, im Teamspiel Double-Commits und Absicherung.
 #include "policy_io.h"
 
+#include "env/cpp/ActionSelect.h"
 #include "env/cpp/Obs.h"
+#include "env/cpp/PlayStats.h"
 #include "env/cpp/StateSetters.h"
 
 #include <RLGymSim_CPP/Gym.h>
@@ -69,6 +79,7 @@ struct Args {
 	int games = 50, teamSize = 1, tickSkip = 8, maxSeconds = 300, actionStack = 5, maxPlayers = 3;
 	int threads = 0;   // 0 = physische Kerne (logische / 2)
 	bool deterministic = false, allowDuplicates = false;
+	SelectMode modeA = SelectMode::SAMPLE, modeB = SelectMode::SAMPLE;
 	float temperature = 1.f;
 	int seed = 123;
 	// kickoff ist der Standard für vergleichbare Ratings; defense/random dienen dazu,
@@ -115,6 +126,118 @@ static uint64_t Fnv(uint64_t h, int64_t v) {
 	return h;
 }
 
+// Kennzahlen einer Seite, als Summen über alle Spiele (Raten entstehen erst in der Ausgabe)
+struct SideStats {
+	int64_t kickoffs = 0, firstTouches = 0, untouched = 0, possessionHalf = 0, closer = 0, kickoffGoals = 0;
+	double firstTouchTime = 0, firstTouchSpeed = 0, kickoffBoost = 0;
+	int64_t spells = 0, spellGoals = 0, longSpells = 0, thirdSteps = 0;
+	double spellSeconds = 0, spellNoGoalSeconds = 0;
+	int64_t shots = 0, touches = 0, airTouches = 0, aerialTouches = 0;
+	double touchHeight = 0, airTouchHeight = 0;
+	int64_t teamSamples = 0, doubleCommits = 0, lastBack = 0;
+	double mateDist = 0;
+
+	void Add(const SideStats& o) {
+		kickoffs += o.kickoffs; firstTouches += o.firstTouches; untouched += o.untouched;
+		possessionHalf += o.possessionHalf; closer += o.closer; kickoffGoals += o.kickoffGoals;
+		firstTouchTime += o.firstTouchTime; firstTouchSpeed += o.firstTouchSpeed; kickoffBoost += o.kickoffBoost;
+		spells += o.spells; spellGoals += o.spellGoals; longSpells += o.longSpells; thirdSteps += o.thirdSteps;
+		spellSeconds += o.spellSeconds; spellNoGoalSeconds += o.spellNoGoalSeconds;
+		shots += o.shots; touches += o.touches; airTouches += o.airTouches; aerialTouches += o.aerialTouches;
+		touchHeight += o.touchHeight; airTouchHeight += o.airTouchHeight;
+		teamSamples += o.teamSamples; doubleCommits += o.doubleCommits; lastBack += o.lastBack; mateDist += o.mateDist;
+	}
+};
+
+// Lange Aufenthalte im Angriffsdrittel (wie OFF_THIRD_LONG_SECS in train/cpp/Metrics.h)
+constexpr float LONG_SPELL_SECS = 8.f;
+
+// Ereignisse eines Schritts auf die Seiten verteilen; side[team] = 0 für A, 1 für B.
+static void AddEvents(const PlayEvents& ev, const int side[2], SideStats stats[2]) {
+	for (auto& ko : ev.kickoffs)
+		for (int s = 0; s < 2; s++) {
+			SideStats& st = stats[s];
+			st.kickoffs++;
+			st.kickoffBoost += ko.boostUsed[side[0] == s ? 0 : 1];
+			if (ko.firstTeam < 0) {
+				st.untouched++;
+				continue;
+			}
+			if (side[ko.firstTeam] == s) {
+				st.firstTouches++;
+				st.firstTouchTime += ko.timeToTouch;
+				st.firstTouchSpeed += ko.touchSpeed;
+			}
+			st.possessionHalf += ko.ballHalfTeam >= 0 && side[ko.ballHalfTeam] == s;
+			st.closer += ko.closerTeam >= 0 && side[ko.closerTeam] == s;
+			st.kickoffGoals += ko.goalTeam >= 0 && side[ko.goalTeam] == s;
+		}
+	for (auto& sp : ev.spells) {
+		SideStats& st = stats[side[sp.team]];
+		st.spells++;
+		st.spellSeconds += sp.seconds;
+		st.spellGoals += sp.goal;
+		st.longSpells += sp.seconds >= LONG_SPELL_SECS;
+		if (!sp.goal)
+			st.spellNoGoalSeconds += sp.seconds;
+	}
+	for (auto& t : ev.touches) {
+		SideStats& st = stats[side[t.team]];
+		st.touches++;
+		st.touchHeight += t.ballHeight;
+		if (t.carInAir) {
+			st.airTouches++;
+			st.airTouchHeight += t.ballHeight;
+			st.aerialTouches += t.ballHeight >= AERIAL_TOUCH_MIN_HEIGHT;
+		}
+	}
+	for (auto& ts : ev.teams) {
+		SideStats& st = stats[side[ts.team]];
+		st.teamSamples++;
+		st.doubleCommits += ts.doubleCommit;
+		st.lastBack += ts.lastBack;
+		st.mateDist += ts.mateDist;
+	}
+	for (int team = 0; team < 2; team++)
+		stats[side[team]].shots += ev.shots[team];
+	if (ev.ballThirdTeam >= 0)
+		stats[side[ev.ballThirdTeam]].thirdSteps++;
+}
+
+static json StatsJSON(const SideStats& s, double gameMinutes, int playersPerSide, int tickSkip) {
+	auto div = [](double a, double b) { return b > 0 ? a / b : 0.0; };
+	double playerMinutes = gameMinutes * playersPerSide;
+	double stepsPerMin = 60.0 * 120.0 / tickSkip;
+	json j = {
+		{ "kickoffs", s.kickoffs }, { "kickoff_first_touches", s.firstTouches },
+		{ "kickoff_untouched", s.untouched },
+		{ "kickoff_first_touch_rate", div(s.firstTouches, s.kickoffs - s.untouched) },
+		{ "kickoff_ball_half_rate", div(s.possessionHalf, s.kickoffs - s.untouched) },
+		{ "kickoff_closer_rate", div(s.closer, s.kickoffs - s.untouched) },
+		{ "kickoff_goals_10s", s.kickoffGoals }, { "kickoff_goal_rate", div(s.kickoffGoals, s.kickoffs) },
+		{ "kickoff_first_touch_s", div(s.firstTouchTime, s.firstTouches) },
+		{ "kickoff_touch_speed", div(s.firstTouchSpeed, s.firstTouches) },
+		{ "kickoff_boost_used", div(s.kickoffBoost, s.kickoffs) },
+		{ "off_third_spells", s.spells }, { "off_third_goals", s.spellGoals },
+		{ "off_third_conversion", div(s.spellGoals, s.spells) },
+		{ "off_third_long", s.longSpells }, { "off_third_long_share", div(s.longSpells, s.spells) },
+		{ "off_third_share", div(s.thirdSteps, gameMinutes * stepsPerMin) },
+		{ "off_third_nogoal_s_per_min", div(s.spellNoGoalSeconds, gameMinutes) },
+		{ "shots", s.shots }, { "shots_per_min", div(s.shots, playerMinutes) },
+		{ "touches", s.touches }, { "touches_per_min", div(s.touches, playerMinutes) },
+		{ "air_touches", s.airTouches }, { "air_touch_per_min", div(s.airTouches, playerMinutes) },
+		{ "aerial_touches", s.aerialTouches }, { "aerial_touch_per_min", div(s.aerialTouches, playerMinutes) },
+		{ "touch_height_mean", div(s.touchHeight, s.touches) },
+		{ "air_touch_height_mean", div(s.airTouchHeight, s.airTouches) },
+	};
+	if (s.teamSamples > 0) {
+		j["double_commit"] = div(s.doubleCommits, s.teamSamples);
+		j["last_back"] = div(s.lastBack, s.teamSamples);
+		j["mate_dist"] = div(s.mateDist, s.teamSamples);
+	}
+	return j;
+}
+
 struct GameResult {
 	bool aIsBlue = true;
 	int goalsA = 0, goalsB = 0, kickoffs = 0, firstSeed = 0;
@@ -122,11 +245,21 @@ struct GameResult {
 	json goals = json::array();
 	uint64_t fingerprint = 0;
 	int64_t steps = 0;
+	SideStats stats[2];   // [0] = A, [1] = B
 };
+
+// Wirkungsklassen der Aktionstabelle am Boden und in der Luft (für argmax_group)
+static const std::vector<int>& Groups(bool onGround) {
+	static const std::vector<int> ground = EffectGroups(DiscreteAction().actions, true);
+	static const std::vector<int> air = EffectGroups(DiscreteAction().actions, false);
+	return onGround ? ground : air;
+}
 
 static GameResult PlayGame(const Args& args, int game, torch::nn::Sequential& seqA, torch::nn::Sequential& seqB) {
 	GameResult res;
 	res.aIsBlue = (game % 2) == 0;
+	const int side[2] = { res.aIsBlue ? 0 : 1, res.aIsBlue ? 1 : 0 };   // Team -> Seite (0 = A)
+	PlayTracker tracker(args.tickSkip);
 	int pair = game / 2;
 	auto wallStart = std::chrono::steady_clock::now();
 
@@ -170,9 +303,12 @@ static GameResult PlayGame(const Args& args, int game, torch::nn::Sequential& se
 			const FList& obs = obsSet[pi];
 			auto input = torch::from_blob(const_cast<float*>(obs.data()), { 1, (int64_t)obs.size() }).clone();
 			auto probs = PolicyProbs(seq, input, args.temperature);
+			SelectMode mode = usesA ? args.modeA : args.modeB;
 			int action;
-			if (args.deterministic)
+			if (mode == SelectMode::ARGMAX)
 				action = (int)probs.argmax(1).item<int64_t>();
+			else if (mode == SelectMode::ARGMAX_GROUP)
+				action = ArgmaxGroup(probs.contiguous().data_ptr<float>(), Groups(player.carState.isOnGround));
 			else
 				action = (int)torch::multinomial(probs, 1, true, gen).item<int64_t>();
 			actions[pi] = action;
@@ -181,8 +317,10 @@ static GameResult PlayGame(const Args& args, int game, torch::nn::Sequential& se
 		auto result = gym->Step(actions);
 		state = result.state;
 		res.steps++;
+		bool goal = result.done && RLGSC::Math::IsBallScored(state.ball.pos);
+		AddEvents(tracker.Step(state, goal), side, res.stats);
 
-		if (result.done && RLGSC::Math::IsBallScored(state.ball.pos)) {
+		if (goal) {
 			// Ball im Tor mit y > 0 (oranges Tor) = Tor für Blau
 			bool blueScored = state.ball.pos.y > 0;
 			bool aScored = blueScored == res.aIsBlue;
@@ -199,6 +337,7 @@ static GameResult PlayGame(const Args& args, int game, torch::nn::Sequential& se
 			obsSet = result.obs;
 		}
 	}
+	AddEvents(tracker.Flush(), side, res.stats);
 	// Endzustand in den Fingerabdruck: zwei Spiele mit gleichem Abdruck sind Wiederholungen
 	fp = Fnv(fp, (int64_t)std::llround(state.ball.pos.x * 10));
 	fp = Fnv(fp, (int64_t)std::llround(state.ball.pos.y * 10));
@@ -238,6 +377,13 @@ int main(int argc, char** argv) {
 		else if (arg == "--max-players") args.maxPlayers = std::stoi(next());
 		else if (arg == "--threads") args.threads = std::stoi(next());
 		else if (arg == "--deterministic") args.deterministic = true;
+		else if (arg == "--a-mode" || arg == "--b-mode") {
+			std::string v = next();
+			if (!ParseSelectMode(v, arg == "--a-mode" ? args.modeA : args.modeB)) {
+				std::cerr << "Unbekannte Aktionsauswahl: " << v << " (sample, argmax, argmax_group)\n";
+				return 2;
+			}
+		}
 		else if (arg == "--allow-duplicates") args.allowDuplicates = true;
 		else if (arg == "--temperature") args.temperature = std::stof(next());
 		else if (arg == "--seed") args.seed = std::stoi(next());
@@ -246,13 +392,18 @@ int main(int argc, char** argv) {
 	}
 	if (args.pathA.empty() || args.pathB.empty()) {
 		std::cerr << "usage: duel --a <policy.lt> --b <policy.lt> [--games N] [--max-seconds 300] [--seed N] "
-		             "[--threads N] [--team-size N] [--deterministic [--allow-duplicates]] [--out result.json]\n";
+		             "[--threads N] [--team-size N] [--a-mode|--b-mode sample|argmax|argmax_group] "
+		             "[--deterministic [--allow-duplicates]] [--out result.json]\n";
 		return 2;
 	}
+	if (args.deterministic)
+		args.modeA = args.modeB = SelectMode::ARGMAX;
 	// Deterministische Policies + Anstoß = identische Spiele, sobald sich Anstoßposition und Seite
-	// wiederholen. Mehr Spiele als verschiedene Starts wären keine unabhängigen Messungen.
+	// wiederholen. Mehr Spiele als verschiedene Starts wären keine unabhängigen Messungen. Das gilt,
+	// sobald keine Seite zieht (argmax und argmax_group sind beide deterministisch).
+	bool bothDeterministic = args.modeA != SelectMode::SAMPLE && args.modeB != SelectMode::SAMPLE;
 	int distinctStarts = 2 * KICKOFF_VARIANTS;
-	if (args.deterministic && args.setter == "kickoff" && args.games > distinctStarts && !args.allowDuplicates) {
+	if (bothDeterministic && args.setter == "kickoff" && args.games > distinctStarts && !args.allowDuplicates) {
 		std::cerr << "--deterministic mit Anstoß erlaubt höchstens " << distinctStarts << " verschiedene Spiele "
 		          << "(5 Anstoßpositionen x 2 Seiten); " << args.games << " Spiele wären Wiederholungen. "
 		          << "Ohne --deterministic spielen (Standard) oder --allow-duplicates setzen.\n";
@@ -313,6 +464,8 @@ int main(int argc, char** argv) {
 
 	int goalsA = 0, goalsB = 0, winsA = 0, winsB = 0, draws = 0;
 	int64_t totalSteps = 0;
+	SideStats statsA, statsB;
+	double gameMinutes = 0;
 	double wallSum = 0;
 	json perGame = json::array();
 	std::set<uint64_t> fingerprints;
@@ -325,6 +478,9 @@ int main(int argc, char** argv) {
 		totalSteps += r.steps;
 		wallSum += r.wallSeconds;
 		fingerprints.insert(r.fingerprint);
+		statsA.Add(r.stats[0]);
+		statsB.Add(r.stats[1]);
+		gameMinutes += r.gameSeconds / 60.0;
 		perGame.push_back({
 			{ "a_blue", r.aIsBlue }, { "goals_a", r.goalsA }, { "goals_b", r.goalsB },
 			{ "game_seconds", r.gameSeconds }, { "wall_seconds", r.wallSeconds },
@@ -343,13 +499,16 @@ int main(int argc, char** argv) {
 		{ "policy_a", args.pathA }, { "policy_b", args.pathB },
 		{ "games", args.games }, { "team_size", args.teamSize }, { "max_seconds", args.maxSeconds },
 		{ "seed", args.seed }, { "setter", args.setter }, { "threads", threads },
-		{ "deterministic", args.deterministic }, { "temperature", args.temperature },
+		{ "deterministic", bothDeterministic }, { "temperature", args.temperature },
+		{ "mode_a", SelectModeName(args.modeA) }, { "mode_b", SelectModeName(args.modeB) },
 		{ "goals_a", goalsA }, { "goals_b", goalsB },
 		{ "wins_a", winsA }, { "wins_b", winsB }, { "draws", draws },
 		{ "distinct_games", distinct },
 		{ "steps", totalSteps }, { "seconds", seconds },
 		{ "cpu_seconds_per_game", args.games ? wallSum / args.games : 0.0 },
 		{ "per_game", perGame },
+		{ "stats", { { "a", StatsJSON(statsA, gameMinutes, args.teamSize, args.tickSkip) },
+		             { "b", StatsJSON(statsB, gameMinutes, args.teamSize, args.tickSkip) } } },
 	};
 	std::ofstream(args.outPath) << out.dump(2);
 	std::cout << "Ergebnis in " << args.outPath << " (" << seconds << " s, " << threads << " Threads)\n";

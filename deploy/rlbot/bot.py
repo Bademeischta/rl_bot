@@ -15,6 +15,12 @@ Wichtig für die Übereinstimmung mit dem Training:
   Verzögerung in Ticks. 0 ist exakt das Verhalten vor H1: Entscheidung auf dem aktuellen Paket,
   keine Sonderbehandlung von Replay, Countdown und Pause.
       $env:RLBOT_OBS_DELAY = "0"   # vor dem Start von RLBot, in derselben Shell
+- Geskripteter Anstoß (Spieltest, AUDIT.md §8.4), Standard AUS: RLBOT_SCRIPTED_KICKOFF = speedflip
+  (oder frontflip, boost) steuert den Anstoß pro Tick mit deploy/scripted_kickoff.py, solange die
+  Spielphase "Kickoff" ist und der Ball ruhend in der Mitte liegt, höchstens KICKOFF_SCRIPT_MAX_S.
+  Danach entscheidet sofort wieder die Policy; die Aktionshistorie enthält die nächsten
+  Tabelleneinträge der Skript-Eingaben. Im Teamspiel fährt nur der ballnächste Mitspieler das Skript.
+      $env:RLBOT_SCRIPTED_KICKOFF = "speedflip"
 """
 from __future__ import annotations
 
@@ -35,6 +41,8 @@ from rlbot_flatbuffers import ControllerState, GamePacket, MatchPhase  # noqa: E
 from deploy.action_table import LOOKUP_TABLE  # noqa: E402
 from deploy.packet_adapter import build_pad_index_map, view_from_packet  # noqa: E402
 from deploy.policy import load_policy  # noqa: E402
+from deploy.rotation import euler_to_rotmat  # noqa: E402
+from deploy.scripted_kickoff import KickoffCar, ScriptedKickoff  # noqa: E402
 from env.obs_python import build_obs, obs_size  # noqa: E402
 
 TICK_SKIP = 8
@@ -51,6 +59,12 @@ DEFAULT_POLICY = Path(__file__).parent / "policy.pt"
 # geleert, damit die erste Entscheidung danach wie im Training nach einem Reset aussieht:
 # frisches Paket, leerer Aktions-Stack.
 CONTINUOUS_PHASES = frozenset({MatchPhase.Kickoff, MatchPhase.Active})
+
+SCRIPTED_KICKOFF_ENV = "RLBOT_SCRIPTED_KICKOFF"
+SCRIPTED_KICKOFF_VARIANTS = ("speedflip", "frontflip", "boost")
+# Sicherheitsgrenze: länger steuert das Skript nie (Speedflip braucht höchstens ~2,5 s bis zum Ball)
+KICKOFF_SCRIPT_MAX_S = 4.0
+TICK_RATE = 120
 
 
 class PacketBuffer:
@@ -120,6 +134,58 @@ def obs_delay_from_env(environ=None) -> int:
     return value
 
 
+def scripted_kickoff_from_env(environ=None) -> str | None:
+    """Variante aus RLBOT_SCRIPTED_KICKOFF; leer, "0", "off" oder "aus" = aus (Standard)."""
+    raw = (os.environ if environ is None else environ).get(SCRIPTED_KICKOFF_ENV, "").strip().lower()
+    if raw in ("", "0", "off", "aus"):
+        return None
+    if raw not in SCRIPTED_KICKOFF_VARIANTS:
+        raise ValueError(f"{SCRIPTED_KICKOFF_ENV}={raw!r} unbekannt "
+                         f"(erlaubt: {', '.join(SCRIPTED_KICKOFF_VARIANTS)}, 0 = aus)")
+    return raw
+
+
+def _ball_resting_at_center(packet: GamePacket) -> bool:
+    if not packet.balls:
+        return False
+    phys = packet.balls[0].physics
+    loc, vel = phys.location, phys.velocity
+    return abs(loc.x) < 1 and abs(loc.y) < 1 and loc.z < 100 and abs(vel.x) + abs(vel.y) + abs(vel.z) < 1
+
+
+def kickoff_car_from_packet(packet: GamePacket, index: int) -> KickoffCar:
+    """Sicht des Skripts auf das eigene Auto (Richtungsvektoren wie RocketSim, deploy/rotation.py)."""
+    info = packet.players[index]
+    phys = info.physics
+    rot = euler_to_rotmat(phys.rotation.pitch, phys.rotation.yaw, phys.rotation.roll)
+    return KickoffCar(pos=np.array([phys.location.x, phys.location.y, phys.location.z]),
+                      forward=rot[0], right=rot[1], up=rot[2],
+                      vel=np.array([phys.velocity.x, phys.velocity.y, phys.velocity.z]),
+                      on_ground=int(info.air_state) == 0)
+
+
+def _nearest_entry(action) -> np.ndarray:
+    a = np.asarray(action, dtype=np.float32)
+    return LOOKUP_TABLE[int(np.argmin(np.abs(LOOKUP_TABLE - a).sum(1)))]
+
+
+def _closest_teammate_to_ball(packet: GamePacket, index: int) -> bool:
+    """Im Teamspiel fährt nur der ballnächste Mitspieler den Anstoß (Gleichstand: kleinerer Index)."""
+    me = packet.players[index]
+    ball = packet.balls[0].physics.location
+
+    def dist(p) -> float:
+        return ((p.physics.location.x - ball.x) ** 2 + (p.physics.location.y - ball.y) ** 2) ** 0.5
+
+    mine = dist(me)
+    for i, other in enumerate(packet.players):
+        if i != index and other.team == me.team:
+            d = dist(other)
+            if d < mine - 1e-3 or (abs(d - mine) <= 1e-3 and i < index):
+                return False
+    return True
+
+
 def _is_continuous(packet: GamePacket) -> bool:
     phase = getattr(packet.match_info, "match_phase", None)
     return phase is None or phase in CONTINUOUS_PHASES
@@ -172,6 +238,10 @@ class RLbotAgent(Bot):
         obs_delay None = aus RLBOT_OBS_DELAY bzw. Default OBS_DELAY (7).
         """
         self.obs_delay = obs_delay_from_env() if obs_delay is None else obs_delay
+        self.kickoff_variant = scripted_kickoff_from_env()
+        self.kickoff_script: ScriptedKickoff | None = None
+        self.kickoff_start_frame = -1
+        self.kickoff_done = False       # Skript für diesen Anstoß beendet oder nicht zuständig
         self.action_history: deque[np.ndarray] = deque(maxlen=ACTION_STACK)
         self.current_action = LOOKUP_TABLE[0] * 0.0   # Nullaktion bis zur ersten Entscheidung
         self.next_decision_frame = -1
@@ -184,6 +254,10 @@ class RLbotAgent(Bot):
             return ControllerState()
 
         frame = packet.match_info.frame_num
+        scripted = self._scripted_kickoff(packet, frame)
+        if scripted is not None:
+            return scripted
+
         if self.obs_delay == 0:
             # Rückweg (R8): exakt das Verhalten vor Audit H1, aktuelles Paket, keine Phasen-Logik
             if frame >= self.next_decision_frame:
@@ -209,6 +283,42 @@ class RLbotAgent(Bot):
             self.last_obs_delay = frame - delayed_frame
             self.current_action = self._decide(delayed_packet)
 
+        return self._to_controller(self.current_action)
+
+    def _scripted_kickoff(self, packet: GamePacket, frame: int) -> ControllerState | None:
+        """Controller des geskripteten Anstoßes oder None (dann entscheidet die Policy)."""
+        phase = getattr(packet.match_info, "match_phase", None)
+        in_kickoff = (self.kickoff_variant is not None and phase == MatchPhase.Kickoff
+                      and _ball_resting_at_center(packet))
+        if not in_kickoff:
+            if self.kickoff_script is not None:
+                self.next_decision_frame = -1          # Übergabe: Policy entscheidet sofort
+            self.kickoff_script = None
+            self.kickoff_done = False
+            return None
+        if self.kickoff_done:
+            return None
+        if self.kickoff_script is None:
+            if not _closest_teammate_to_ball(packet, self.index):
+                self.kickoff_done = True
+                return None
+            self.kickoff_script = ScriptedKickoff(variant=self.kickoff_variant)
+            self.kickoff_start_frame = frame
+        elapsed = frame - self.kickoff_start_frame
+        if elapsed > KICKOFF_SCRIPT_MAX_S * TICK_RATE:
+            self.kickoff_script = None
+            self.kickoff_done = True
+            self.next_decision_frame = -1
+            return None
+        self.kickoff_script.tick = elapsed              # robust gegen verpasste Pakete
+        ball = packet.balls[0].physics.location
+        action = self.kickoff_script.step(kickoff_car_from_packet(packet, self.index),
+                                          np.array([ball.x, ball.y, ball.z]))
+        if self.obs_delay > 0:
+            self.packet_buffer.push(frame, packet)
+        if elapsed % TICK_SKIP == 0:
+            self.action_history.append(_nearest_entry(action).astype(np.float64))
+        self.current_action = np.asarray(action, dtype=np.float32)
         return self._to_controller(self.current_action)
 
     def _decide(self, packet: GamePacket) -> np.ndarray:

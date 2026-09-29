@@ -1491,6 +1491,11 @@ Entscheidungen:
 
 Vorschlag für den Hauptlauf: `train/configs/lucy_1v1_zero_sum.json`, nicht gestartet.
 
+**Stand 29.09.2026 (§8):** Hauptlauf lief mit `lucy_1v1_zero_sum.json` bis ~6,04 Mrd. Spieltest-Serie:
+Anstoß-Drill und (für Teamspiel) 2v2-Anteil mit team_spirit 0,5 behalten, potenzialbasiertes Shaping
+und Luftberührungs-Reward verworfen. Vorschläge `lucy_1v1_zero_sum_drill.json` /
+`lucy_team_zero_sum.json`, nicht gestartet.
+
 ### Stufe 4 — Geschwindigkeit (erst wenn das Lernsignal stimmt)
 15. **H5** `expBufferIterations` konfigurierbar machen, dann A/B über 6 / 3 / 2 Gradientenschritte
     pro Iteration. Bis zu +10 % Durchsatz, aber nur behalten, wenn die Lernkurve nicht leidet.
@@ -1833,3 +1838,318 @@ verlängern.
 wie im Experiment übernommen. H3 kommt erst nach bestätigter Verlängerung dazu. Beim Fortsetzen
 rotiert `checkpoints_to_keep` 10 die ältesten Checkpoints aus `runs\lucy_1v1` heraus. Wer 3,682 bis
 3,907 Mrd. als Duell-Gegner behalten will, sichert sie vorher.
+
+## 8. Spieltest im echten Rocket League (28.09.2026, lokal)
+
+### 8.1 Auftrag und Ausgangslage
+
+Der Hauptlauf lief mit `train/configs/lucy_1v1_zero_sum.json` von 3,907 bis ~6,04 Mrd. Steps
+(neuester Checkpoint 6.037.692.544, gestoppt). Spieltest mit RLBot v5 offline: Der Bot schlägt den
+Psyonix-Allstar, verliert gegen einen Menschen vor allem über die Anstöße, fährt vor dem gegnerischen
+Tor lange von Ecke zu Ecke, spielt kaum Luftbälle, und zwei Instanzen im selben 2v2-Team jagen beide
+dem Ball hinterher. Auftrag: Ursachen finden und mit Experimenten belegen; Hauptlauf nicht anfassen.
+
+Vorgehen: Phase A baut Mess- und Experimentierwerkzeuge (Details und Commits in `AUDIT_PROGRESS.md`,
+Abschnitt Spieltest), Phase B misst ohne Training am Checkpoint 6.037.692.544, Phase C sind die
+Trainings-Experimente (nur nach OK des Nutzers). Rohdaten Phase B: `results\phase_b_2026-09-28\`
+(`report_phase_b.md`, lokal, `results\` ist nicht versioniert).
+
+### 8.2 Messwerkzeuge (Phase A)
+
+* `env/cpp/PlayStats` (PlayTracker): Anstoß (erste Berührung tickgenau, Tempo, Boost, Ballhälfte und
+  Ballnähe 3 s danach, Tor in 10 s), Aufenthalte im Angriffsdrittel (mit/ohne Tor, ab 8 s „lang“),
+  Schüsse aufs Tor (Kontakt, nach dem der Ball laut Wurfparabel in 3 s ins Tor fliegt), Ballkontakte
+  mit Höhe am Boden/in der Luft (Aerial: Ball ab 450 uu), im Teamspiel Mitspielerabstand,
+  Double-Commit (zwei Mitspieler näher als 1500 uu und mit über 500 uu/s auf den Ball zu) und
+  Absicherung (mindestens einer 500 uu hinter dem Ball). Als Trainingsmetriken in `metrics.csv`
+  (2v2/3v3 mit Präfix) und je Seite im Duell (`duel.exe`, `"stats"`).
+* Im Selbstspiel ist „wer gewinnt den Anstoß“ konstruktionsbedingt 50 %. Die Trainingsmetriken
+  messen deshalb Zeit bis zur ersten Berührung, Tempo, Boost und Anstoß-Tore; die Gewinnrate gibt es
+  im Duell und in `eval/kickoff_eval.py` (gegen andere Checkpoints oder geskriptete Anstöße).
+* `duel.exe --a-mode/--b-mode sample|argmax|argmax_group`; `eval/kickoff_eval.py` (Bot-Code im
+  Python-RocketSim, Schrittfolge wie Gym::Step, ein Test prüft den Snapshot-Zeitpunkt);
+  `tools/cpp/reward_budget.exe` (Reward je Komponente über den echten Code, Summe gleich dem
+  Match-Reward bis auf 2e-6).
+
+### 8.3 Aktionsauswahl: Der Bot spielt argmax, das Training zieht
+
+`deploy/rlbot/bot.py` wählt die wahrscheinlichste Aktion, Training und Duell ziehen aus der
+Verteilung. Die Aktionstabelle hat am Boden 9 gleichwirkende Einträge für „Gas + Boost“, aber nur
+einen für „Gas ohne Boost“: argmax verteilt nicht nach Wirkung und boostet seltener, als die Policy
+will (in einer Selbstspiel-Stichprobe boostet argmax in 24,5 % der Lagen mit Boost-Wahrscheinlichkeit
+über 50 % nicht; 36 % der Bodenentscheidungen weichen von der wahrscheinlichsten Wirkung ab).
+
+Gemessen (Checkpoint gegen sich selbst, 1000 Spiele à 300 s, B zieht):
+
+| A | Tordifferenz/Spiel [95-%-KI] | Siege A:B | Ballkontakte/min A:B | Anstoß zuerst A |
+|---|---|---|---|---|
+| Ziehen (Nullmessung) | −0,05 [−0,15; +0,05] | 364:391 | 29,3 : 29,3 | 50 % |
+| **argmax (Bot)** | **+1,21** [+1,11; +1,32] | 669:131 | 41,2 : 23,9 | 64 % |
+| argmax über Wirkungsklassen | +0,69 [+0,58; +0,80] | 529:252 | 36,6 : 25,5 | 77 % |
+
+Folgerung: Der Bot spielt im Spiel bereits im stärksten der drei Modi. Die Boost-Verzerrung schadet
+nicht messbar (vermutlich spart sie Boost); argmax über Wirkungsklassen gewinnt mehr Anstöße, spielt
+insgesamt aber schwächer. **Keine Änderung an `bot.py`.** Für die Experimente heißt das: Das Duell
+(Ziehen gegen Ziehen) misst nicht genau das Spiel des Bots; Anstoß-Auswertung und Kennzahlen je
+Seite gibt es deshalb zusätzlich mit argmax.
+
+### 8.4 Anstoß
+
+Was der Bot tut (`eval/kickoff_eval.py --trajectory`, gegen sich selbst, argmax wie im Spiel):
+
+| Position | erste Berührung | Tempo des Berührers | Spitze | Sprung | Flip | Boost |
+|---|---|---|---|---|---|---|
+| diagonal links | 2,57 s | 763 uu/s | 1961 | 2,34 s | – | 45 |
+| diagonal rechts | 3,09 s | 1124 | 1393 | 2,74 s | 3,27 s | **0** |
+| versetzt links | 2,79 s | 1378 | 1816 | 2,61 s | 2,88 s | 40 |
+| versetzt rechts | 2,79 s | 1296 | 1648 | 2,54 s | – | 37 |
+| Mitte | 3,01 s | 1323 | 1994 | 2,74 s | – | 46 |
+| *Speedflip-Skript* | *1,89 / 2,14 / 2,47 s* | *2300* | *2300* | *0,44–0,51 s* | *0,50–0,56 s* | |
+
+Der Bot erreicht nie Höchsttempo, nimmt etwa 1 s vor dem Ball Gas weg, springt 0,15–0,35 s vor der
+Berührung und flippt, wenn überhaupt, erst danach. Diagonal rechts boostet er gar nicht (die Policy
+selbst will dort nur zu 23 % boosten: eine Links/Rechts-Asymmetrie). Er kommt 0,5–0,9 s nach einem
+Speedflip an, mit 800–1400 statt 2300 uu/s. Im Selbstspiel ist das ein Gleichgewicht (beide gleich
+langsam, 50 %), gegen einen schnellen Menschen verliert er jeden Anstoß.
+
+Gegen geskriptete Anstöße (`deploy/scripted_kickoff.py`, nach der ersten Berührung spielt die
+Policy weiter; je 1000 Anstöße, alle Positionen, Seiten gewechselt):
+
+| A (Skript, danach Policy) | B | A zuerst | Ball in Bs Hälfte nach 3 s | Tore in 10 s A:B |
+|---|---|---|---|---|
+| Speedflip | Policy argmax (Bot) | 100 % | 90 % | **500:0** |
+| Speedflip | Policy zieht | 100 % | 99,7 % | 575:0 |
+| Frontflip | Policy argmax | 100 % | 65 % | 0:0 |
+| Frontflip | Policy zieht | 100 % | 64 % | 145:9 |
+| Policy zieht | Policy zieht | 50 % | 52 % | 14:11 |
+
+Ursachen: (1) Anstöße sind im Training selten. Jede Episode endet mit einem Tor, nur 2 von 7 neuen
+Episoden beginnen mit Anstoß; bei ~107 s Episodenlänge sind ~0,8 % der Trainingsdaten Anstoßphase
+(im echten Spiel eher 5 %). (2) Im Selbstspiel gibt es keinen Druck, schneller als ein Gegner zu
+sein, der selbst nie schnell ist. (3) Nicht die Ursache: Timing oder Deployment (Nutzer: pünktlich bei
+„GO“; die Beobachtung beim Anstoß ist wie im Training, der Paketpuffer wird beim Anstoß geleert).
+
+**Geskripteter Anstoß im Deployment (Bewertung; auf Wunsch des Nutzers als Option eingebaut, Standard aus):**
+* Nutzen: sofort und groß. In RocketSim gewinnt der Speedflip jede erste Berührung gegen die
+  aktuelle Policy; gegen einen Menschen mindestens Gleichstand.
+* Aufwand: mittel. Das Skript existiert und ist getestet, es braucht nur, was RLBot liefert. Einbau
+  in `bot.py` hieße: Anstoß erkennen (Phase Kickoff, Ball in der Mitte), pro Tick steuern, nach der
+  ersten Berührung (spätestens nach 3 s) an die Policy übergeben, Aktionshistorie mit den nächsten
+  Tabelleneinträgen füllen, dazu Tests.
+* Risiken: Abweichung zwischen RocketSim und Spiel beim Flip-Timing (RocketSim ist nah am Spiel,
+  Speedflips aus RLBot-Bots funktionieren dort; verpasste Pakete kosten Ticks), ein Gegner, der den
+  Anstoß antäuscht (das Skript fährt stur), 2v2 (wer fährt, wer bleibt hinten), und die Policy lernt
+  den Anstoß nie selbst.
+* Einschätzung: Für Spiele gegen Menschen der schnellste Hebel. Der gelernte Weg (Phase C, K1/K2)
+  bleibt sinnvoll, wird aber in 300 Mio. Steps kaum 0,5–0,9 s aufholen.
+* Umgesetzt (KO4, 28.09.2026): `$env:RLBOT_SCRIPTED_KICKOFF = "speedflip"` vor dem Start von RLBot.
+  Das Skript steuert pro Tick, solange die Phase „Kickoff“ ist und der Ball ruhend in der Mitte liegt
+  (höchstens 4 s), im Teamspiel nur beim ballnächsten Mitspieler; danach entscheidet sofort die
+  Policy, mit den Skript-Eingaben als nächste Tabelleneinträge im Aktions-Stack. Test in RocketSim
+  über echte RLBot-Pakete: erste Berührung diagonal unter 2,0 s. Im echten Spiel ungeprüft.
+
+### 8.5 Ecken-Schleife vor dem gegnerischen Tor
+
+Reward-Bilanz über den echten Code (`reward_budget.exe`, Config des Hauptlaufs, Zero-Sum,
+γ = 0,9954, Horizont 14,5 s). Ein Tor ist nach Zero-Sum +10 wert und beendet die Episode.
+
+| Lage | Shaping A − D pro Sekunde | ein Tor entspricht |
+|---|---|---|
+| Ball in der Ecke, Verteidiger steht im Tor (feste Lage) | +17,3 | 0,58 s dieser Lage |
+| dasselbe, Verteidiger greift an | +21,7 | 0,46 s |
+| quer an der Grundlinie | +6,5 | 1,5 s |
+| Schussposition frontal | +13,9 | 0,72 s |
+| gespielt (argmax, 300 Spiele): Ball im Angriffsdrittel, Ecke (44 % der Zeit) | +2,4 | 4,1 s |
+| gespielt: Angriffsdrittel Mitte (23 %) | +2,0 | 4,9 s |
+| gespielt: Mittelfeld (33 %) | 0,0 | – |
+
+Fast alles kommt aus `offensive_potential_krc` und `dist_weighted_align_krc`;
+`touch_ball_to_goal_accel` bringt für einen harten Schuss einmalig ~0,4. Gegen einen Gegner, der
+nicht angreift (Mensch im Tor), zahlt die Lage „Ball in der Ecke, ich dahinter“ 17–22 pro Sekunde;
+drei Sekunden davon sind diskontiert so viel wert wie fünf Tore. Im Selbstspiel greift der Gegner an
+und beendet die Lage schnell, deshalb fallen dort trotzdem Tore.
+
+Im Duell (argmax gegen Ziehen, je Seite): Der Ball ist 44 % der Zeit im Angriffsdrittel des
+argmax-Bots, **53 % seiner Aufenthalte dort dauern 8 s oder länger**, 23 s pro Spielminute ohne Tor;
+17 % der Aufenthalte enden mit Tor. Das passt zum Spieltest. Hebel: Shaping, das Halten nicht
+bezahlt (potenzialbasiert, Phase C E1), oder ein höherer Torwert (E2).
+
+### 8.6 Luftspiel
+
+Der Bot hat praktisch keine Aerials: 0,01 Ballkontakte pro Spielerminute mit Ball über 450 uu
+(argmax, Duell). Die „Luftkontakte“ (5–6 pro Minute) sind Sprünge an einen Ball in ~150 uu Höhe.
+Der Bruch im Hauptlauf ab ~5,6 Mrd. Steps (in_air_ratio 0,065 → 0,12, Ballkontakt 0,050 → 0,033) ist
+genau das: Der Bot springt in Zweikämpfe (Luftkontakte 0,15 → 5,4 pro Minute). Das hat ihn stärker
+gemacht: 6,04 schlägt 5,56 Mrd. mit +0,55 [+0,43; +0,66] Toren pro Spiel (1000 Spiele). `in_air`
+(0,02/Step) zahlt jedes In-der-Luft-sein, belohnt aber keinen Kontakt; die Aerial-Szene hat 0,5 von
+7 Gewichtsanteilen.
+
+### 8.7 Teamspiel
+
+* **Nur 1v1 trainiert, bestätigt:** `mode_mix` [1,0,0] in `config_used.json`, und die Gewichte der
+  ersten Schicht für die beiden Mitspieler-Slots (Eingänge 112–169) sind zwischen 5,56 und 6,04 Mrd.
+  bitgleich und haben exakt die Statistik der Initialisierung (|W| 0,0313, erwartet 0,0312; trainierte
+  Spalten 4–8× größer): Sie haben nie einen Gradienten bekommen. Im 2v2 speist der Mitspieler Rauschen
+  über Zufallsgewichte ein, und die Policy sieht erstmals zwei Gegner gleichzeitig.
+* **Bereit ohne Obs-/Aktionsänderung:** Padding für 3 Spieler, C++/Python-Parität für 2v2/3v3
+  (Golden-Fixtures, je 10 Fälle), Modus-Mix je Env, `duel.exe --team-size`, zwei Bot-Instanzen im
+  selben Team (neuer Test: jede baut die Obs aus ihrer Sicht, Mitspieler im Mitspieler-Slot).
+* **Nicht bereit:** `lucy_multimode.json` ist vom 1v1-Checkpoint nicht ladbar (Netz 1024/1024/512/512)
+  und zählt Tore doppelt (goal 10 mit team_spirit 0,2). Für Phase C gibt es `sp_mode_2v2.json`.
+* **Ist-Zustand 2v2** (6,04 gegen sich selbst, 500 Spiele): Double-Commit 10,8 % der Team-Zeit,
+  Absicherung 68 %, Mitspielerabstand 1611 uu, nur 7,8 Ballkontakte je Spielerminute (1v1: 29).
+* **team_spirit τ:** ZeroSumReward gibt jedem (1 − τ/2) seines eigenen Shapings plus τ/2 des
+  Mitspielers, minus das Mittel der Gegner. Bei 0,1 sind das 95 % Eigenanteil. Auch τ = 1 lässt 50 %,
+  weil alle Shaping-Terme „ich nah am Ball“ belohnen: Der Anreiz, dass beide hinfahren, halbiert sich
+  nur. Vorschlag: τ = 0,5 beim Einstieg in 2v2 (Zuordnung von Belohnung zu Aktion bleibt klar,
+  Egoismus halbiert), nach 300–500 Mio. Steps mit 2v2-Anteil und stabilen Team-Kennzahlen 1,0
+  (Config-Wechsel, der Checkpoint bleibt kompatibel). Gegen Double-Commits wirkt erst ein
+  Team-Shaping, bei dem nur der ballnächste Mitspieler die Ballnähe-Terme bekommt (nicht gebaut,
+  möglicher Folgeversuch).
+
+### 8.8 Plan Phase C (vom Nutzer freigegeben: Kernserie 1, 2, 3, 5, 7, 10, 11)
+
+Je 300 Mio. Steps ab 6.037.692.544, Seed 123, nacheinander, Referenz `experiments/zero_sum.json`
+(= Hauptlauf-Config als Experiment) mit Wiederholung. Jede Config ändert genau eine Sache
+(`tests/test_experiment_configs.py`).
+
+| # | Config | Änderung |
+|---|---|---|
+| 1, 2 | `zero_sum` und Wiederholung | – (Trainingsrauschen bei 300 Mio.) |
+| 3 | `sp_kickoff_drill` | Szene Anstoß-Drill, Gewicht 4, nach 6 s abgeschnitten |
+| 4 | `sp_kickoff_first_touch` | +2 für die erste Berührung nach dem Anstoß |
+| 5 | `sp_potential_shaping` | Offensiv-Shaping als Potenzialdifferenz, Faktor 8 (kalibriert) |
+| 6 | `sp_goal_x3` | Torwert ±30 statt ±10 |
+| 7 | `sp_air_touch` | Luftberührung, Gewicht 3, skaliert mit der Höhe |
+| 8 | `sp_aerial_share` | Aerial-Szene 0,5 → 2,0 |
+| 9 | `sp_no_in_air` | in_air 0,02 → 0 |
+| 10 | `sp_mode_2v2` | mode_mix [3,1,0], mit `-TeamDuel` |
+| 11 | `sp_mode_2v2_tau05` | wie 10, team_spirit 0,5 (Vergleich gegen 10) |
+
+Laufzeit je Lauf ~95 min (~71 min Training bei ~70.000 SPS, zwei Duelle, zwei Anstoß-Auswertungen,
+Lauf-Ladder), Teamläufe ~115 min. Kernserie (1, 2, 3, 5, 7, 10, 11) ~11,5 h, alle elf ~18 h.
+Begründung für 300 statt 100 Mio. Steps: Zwei gleiche 100-Mio.-Läufe lagen in Stufe 3 um ~0,3
+Tore/Spiel auseinander; die gesuchten Fähigkeiten sind seltene Ereignisse (in 100 Mio. Steps ~9000
+Anstöße); der Bruch bei 5,6 Mrd. zeigt, dass sich Verhalten in ~100 Mio. Steps verschieben kann,
+300 Mio. geben Luft. Effekte unter dem Doppelten des Abstands der beiden Referenzläufe gelten als
+„im Trainingsrauschen“ und werden verlängert statt entschieden.
+
+### 8.9 Ergebnisse Phase C, Kernserie (28./29.09.2026)
+
+Vom Nutzer freigegeben: Kernserie, sieben Läufe à 300 Mio. Steps ab 6.037.692.544, Seed 123, Build
+`7d144df` (sauber, `run_all_checks.ps1` davor komplett grün). Alle sieben ohne Abbruch, 21:32 bis
+09:25. Während der ersten Läufe lief auf dem PC ein Spiel (VALORANT); das bremste den Durchsatz
+(46.700 statt ~70.000 SPS im Referenzlauf), verändert aber keine Lernergebnisse (die hängen an den
+Steps). Die SPS-Frage ist deshalb separat gemessen (unten). Rohdaten:
+`results\exp_{zero_sum,replicate_zero_sum,sp_*}_2026-09-2*`, Vergleich
+`results\phase_c_2026-09-28\compare_kern.md`, `compare_team.md`, `joint_ladder.json`.
+
+**Trainingsrauschen bei 300 Mio. Steps ist groß.** Zwei Läufe derselben Config (`zero_sum` und
+Wiederholung) liegen im Duell gegen den gemeinsamen Start bei −3,24 und +0,19 Toren/Spiel. Der
+Referenzlauf ist ab etwa der Hälfte in einen langsamen Anstoß abgedriftet (Zeit bis zur ersten
+Berührung im Training 2,9 → 3,6 s, Tore/min fallen); sein Ende verliert gegen den Start 509 von 1000
+Anstößen direkt mit Gegentor in 10 s. Das ist Selbstspiel-Drift: Beide Seiten werden gemeinsam
+langsam, ein Gegner von außen nutzt das aus. Folgen für die Auswertung: Das Ende des Referenzlaufs
+taugt allein nicht als Referenz (compare.py nennt das Rauschen 3,4 Tore/Spiel, damit wäre jedes
+Ergebnis „im Rauschen“). Bewertet wird deshalb gegen den gemeinsamen Start-Checkpoint, gegen
+**beide** Referenzläufe und über die Kennzahlen, auf die das Experiment zielt.
+
+| Lauf | Duell gegen Start: Tordifferenz/Spiel [95-%-KI] | Ladder μ−3σ | Anstöße gegen Start: A zuerst, Tore in 10 s | Anstoß-Zeit im Training | Aerials/Spielermin. | Drittel: Konversion / lang |
+|---|---|---|---|---|---|---|
+| Start 6,04 Mrd. | – | 26,29 | – | 2,9 s (Anfang der Läufe) | 0,013 | – |
+| zero_sum (Referenz) | −3,24 [−3,44; −3,04] | 24,33 | 0 %, 7 : 509 | 3,45 s | 0,013 | 0,136 / 0,433 |
+| Wiederholung | +0,19 [+0,07; +0,32] | 26,77 | 4 %, 17 : 128 | 3,10 s | 0,012 | 0,201 / 0,422 |
+| sp_kickoff_drill | +0,28 [+0,18; +0,39] | **27,39** | **23 %, 30 : 13** | **3,00 s** | 0,018 | 0,124 / 0,423 |
+| sp_potential_shaping | **−14,15** [−14,35; −13,95] | 1,62 | 0 % | 6,61 s | 0,000 | – (kaum Ballkontakt) |
+| sp_air_touch | +0,74 [+0,62; +0,87] | 26,97 | 27 %, 52 : 35 | 3,59 s | **0,010** | 0,237 / 0,408 |
+| sp_mode_2v2 | +0,39 [+0,27; +0,50] | 26,40 | 25 %, 41 : 10 | 2,84 s | 0,012 | 0,190 / 0,387 |
+| sp_mode_2v2_tau05 | +0,43 [+0,31; +0,55] | – | 40 %, 55 : 13 | 2,86 s | 0,014 | 0,189 / 0,400 |
+
+(„Drittel lang“ = Anteil der Aufenthalte im Angriffsdrittel ab 8 s. Tore/min und Anstoß-Tore im
+Training sind beim Drill nicht vergleichbar: Drill-Episoden enden nach 6 s.)
+
+Teamspiel, 2v2-Duelle (500 Spiele à 300 s) und Team-Kennzahlen je Seite:
+
+| A gegen B (2v2) | Tordifferenz/Spiel [95-%-KI] | Siege | Double-Commit A / B | Absicherung A / B | Mitspielerabstand A / B |
+|---|---|---|---|---|---|
+| sp_mode_2v2 gegen Start | **+8,02** [+7,71; +8,33] | 496 : 0 | 4,2 % / 12,5 % | 86 % / 56 % | 2205 / 1289 uu |
+| sp_mode_2v2_tau05 gegen Start | **+11,31** [+10,92; +11,69] | 500 : 0 | 2,9 % / 11,7 % | 89 % / 56 % | 2486 / 1276 uu |
+| sp_mode_2v2_tau05 gegen sp_mode_2v2 | +0,58 [+0,39; +0,77] | 245 : 156 | 5,3 % / 6,6 % | 82 % / 78 % | 2170 / 1888 uu |
+
+Im 1v1 ändert τ 0,5 gegenüber τ 0,1 nichts: −0,03 [−0,16; +0,10].
+
+**SPS, sauber gemessen** (PC ohne andere Last, je 3 × 15 Mio. Steps abwechselnd ab 6.037.692.544,
+`results\phase_c_2026-09-28\bench_sps\`): 1v1 72.050 ± 260, mit 2v2-Anteil [3,1,0] 73.320 ± 290
+Steps/s (+1,8 %). 2v2-Envs liefern pro Physik-Schritt doppelt so viele Samples; Env-Step- und
+Inferenzzeit pro Iteration sind gleich.
+
+**Entscheidungen:**
+
+* **Anstoß-Drill (K1): behalten.** Jede Anstoß-Kennzahl ist besser als bei beiden Referenzläufen:
+  gegen den Start 23 % erste Berührung (0 % / 4 %) und 30 : 13 Anstoß-Tore (7 : 509 / 17 : 128),
+  Anstoß-Zeit im Training 3,00 s (3,45 / 3,10), gegen das Referenz-Ende 94 % zuerst (Wiederholung 79 %).
+  Die Drift der Referenz in einen langsamen Anstoß tritt mit Drill nicht auf. Die Spielstärke liegt
+  im Rauschen (+0,28 gegen den Start), in der gemeinsamen Ladder ist der Drill vorn. Grenzen: Der Bot
+  kommt weiter 0,4–0,9 s nach einem Speedflip an; gegen Menschen hilft sofort nur das Skript (§8.4).
+* **Potenzialbasiertes Shaping (E1): verwerfen.** Die Policy bricht zusammen: Nach 2 Mio. Steps
+  steigt die Entropie von 2,80 auf 3,10, nach 40 Mio. auf 3,90, Clip-Fraction 0,03 → 0,001,
+  Ballkontakt 0,028 → 0,001, 77 % der Episoden enden über NoTouch. Gleiches Muster wie K3 in Stufe 3,
+  nur stärker: Die Potenzialdifferenz hat im Mittel ~0, die Returns verlieren fast alle Varianz,
+  der Trainer teilt durch die übernommene Return-std und normiert Advantages nicht, der
+  Entropie-Bonus gewinnt. Die Kalibrierung auf gleichen Betrag je Schritt (Faktor 8) reicht nicht.
+  Ein neuer Versuch wäre nur mit Advantage-Normierung oder neu geschätzter Return-std sinnvoll.
+* **Luftberührung (A1): verwerfen als Luftspiel-Hebel.** Das Ziel wird verfehlt: Aerials
+  0,010 pro Spielerminute (Referenzen 0,013 / 0,012). Der Reward zahlt vor allem Sprungkontakte am
+  Boden. Als Nebeneffekt bessere Konversion im Angriffsdrittel (0,237 gegen 0,136 / 0,201) und der
+  stärkste Lauf gegen den Start (+0,74), beides aber im Trainingsrauschen.
+* **2v2-Anteil (T1): behalten, wenn der Bot Teamspiel lernen soll.** 2v2 gegen den reinen
+  1v1-Checkpoint +8 Tore/Spiel, 496 : 0 Siege, Double-Commit 12,5 → 4,2 %, Absicherung 56 → 86 %.
+  1v1 ohne messbaren Verlust (+0,39 gegen den Start, im Bereich der Referenzläufe), SPS +1,8 %.
+* **team_spirit 0,5 (T2): behalten.** Im 2v2 +0,58 [+0,39; +0,77] gegen τ 0,1, weniger
+  Double-Commits (2,9 gegen 4,2 %) und weiteres Auseinanderstehen, im 1v1 neutral. Vorbehalt: Es
+  gibt keine Wiederholung eines 2v2-Laufs, das Rauschen im 2v2 ist unbekannt.
+* **Ecken-Schleife: offen.** Der einzige gezielte Versuch (E1) ist gescheitert; die Kennzahl
+  „Drittel lang“ bewegt sich in keinem Lauf deutlich (0,39–0,43). Nächster Versuch: Torwert ×3
+  (`sp_goal_x3`, vorbereitet, nicht gelaufen).
+
+### 8.10 Hauptlauf-Config (Vorschlag, nicht gestartet)
+
+Zwei Varianten, je nach Entscheidung in §8.11, beide checkpoint-kompatibel (Obs 257, 90 Aktionen,
+512×3), festgelegt durch `test_main_run_proposals_add_only_the_kept_changes`:
+
+* `train/configs/lucy_1v1_zero_sum_drill.json`: Hauptlauf-Config plus Anstoß-Drill (Gewicht 4).
+  Lädt wie bisher aus `runs\lucy_1v1\checkpoints`.
+* `train/configs/lucy_team_zero_sum.json`: dazu `mode_mix` [3,1,0] und `team_spirit` 0,5, eigener
+  Ordner `runs\lucy_team\checkpoints` (vorher den neuesten Checkpoint aus `runs\lucy_1v1` dorthin
+  kopieren; `runs\lucy_1v1` bleibt die reine 1v1-Linie und ein 1v1-Vergleichspartner). Drill und
+  Teamspiel sind nur einzeln getestet, nicht zusammen.
+
+Für Spiele gegen Menschen unabhängig davon: `$env:RLBOT_SCRIPTED_KICKOFF = "speedflip"` (§8.4).
+
+### 8.11 Entscheidungsvorlage: 1v1-only oder Teamspiel dazulernen
+
+| | 1v1-only (`lucy_1v1_zero_sum_drill`) | Teamspiel (`lucy_team_zero_sum`) |
+|---|---|---|
+| 2v2 im Spiel | untrainiert: Mitspieler-Gewichte auf Initialisierung, Double-Commit 12,5 %, Absicherung 56 % | nach 300 Mio. Steps +8 bis +11 Tore/Spiel gegen den 1v1-Checkpoint, Double-Commit 3–4 %, Absicherung 86–89 % |
+| 1v1-Stärke | volle 1v1-Daten | nach 300 Mio. kein messbarer Verlust (+0,39 gegen den Start, Referenzläufe −3,24 / +0,19); langfristig nur 60 % der Samples 1v1, der 1v1-Fortschritt pro Stunde sinkt entsprechend, soweit das 2v2 nicht mitlernt |
+| Durchsatz | 72.050 SPS | 73.320 SPS (+1,8 %) |
+| Trainingszeit | – | für den gleichen 1v1-Anteil ~1,7× so lang (1 / 0,6) |
+| Aufwand | Config wechseln | Config wechseln, Checkpoint kopieren, später τ auf 1,0 und ggf. 3v3 in den Mix |
+| 3v3 | untrainiert | weiter untrainiert (Mix ohne 3v3) |
+
+Empfehlung: **Teamspiel dazulernen**, wenn der Bot in 2v2 eingesetzt werden soll (so im Spieltest).
+Der Gewinn im 2v2 ist riesig und sofort, die Kosten im 1v1 sind nicht messbar, der Durchsatz
+unverändert. Das 1v1 bleibt über `runs\lucy_1v1` als Linie erhalten; mit den Duell-Werkzeugen lässt
+sich regelmäßig prüfen, ob die Teamspiel-Linie im 1v1 zurückfällt. Nach 300–500 Mio. Steps mit
+stabilen Team-Kennzahlen τ auf 1,0 anheben (§8.7).
+
+### 8.12 Offen
+
+* Ecken-Schleife: `sp_goal_x3` laufen lassen; die potenzialbasierte Form nur mit Advantage-Normierung
+  neu versuchen.
+* Luftspiel: `sp_aerial_share` und `sp_no_in_air` (vorbereitet). Der Bot hat im Selbstspiel kaum
+  Aerial-Lagen; mehr Aerial-Starts sind der naheliegende nächste Hebel.
+* `sp_kickoff_first_touch` (vorbereitet, nicht gelaufen).
+* Trainingsrauschen: Mit zwei Referenzläufen ist es nur grob bekannt. Für knappe Entscheidungen
+  wären drei oder mehr Wiederholungen nötig, oder das Duell gegen mehrere feste Gegner (Panel).
+* Der geskriptete Anstoß ist im echten Rocket League noch ungetestet.
