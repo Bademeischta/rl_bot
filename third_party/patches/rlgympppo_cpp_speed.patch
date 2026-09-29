@@ -122,7 +122,7 @@ index ca5ddff..d9c91a4 100644
  }
 \ No newline at end of file
 diff --git a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/ThreadAgent.cpp b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/ThreadAgent.cpp
-index fd1aaaa..e0d77b7 100644
+index fd1aaaa..592bc05 100644
 --- a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/ThreadAgent.cpp
 +++ b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/ThreadAgent.cpp
 @@ -6,19 +6,26 @@
@@ -162,17 +162,24 @@ index fd1aaaa..e0d77b7 100644
  }
  
  void _RunFunc(ThreadAgent* ta) {
-@@ -61,20 +68,24 @@ void _RunFunc(ThreadAgent* ta) {
+@@ -61,20 +68,29 @@ void _RunFunc(ThreadAgent* ta) {
  			stepTimer.Reset();
  
  		// Don't run if we reached our step limit
+-		while (ta->stepsCollected > ta->maxCollect)
++		// RLbot patch (speed, G3): the wait loops also check shouldRun. Before, an agent that had
++		// reached maxCollect (collection_during_learn, or after the last iteration) waited here
++		// forever and StopAgents() hung ("Stopping agents...", docs/phase0_results.md §3).
 +		Timer waitTimer = {};
- 		while (ta->stepsCollected > ta->maxCollect)
++		while (ta->stepsCollected > ta->maxCollect && ta->shouldRun)
  			THREAD_WAIT();
  
- 		while (mgr->disableCollection)
+-		while (mgr->disableCollection)
++		while (mgr->disableCollection && ta->shouldRun)
  			THREAD_WAIT();
 +		ta->times.waitTime += waitTimer.Elapsed();
++		if (!ta->shouldRun)
++			break;
  
  		// Move our current OBS tensor to the device we run the policy on
  		// This conversion time is not counted as a part of policy inference time
@@ -187,7 +194,7 @@ index fd1aaaa..e0d77b7 100644
  
  		// Infer the policy to get actions for all our agents in all our games
  		Timer policyInferTimer = {};
-@@ -98,6 +109,15 @@ void _RunFunc(ThreadAgent* ta) {
+@@ -98,6 +114,15 @@ void _RunFunc(ThreadAgent* ta) {
  		float policyInferTime = policyInferTimer.Elapsed();
  		ta->times.policyInferTime += policyInferTime;
  
@@ -203,7 +210,7 @@ index fd1aaaa..e0d77b7 100644
  		// Step the gym with the actions we got
  		Timer gymStepTimer = {};
  		ta->gameStepMutex.lock();
-@@ -110,9 +130,9 @@ void _RunFunc(ThreadAgent* ta) {
+@@ -110,9 +135,9 @@ void _RunFunc(ThreadAgent* ta) {
  
  			// Actions output has a dimension for each player, but not for each game
  			// So we will need to slice the section of it that is for this game
@@ -215,7 +222,7 @@ index fd1aaaa..e0d77b7 100644
  
  			actionsOffset += numPlayers;
  		}
-@@ -125,14 +145,41 @@ void _RunFunc(ThreadAgent* ta) {
+@@ -125,14 +150,41 @@ void _RunFunc(ThreadAgent* ta) {
  		ta->times.envStepTime += envStepTime;
  
  		// Update our tensor storing the next observation after the step, from each gym
@@ -257,7 +264,7 @@ index fd1aaaa..e0d77b7 100644
  
  				auto& stepResult = stepResults[i];
  
-@@ -173,9 +220,10 @@ void _RunFunc(ThreadAgent* ta) {
+@@ -173,9 +225,10 @@ void _RunFunc(ThreadAgent* ta) {
  					);
  				}
  
@@ -269,7 +276,7 @@ index fd1aaaa..e0d77b7 100644
  			ta->trajMutex.unlock();
  			ta->times.trajAppendTime += trajAppendTimer.Elapsed();
  		} else {
-@@ -216,10 +264,14 @@ RLGPC::ThreadAgent::ThreadAgent(void* manager, int numGames, uint64_t maxCollect
+@@ -216,10 +269,14 @@ RLGPC::ThreadAgent::ThreadAgent(void* manager, int numGames, uint64_t maxCollect
  	: _manager(manager), numGames(numGames), maxCollect(maxCollect), index(index) {
  
  	trajectories.resize(numGames);

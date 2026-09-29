@@ -89,3 +89,36 @@ TEST(G2_Trajektorien_als_Arrays_sind_bitgleich_zum_alten_Tensor_Pfad) {
 	CHECK_GT(truncs, 20);
 	CHECK_GT(rows, 2400);
 }
+
+// G3: Ein Agent, der sein Sammel-Limit erreicht hat (maxCollect, z. B. mit collection_during_learn
+// oder nach der letzten Iteration), wartete in einer Schleife ohne Blick auf shouldRun;
+// StopAgents() hing dann für immer ("Stopping agents...", docs/phase0_results.md §3).
+TEST(G3_StopAgents_haengt_nicht_am_Sammel_Limit) {
+	if (!g_arenaReady) return;
+	TrainConfig cfg = SpeedTestConfig();
+	cfg.numThreads = 1;
+	cfg.numGamesPerThread = 2;
+	EnvFactory factory(cfg);
+	RLGPC::LearnerConfig lc = SmallLearner(cfg);
+	lc.timestepsPerIteration = 200;
+
+	auto* learner = new RLGPC::Learner([&]() { return factory.Create(); }, lc);
+	auto* mgr = learner->agentMgr;
+	auto* agent = mgr->agents[0];
+	mgr->StartAgents();
+	// Niemand holt die Schritte ab: der Agent sammelt bis maxCollect und wartet dann
+	auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(60);
+	while (agent->stepsCollected <= agent->maxCollect && std::chrono::steady_clock::now() < deadline)
+		std::this_thread::sleep_for(std::chrono::milliseconds(5));
+	CHECK(agent->stepsCollected > agent->maxCollect);
+
+	// Eigener Thread: ohne den Fix kehrt StopAgents() nie zurück (der Learner bleibt dann bewusst stehen)
+	auto stopped = std::make_shared<std::atomic<bool>>(false);
+	std::thread([mgr, stopped]() { mgr->StopAgents(); *stopped = true; }).detach();
+	deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+	while (!*stopped && std::chrono::steady_clock::now() < deadline)
+		std::this_thread::sleep_for(std::chrono::milliseconds(5));
+	if (!*stopped)
+		FAIL_AT("StopAgents() haengt: der Agent wartet am Sammel-Limit ohne shouldRun zu pruefen");
+	delete learner;
+}
