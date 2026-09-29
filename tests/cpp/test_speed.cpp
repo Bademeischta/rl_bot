@@ -341,3 +341,55 @@ TEST(G6_TF32_Default_aus_und_Schalter_wirkt_auf_cuBLAS) {
 	at::globalContext().setAllowTF32CuBLAS(before);   // spätere Tests rechnen wieder wie vorher
 	CHECK_GT(errTf32, 10 * errFp32);
 }
+// G7: Gemischte Präzision im PPO-Schritt. Upstream skalierte die Verluste mit 2^16 (Grad-Scaler) und
+// clippte die SKALIERTEN Gradienten auf Norm 0,5, bevor step() zurückskalierte. Mit einem
+// Adam-Zustand aus FP32-Updates (wie nach dem Laden eines Checkpoints) schrumpfen die Updates dadurch,
+// sobald das alte Moment abgeklungen ist. G7 rechnet in BF16 ohne Scaler: das Update muss so groß
+// sein wie in FP32.
+TEST(G7_Autocast_BF16_macht_Updates_so_gross_wie_FP32) {
+	if (!g_arenaReady || !torch::cuda::is_available()) return;
+	TrainConfig cfg = SpeedTestConfig();
+	EnvFactory factory(cfg);
+	auto make = [&]() {
+		RLGPC::LearnerConfig lc = SmallLearner(cfg);
+		lc.deviceType = RLGPC::LearnerDeviceType::GPU_CUDA;
+		lc.ppo.policyLayerSizes = { 64, 64 };
+		lc.ppo.criticLayerSizes = { 64, 64 };
+		return std::make_unique<RLGPC::Learner>([&]() { return factory.Create(); }, lc);
+	};
+	auto fp32 = make();
+	auto amp = make();
+	auto* mgr = fp32->agentMgr;
+	mgr->StartAgents();
+	AgentStopper stopper{ mgr };
+	RLGPC::Report ra, rb;
+	for (int it = 0; it < 7; it++) {
+		RLGPC::GameTrajectory traj = mgr->CollectTimesteps(600);
+		mgr->disableCollection = true;
+		RLGPC::GameTrajectory copy = CloneTrajectory(traj);
+		ra = {}; rb = {};
+		fp32->AddNewExperience(traj, ra);
+		amp->AddNewExperience(copy, rb);
+		// Die ersten drei Iterationen in FP32 (Adam-Zustand wie aus einem Checkpoint), dann vier mit
+		// Autocast (bis das alte Moment abgeklungen ist); verglichen wird die letzte Iteration
+		amp->ppo->config.autocastLearn = it >= 3;
+		fp32->ppo->Learn(fp32->expBuffer, ra);
+		amp->ppo->Learn(amp->expBuffer, rb);
+		mgr->disableCollection = false;
+	}
+	double ratioPolicy = rb["Policy Update Magnitude"] / ra["Policy Update Magnitude"];
+	double ratioCritic = rb["Value Function Update Magnitude"] / ra["Value Function Update Magnitude"];
+	if (ratioPolicy < 0.5 || ratioPolicy > 2 || ratioCritic < 0.5 || ratioCritic > 2)
+		FAIL_AT("Update mit Autocast / FP32: Policy " << ratioPolicy << ", Critic " << ratioCritic);
+	CHECK_NEAR(rb["Policy Entropy"], ra["Policy Entropy"], 0.05);
+	CHECK_NEAR(rb["Value Function Loss"], ra["Value Function Loss"], 0.1 * std::abs(ra["Value Function Loss"]) + 1e-3);
+}
+
+TEST(G7_Config_autocast_learn_Default_aus_und_kommt_im_Learner_an) {
+	TrainConfig def = {};
+	CHECK(!def.autocastLearn);
+	CHECK(!MakeLearnerConfig(def).ppo.autocastLearn);
+	TrainConfig cfg = LoadSpeedConfig(R"({"learner": {"autocast_learn": true}})");
+	CHECK(MakeLearnerConfig(cfg).ppo.autocastLearn);
+	CHECK(LoadSpeedConfig(cfg.ToJSONString()).autocastLearn);
+}

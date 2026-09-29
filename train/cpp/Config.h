@@ -79,6 +79,9 @@ struct TrainConfig {
 	// Matrixprodukte in TF32 auf der GPU (Geschwindigkeit G6): Tensor-Kerne, 10 statt 23 Bit
 	// Mantisse, für Lernen und Inferenz. Default false = bisheriges Verhalten (FP32).
 	bool tf32 = false;
+	// Gemischte Präzision im PPO-Lernschritt (Geschwindigkeit G7): Vorwärtsrechnung unter
+	// Autocast in BF16, Gewichte, Optimierer und Verluste in FP32, ohne Grad-Scaler. Default false.
+	bool autocastLearn = false;
 	int64_t ppoBatchSize = 100000;
 	int64_t ppoMiniBatchSize = 50000;
 	float entCoef = 0.01f;

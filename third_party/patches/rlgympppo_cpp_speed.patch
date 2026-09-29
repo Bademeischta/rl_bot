@@ -57,10 +57,26 @@ index a8311bb..c115134 100644
  
  		int64_t curSize = 0;
 diff --git a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/PPO/PPOLearner.cpp b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/PPO/PPOLearner.cpp
-index 00a599a..e7ef011 100644
+index 00a599a..248b726 100644
 --- a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/PPO/PPOLearner.cpp
 +++ b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/PPO/PPOLearner.cpp
-@@ -93,8 +93,11 @@ void RLGPC::PPOLearner::Learn(ExperienceBuffer* expBuffer, Report& report) {
+@@ -74,9 +74,14 @@ void RLGPC::PPOLearner::Learn(ExperienceBuffer* expBuffer, Report& report) {
+ #endif
+ 	}
+ 
++	// RLbot patch (speed, G7): autocast runs in BF16 (RG_AUTOCAST_ON), which has the float32 range,
++	// so no grad scaler is needed. Upstream scaled the losses by 2^16 and clipped the *scaled*
++	// gradients to norm 0.5 before the scaler unscaled them in step(), i.e. every clipped update was
++	// ~65536 times too small ("If this causes your learning to collapse, please let me know").
++	constexpr bool useGradScaler = false;
+ 	static amp::GradScaler* gradScaler = NULL;
+ #ifdef RG_CUDA_SUPPORT
+-	if (autocast && !gradScaler) {
++	if (autocast && useGradScaler && !gradScaler) {
+ 		RG_LOG("Creating grad scaler...");
+ 		gradScaler = new amp::GradScaler();
+ 	}
+@@ -93,8 +98,11 @@ void RLGPC::PPOLearner::Learn(ExperienceBuffer* expBuffer, Report& report) {
  	FList clipFractions = {};
  
  	// Save parameters first
@@ -72,7 +88,7 @@ index 00a599a..e7ef011 100644
  
  	bool trainPolicy = config.policyLR != 0;
  	bool trainCritic = config.criticLR != 0;
-@@ -103,7 +106,10 @@ void RLGPC::PPOLearner::Learn(ExperienceBuffer* expBuffer, Report& report) {
+@@ -103,7 +111,10 @@ void RLGPC::PPOLearner::Learn(ExperienceBuffer* expBuffer, Report& report) {
  	for (int epoch = 0; epoch < config.epochs; epoch++) {
  
  		// Get randomly-ordered timesteps for PPO
@@ -83,7 +99,16 @@ index 00a599a..e7ef011 100644
  
  		for (auto& batch : batches) {
  			auto batchActs = batch.actions;
-@@ -256,12 +262,16 @@ void RLGPC::PPOLearner::Learn(ExperienceBuffer* expBuffer, Report& report) {
+@@ -202,7 +213,7 @@ void RLGPC::PPOLearner::Learn(ExperienceBuffer* expBuffer, Report& report) {
+ 				// NOTE: These gradient calls are a substantial portion of learn time
+ 				//	From my testing, they are around 61% of learn time
+ 				//	Results will probably vary heavily depending on model size and GPU strength
+-				if (autocast) {
++				if (autocast && useGradScaler) {
+ 					if (trainPolicy)
+ 						gradScaler->scale(ppoLoss).backward();
+ 					if (trainCritic)
+@@ -256,12 +267,16 @@ void RLGPC::PPOLearner::Learn(ExperienceBuffer* expBuffer, Report& report) {
  					RG_SLEEP(1);
  
  			} else {
@@ -100,16 +125,28 @@ index 00a599a..e7ef011 100644
  
  			if (config.measureGradientNoise) {
  				if (trainPolicy)
-@@ -295,6 +305,8 @@ void RLGPC::PPOLearner::Learn(ExperienceBuffer* expBuffer, Report& report) {
+@@ -276,7 +291,7 @@ void RLGPC::PPOLearner::Learn(ExperienceBuffer* expBuffer, Report& report) {
+ 				nn::utils::clip_grad_norm_(valueNet->parameters(), 0.5f);
  			
- 			if (autocast)
+ 
+-			if (autocast) {
++			if (autocast && useGradScaler) {
+ 				if (trainPolicy)
+ 					gradScaler->step(*policyOptimizer);
+ 				if (trainCritic)
+@@ -293,8 +308,10 @@ void RLGPC::PPOLearner::Learn(ExperienceBuffer* expBuffer, Report& report) {
+ 			if (valueNetHalf)
+ 				_CopyModelParamsHalf(valueNet, valueNetHalf);
+ 			
+-			if (autocast)
++			if (autocast && useGradScaler)
  				gradScaler->update();
 +			TorchFuncs::ProfileSync(device);
 +			optimTime += optimTimer.Elapsed();
  			numIterations += 1;
  		}
  	}
-@@ -316,11 +328,13 @@ void RLGPC::PPOLearner::Learn(ExperienceBuffer* expBuffer, Report& report) {
+@@ -316,11 +333,13 @@ void RLGPC::PPOLearner::Learn(ExperienceBuffer* expBuffer, Report& report) {
  	}
  
  	// Compute magnitude of updates made to the policy and value estimator
@@ -123,7 +160,7 @@ index 00a599a..e7ef011 100644
  
  	float totalTime = totalTimer.Elapsed();
  
-@@ -336,6 +350,12 @@ void RLGPC::PPOLearner::Learn(ExperienceBuffer* expBuffer, Report& report) {
+@@ -336,6 +355,12 @@ void RLGPC::PPOLearner::Learn(ExperienceBuffer* expBuffer, Report& report) {
  	report["Policy Update Magnitude"] = policyUpdateMagnitude;
  	report["Value Function Update Magnitude"] = criticUpdateMagnitude;
  	report["PPO Learn Time"] = totalTimer.Elapsed();
