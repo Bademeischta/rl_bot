@@ -31,10 +31,18 @@ jedem Build auf. Prüfen ohne anzuwenden: `tools\apply_patches.ps1 -Check`. Von 
 ```bash
 git -C third_party/RLGymPPO_CPP apply ../../third_party/patches/rlgympppo_cpp_gcc_compat.patch
 git -C third_party/RLGymPPO_CPP apply ../../third_party/patches/rlgympppo_cpp_truncation.patch
+git -C third_party/RLGymPPO_CPP apply ../../third_party/patches/rlgympppo_cpp_speed.patch
 ```
+
+Die Patches sind ein Stapel: `rlgympppo_cpp_speed.patch` ändert Zeilen, die der Truncation-Patch
+eingeführt hat. `apply_patches.ps1` bestimmt den Stand deshalb von hinten (lässt sich Patch k
+umkehren, sind er und alle davor angewendet). Eigene Änderungen am Klon werden mit
+`python tools/export_upstream_patch.py` in den letzten Patch geschrieben (Diff gegen gepinnten
+Commit plus die Patches davor).
 
 | Patch | Betrifft | Zweck |
 |---|---|---|
 | `rlgympppo_cpp_gcc_compat.patch` | `Util/Timer.h`, `Util/gradscaler.hpp` | GCC-13-Kompatibilität (Linux-CPU-Build der Tests in der Cloud-Session); auf MSVC ohne Wirkung |
 | `rlgympppo_cpp_truncation.patch` | `TerminalCondition.h`, `Match.{h,cpp}`, `Gym.{h,cpp}`, `GameInst.cpp`, `ThreadAgent.cpp`, `ThreadAgentManager.{h,cpp}`, `TorchFuncs.{h,cpp}`, `Learner.{h,cpp}` | **Audit K1:** Zeitlimits als Truncation. `TerminalCondition::IsTruncation()`, `Gym::StepResult::truncated`, `ThreadAgent` speichert `done = done && !truncated`; `GameInst::Step` sichert die letzte Beobachtung einer beendeten Episode in `StepResult::finalObs`, bevor `obs` die Reset-Beobachtung wird, und `ThreadAgent` legt sie in `nextStates` ab (Review R4; die erste Fassung las hier die Reset-Beobachtung, AUDIT.md §7.2b); `ComputeGAE` bootstrappt an jedem `truncated`-Step mit `V(nextStates[step])` (behebt nebenbei das Bootstrapping an den Grenzen verketteter Trajektorien, AUDIT.md §7.2). Definiert `RLGSC_HAS_TRUNCATION` und `RLGSC_HAS_FINAL_OBS`; das Wurzel-CMake bricht ab, wenn der Patch fehlt oder in der alten Fassung angewendet ist (`tools\apply_patches.ps1 -Reset`). Report-Größen `Truncated Steps`, `Timeout Truncations`, `Trunc Bootstrap Reset Share`, `Trunc Bootstrap V Final/Reset/Diff`; Diagnose-Hook `Learner::truncationDiagnosticsCallback` für Tests |
+| `rlgympppo_cpp_speed.patch` | `ThreadAgent.{h,cpp}`, `ThreadAgentManager.{h,cpp}`, `Learner.cpp`, `PPOLearner.cpp`, `TorchFuncs.{h,cpp}` (wächst mit AUDIT.md §9) | **Geschwindigkeit, AUDIT.md §9.** G1: Zeitaufschlüsselung je Iteration in `metrics.csv` (`Infer Call Time`, `Traj Append Time`, `Obs Tensor Time`, `Collect Concat Time`, `Add Experience Time` mit `Exp *`, `PPO Shuffle/Minibatch/Optim/Param Copy Time`, `Empty Cache Time`, `Prev * Time`); `RLBOT_PROFILE_SYNC=1` wartet an den Phasengrenzen auf die GPU (nur zum Profilen) |
 | `libtorch_cuda_cmake_no_enable_language.patch` | libtorch cu128 `Caffe2/public/cuda.cmake` (**nicht** RLGymPPO_CPP) | nvcc 12.8 akzeptiert MSVC 14.51 nicht; `-DRLBOT_SKIP_CUDA_LANGUAGE=ON` überspringt `enable_language(CUDA)`. Anwenden mit `tools\patch_libtorch_cuda.ps1` |

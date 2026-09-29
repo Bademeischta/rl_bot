@@ -1,0 +1,387 @@
+diff --git a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/PPO/PPOLearner.cpp b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/PPO/PPOLearner.cpp
+index 00a599a..e7ef011 100644
+--- a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/PPO/PPOLearner.cpp
++++ b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/PPO/PPOLearner.cpp
+@@ -93,8 +93,11 @@ void RLGPC::PPOLearner::Learn(ExperienceBuffer* expBuffer, Report& report) {
+ 	FList clipFractions = {};
+ 
+ 	// Save parameters first
++	Timer paramCopyTimer = {}; // RLbot patch (speed, G1)
+ 	auto policyBefore = _CopyParams(policy);
+ 	auto criticBefore = _CopyParams(valueNet);
++	double paramCopyTime = paramCopyTimer.Elapsed();
++	double shuffleTime = 0, minibatchTime = 0, optimTime = 0;
+ 
+ 	bool trainPolicy = config.policyLR != 0;
+ 	bool trainCritic = config.criticLR != 0;
+@@ -103,7 +106,10 @@ void RLGPC::PPOLearner::Learn(ExperienceBuffer* expBuffer, Report& report) {
+ 	for (int epoch = 0; epoch < config.epochs; epoch++) {
+ 
+ 		// Get randomly-ordered timesteps for PPO
++		Timer shuffleTimer = {};
+ 		auto batches = expBuffer->GetAllBatchesShuffled(config.batchSize);
++		TorchFuncs::ProfileSync(device);
++		shuffleTime += shuffleTimer.Elapsed();
+ 
+ 		for (auto& batch : batches) {
+ 			auto batchActs = batch.actions;
+@@ -256,12 +262,16 @@ void RLGPC::PPOLearner::Learn(ExperienceBuffer* expBuffer, Report& report) {
+ 					RG_SLEEP(1);
+ 
+ 			} else {
++				Timer minibatchTimer = {};
+ 				for (int mbs = 0; mbs < config.batchSize; mbs += config.miniBatchSize) {
+ 					int start = mbs;
+ 					int stop = start + config.miniBatchSize;
+ 					fnRunMinibatch(start, stop);
+ 				}
++				TorchFuncs::ProfileSync(device);
++				minibatchTime += minibatchTimer.Elapsed();
+ 			}
++			Timer optimTimer = {};
+ 
+ 			if (config.measureGradientNoise) {
+ 				if (trainPolicy)
+@@ -295,6 +305,8 @@ void RLGPC::PPOLearner::Learn(ExperienceBuffer* expBuffer, Report& report) {
+ 			
+ 			if (autocast)
+ 				gradScaler->update();
++			TorchFuncs::ProfileSync(device);
++			optimTime += optimTimer.Elapsed();
+ 			numIterations += 1;
+ 		}
+ 	}
+@@ -316,11 +328,13 @@ void RLGPC::PPOLearner::Learn(ExperienceBuffer* expBuffer, Report& report) {
+ 	}
+ 
+ 	// Compute magnitude of updates made to the policy and value estimator
++	paramCopyTimer.Reset();
+ 	auto policyAfter = _CopyParams(policy);
+ 	auto criticAfter = _CopyParams(valueNet);
+ 
+ 	float policyUpdateMagnitude = (policyBefore - policyAfter).norm().item<float>();
+ 	float criticUpdateMagnitude = (criticBefore - criticAfter).norm().item<float>();
++	paramCopyTime += paramCopyTimer.Elapsed();
+ 
+ 	float totalTime = totalTimer.Elapsed();
+ 
+@@ -336,6 +350,12 @@ void RLGPC::PPOLearner::Learn(ExperienceBuffer* expBuffer, Report& report) {
+ 	report["Policy Update Magnitude"] = policyUpdateMagnitude;
+ 	report["Value Function Update Magnitude"] = criticUpdateMagnitude;
+ 	report["PPO Learn Time"] = totalTimer.Elapsed();
++	// RLbot patch (speed, G1): breakdown of the PPO learn time (with RLBOT_PROFILE_SYNC=1 the GPU
++	// work is attributed to the phase that queued it; otherwise it lands where the CPU waits)
++	report["PPO Shuffle Time"] = shuffleTime;
++	report["PPO Minibatch Time"] = minibatchTime;
++	report["PPO Optim Time"] = optimTime;
++	report["PPO Param Copy Time"] = paramCopyTime;
+ 
+ 	if (config.measureGradientNoise) {
+ 		if (noiseTrackerPolicy->lastNoiseScale != 0)
+diff --git a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/ThreadAgent.cpp b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/ThreadAgent.cpp
+index fd1aaaa..5e50308 100644
+--- a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/ThreadAgent.cpp
++++ b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/ThreadAgent.cpp
+@@ -61,20 +61,24 @@ void _RunFunc(ThreadAgent* ta) {
+ 			stepTimer.Reset();
+ 
+ 		// Don't run if we reached our step limit
++		Timer waitTimer = {};
+ 		while (ta->stepsCollected > ta->maxCollect)
+ 			THREAD_WAIT();
+ 
+ 		while (mgr->disableCollection)
+ 			THREAD_WAIT();
++		ta->times.waitTime += waitTimer.Elapsed();
+ 
+ 		// Move our current OBS tensor to the device we run the policy on
+ 		// This conversion time is not counted as a part of policy inference time
++		Timer obsToDeviceTimer = {};
+ 		torch::Tensor curObsTensorDevice;
+ 		if (halfPrec) {
+ 			curObsTensorDevice = curObsTensor.to(RG_HALFPERC_TYPE).to(device, true);
+ 		} else {
+ 			curObsTensorDevice = curObsTensor.to(device, true);
+ 		}
++		ta->times.obsToDeviceTime += obsToDeviceTimer.Elapsed();
+ 
+ 		// Infer the policy to get actions for all our agents in all our games
+ 		Timer policyInferTimer = {};
+@@ -125,7 +129,9 @@ void _RunFunc(ThreadAgent* ta) {
+ 		ta->times.envStepTime += envStepTime;
+ 
+ 		// Update our tensor storing the next observation after the step, from each gym
++		Timer obsTensorTimer = {};
+ 		torch::Tensor nextObsTensor = MakeGamesOBSTensor(games);
++		ta->times.obsTensorTime += obsTensorTimer.Elapsed();
+ 
+ 		if (!render) {
+ 			// Steps complete, add all timestep data to our trajectories, for each game
+diff --git a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/ThreadAgent.h b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/ThreadAgent.h
+index 48634cb..b3bd8d9 100644
+--- a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/ThreadAgent.h
++++ b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/ThreadAgent.h
+@@ -21,14 +21,18 @@ namespace RLGPC {
+ 			double
+ 				envStepTime = 0,
+ 				policyInferTime = 0,
+-				trajAppendTime = 0;
++				trajAppendTime = 0,
++				// RLbot patch (speed, G1): finer breakdown of the collection loop per thread
++				obsTensorTime = 0,   // building the obs tensor from the games (MakeGamesOBSTensor)
++				obsToDeviceTime = 0, // copying the obs tensor to the inference device
++				waitTime = 0;        // waiting (step limit reached or collection disabled)
+ 
+ 			double* begin() {
+ 				return &envStepTime;
+ 			}
+ 
+ 			double* end() {
+-				return &trajAppendTime + 1;
++				return &waitTime + 1;
+ 			}
+ 		};
+ 		Times times = {}; // TODO: Convert to use Report instead
+diff --git a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/ThreadAgentManager.cpp b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/ThreadAgentManager.cpp
+index 0be420a..46c5ed2 100644
+--- a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/ThreadAgentManager.cpp
++++ b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/ThreadAgentManager.cpp
+@@ -33,8 +33,9 @@ RLGPC::GameTrajectory RLGPC::ThreadAgentManager::CollectTimesteps(uint64_t amoun
+ 	}
+ 
+ 	// Our agents have collected the timesteps we need
+-	 
++
+ 	RG_LOG("Concatenating timesteps...");
++	Timer concatTimer = {};
+ 
+ 	GameTrajectory result = {};
+ 	size_t totalTimesteps = 0;
+@@ -93,6 +94,7 @@ RLGPC::GameTrajectory RLGPC::ThreadAgentManager::CollectTimesteps(uint64_t amoun
+ 	if (result.size != totalTimesteps)
+ 		RG_ERR_CLOSE("ThreadAgentManager::CollectTimesteps(): Agent timestep concatenation failed (" << result.size << " != " << totalTimesteps << ")");
+ 
++	lastConcatTime = concatTimer.Elapsed();
+ 	lastIterationTime = iterationTimer.Elapsed();
+ 	iterationTimer.Reset();
+ 	return result;
+@@ -123,6 +125,14 @@ void RLGPC::ThreadAgentManager::GetMetrics(Report& report) {
+ 	// NOTE: Because of non-blocking mode, a good portion of policy inference time is waited when appending trajectories
+ 	//	This means the trajectory append time is not correct at all, so this is a temporary solution
+ 	report["Policy Infer Time"] = avgTimes.policyInferTime + avgTimes.trajAppendTime;
++
++	// RLbot patch (speed, G1): the parts separately (per thread, averaged over the threads).
++	// GetAction() ends with .cpu(), i.e. waits for the GPU, so "Infer Call Time" is complete.
++	report["Infer Call Time"] = avgTimes.policyInferTime;
++	report["Traj Append Time"] = avgTimes.trajAppendTime;
++	report["Obs Tensor Time"] = avgTimes.obsTensorTime;
++	report["Obs To Device Time"] = avgTimes.obsToDeviceTime;
++	report["Agent Wait Time"] = avgTimes.waitTime;
+ }
+ 
+ void RLGPC::ThreadAgentManager::ResetMetrics() {
+diff --git a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/ThreadAgentManager.h b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/ThreadAgentManager.h
+index 99709d0..658f491 100644
+--- a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/ThreadAgentManager.h
++++ b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Threading/ThreadAgentManager.h
+@@ -28,6 +28,7 @@ namespace RLGPC {
+ 
+ 		Timer iterationTimer = {};
+ 		double lastIterationTime = 0;
++		double lastConcatTime = 0; // RLbot patch (speed, G1): merging the trajectories in CollectTimesteps
+ 		WelfordRunningStat obsStats;
+ 
+ 		// RLbot patch (truncation, review R4): environment truncations (timeouts, not block
+diff --git a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Util/TorchFuncs.cpp b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Util/TorchFuncs.cpp
+index 4e20560..9565d4b 100644
+--- a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Util/TorchFuncs.cpp
++++ b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Util/TorchFuncs.cpp
+@@ -1,6 +1,17 @@
+ #include "TorchFuncs.h"
+ 
+ #include <torch/csrc/api/include/torch/serialize.h>
++#include <torch/cuda.h>
++#include <cstdlib>
++
++void RLGPC::TorchFuncs::ProfileSync(torch::Device device) {
++	static const bool enabled = [] {
++		const char* v = std::getenv("RLBOT_PROFILE_SYNC");
++		return v && v[0] == '1';
++	}();
++	if (enabled && device.is_cuda())
++		torch::cuda::synchronize();
++}
+ 
+ void RLGPC::TorchFuncs::ComputeGAE(
+ 	const FList& rews, const FList& dones, const FList& truncated, const FList& values, 
+diff --git a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Util/TorchFuncs.h b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Util/TorchFuncs.h
+index e0b1c88..3f09499 100644
+--- a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Util/TorchFuncs.h
++++ b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/Util/TorchFuncs.h
+@@ -19,5 +19,10 @@ namespace RLGPC {
+ 
+ 		// torch::cat({a, b}, 0) but returns b.clone() if a is undefined
+ 		torch::Tensor ConcatSafe(torch::Tensor a, torch::Tensor b);
++
++		// RLbot patch (speed, G1): with the environment variable RLBOT_PROFILE_SYNC=1, waits for
++		// the GPU at the phase boundaries of an iteration, so that the phase timers contain the
++		// GPU work queued in the phase. Profiling only (the extra waits cost speed); no-op otherwise.
++		void ProfileSync(torch::Device device);
+ 	}
+ }
+\ No newline at end of file
+diff --git a/RLGymPPO_CPP/src/public/RLGymPPO_CPP/Learner.cpp b/RLGymPPO_CPP/src/public/RLGymPPO_CPP/Learner.cpp
+index fca7dc3..133aa35 100644
+--- a/RLGymPPO_CPP/src/public/RLGymPPO_CPP/Learner.cpp
++++ b/RLGymPPO_CPP/src/public/RLGymPPO_CPP/Learner.cpp
+@@ -6,6 +6,7 @@
+ #include <RLGymPPO_CPP/PPO/PPOLearner.h>
+ #include <RLGymPPO_CPP/PPO/ExperienceBuffer.h>
+ #include <RLGymPPO_CPP/Threading/ThreadAgentManager.h>
++#include <RLGymPPO_CPP/Util/TorchFuncs.h>
+ 
+ #include <torch/cuda.h>
+ #include "../libsrc/json/nlohmann/json.hpp"
+@@ -450,14 +451,23 @@ void RLGPC::Learner::Learn() {
+ 	RG_LOG("\tBeginning learning loop:");
+ 	int64_t tsSinceSave = 0;
+ 	Timer epochTimer = {};
++	// RLbot patch (speed, G1): time of the previous iteration's tail after the epoch timer was
++	// reset (skill eval, metrics, iteration callback, printing, saving); it is part of this
++	// iteration's collection time
++	double prevTailTime = 0, prevSkillTime = 0, prevCallbackTime = 0, prevSaveTime = 0;
+ 	while (totalTimesteps < config.timestepLimit || config.timestepLimit == 0) {
+ 		Report report = {};
++		report["Prev Tail Time"] = prevTailTime;
++		report["Prev Skill Eval Time"] = prevSkillTime;
++		report["Prev Iteration Callback Time"] = prevCallbackTime;
++		report["Prev Save Time"] = prevSaveTime;
+ 
+ 		agentMgr->SetStepCallback(stepCallback);
+ 
+ 		// Collect the desired timesteps from our agents
+ 		GameTrajectory timesteps = agentMgr->CollectTimesteps(config.timestepsPerIteration);
+ 		double relCollectionTime = epochTimer.Elapsed();
++		report["Collect Concat Time"] = agentMgr->lastConcatTime;
+ 		uint64_t timestepsCollected = timesteps.size; // Use actual size instead of target size
+ 
+ 		totalTimesteps += timestepsCollected;
+@@ -475,11 +485,14 @@ void RLGPC::Learner::Learn() {
+ 			agentMgr->disableCollection = true;
+ 
+ 		// Add it to our experience buffer, also computing GAE in the process
++		Timer addExpTimer = {};
+ 		try {
+ 			AddNewExperience(timesteps, report);
+ 		} catch (std::exception& e) {
+ 			RG_ERR_CLOSE("Exception during Learner::AddNewExperience(): " << e.what());
+ 		}
++		TorchFuncs::ProfileSync(device);
++		report["Add Experience Time"] = addExpTimer.Elapsed();
+ 
+ 		Timer ppoLearnTimer = {};
+ 
+@@ -514,10 +527,12 @@ void RLGPC::Learner::Learn() {
+ 		}
+ 
+ 		// Free CUDA cache
++		Timer emptyCacheTimer = {};
+ #ifdef RG_CUDA_SUPPORT
+ 		if (ppo->device.is_cuda())
+ 			c10::cuda::CUDACachingAllocator::emptyCache();
+ #endif
++		report["Empty Cache Time"] = emptyCacheTimer.Elapsed();
+ 
+ 		double ppoLearnTime = ppoLearnTimer.Elapsed();
+ 		double relEpochTime = epochTimer.Elapsed();
+@@ -525,6 +540,8 @@ void RLGPC::Learner::Learn() {
+ 
+ 		double consumptionTime = relEpochTime - relCollectionTime;
+ 
++		Timer tailTimer = {};
++		Timer skillTimer = {};
+ 		if (skillTracker) {
+ 			RG_LOG("Running skill eval game(s)...");
+ 
+@@ -538,6 +555,8 @@ void RLGPC::Learner::Learn() {
+ 			}
+ 		}
+ 
++		prevSkillTime = skillTimer.Elapsed();
++
+ 		// Get all metrics from agent manager
+ 		agentMgr->GetMetrics(report);
+ 
+@@ -571,10 +590,12 @@ void RLGPC::Learner::Learn() {
+ 		}
+ 
+ 		// Call iteration callback
++		Timer callbackTimer = {};
+ 		if (iterationCallback) {
+ 			RG_LOG("Calling iteration callback...");
+ 			iterationCallback(this, report);
+ 		}
++		prevCallbackTime = callbackTimer.Elapsed();
+ 
+ 		{ // Print results
+ 			constexpr const char* DIVIDER = "======================";
+@@ -591,14 +612,17 @@ void RLGPC::Learner::Learn() {
+ 			metricSender->Send(report);
+ 
+ 		// Save if needed
++		Timer saveTimer = {};
+ 		tsSinceSave += timestepsCollected;
+ 		if (tsSinceSave > config.timestepsPerSave && !config.checkpointSaveFolder.empty()) {
+ 			Save();
+ 			tsSinceSave = 0;
+ 		}
++		prevSaveTime = saveTimer.Elapsed();
+ 
+ 		// Reset everything
+ 		agentMgr->ResetMetrics();
++		prevTailTime = tailTimer.Elapsed();
+ 	}
+ 	
+ 	RG_LOG("Learner: Timestep limit of " << config.timestepLimit << " reached, stopping");
+@@ -618,6 +642,7 @@ void RLGPC::Learner::AddNewExperience(GameTrajectory& gameTraj, Report& report)
+ 	
+ 	// Construct input to the value function estimator that includes the final state (which an action was not taken in)
+ 	size_t valPredCount = count + 1;
++	Timer expPartTimer = {}; // RLbot patch (speed, G1)
+ 
+ #if 0 // Does everything in one go, but can use too much VRAM
+ 	auto valInput = 
+@@ -642,6 +667,7 @@ void RLGPC::Learner::AddNewExperience(GameTrajectory& gameTraj, Report& report)
+ #endif
+ 
+ 	FList valPreds = TENSOR_TO_FLIST(valPredsTensor);
++	report["Exp Value Pred Time"] = expPartTimer.Elapsed();
+ 
+ 	// Free CUDA cache
+ #ifdef RG_CUDA_SUPPORT
+@@ -650,6 +676,7 @@ void RLGPC::Learner::AddNewExperience(GameTrajectory& gameTraj, Report& report)
+ #endif
+ 	
+ 	float retStd = (config.standardizeReturns ? returnStats.GetSTD()[0] : 1);
++	expPartTimer.Reset();
+ 
+ 	// RLbot patch (truncation): value of the next state at every truncated step, so that
+ 	// timeouts (and the boundaries between concatenated game trajectories) bootstrap from the
+@@ -765,6 +792,8 @@ void RLGPC::Learner::AddNewExperience(GameTrajectory& gameTraj, Report& report)
+ 		int numToIncrement = RS_MIN(config.maxReturnsPerStatsInc, returns.size());
+ 		returnStats.Increment(returns, numToIncrement);
+ 	}
++	report["Exp GAE Time"] = expPartTimer.Elapsed();
++	expPartTimer.Reset();
+ 
+ 	auto expTensors = ExperienceTensors{
+ 			trajData.states,
+@@ -785,6 +814,8 @@ void RLGPC::Learner::AddNewExperience(GameTrajectory& gameTraj, Report& report)
+ 	expBuffer->SubmitExperience(
+ 		expTensors
+ 	);
++	TorchFuncs::ProfileSync(ppo->device);
++	report["Exp Submit Time"] = expPartTimer.Elapsed();
+ }
+ 
+ void RLGPC::Learner::UpdateLearningRates(float policyLR, float criticLR) {

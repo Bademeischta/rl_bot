@@ -17,7 +17,8 @@ PATCH_DIR = ROOT / "third_party" / "patches"
 UPSTREAM = ROOT / "third_party" / "RLGymPPO_CPP"
 PINNED = "ee4cc56fc8e43758cc898fdba92a9173a94e52f2"
 # Reihenfolge wie in tools/apply_patches.ps1
-UPSTREAM_PATCHES = ["rlgympppo_cpp_gcc_compat.patch", "rlgympppo_cpp_truncation.patch"]
+UPSTREAM_PATCHES = ["rlgympppo_cpp_gcc_compat.patch", "rlgympppo_cpp_truncation.patch",
+                    "rlgympppo_cpp_speed.patch"]
 
 needs_git = pytest.mark.skipif(shutil.which("git") is None, reason="git nicht gefunden")
 
@@ -57,10 +58,13 @@ def test_patches_apply_to_a_fresh_checkout_of_the_pinned_commit(tmp_path):
         assert r.returncode == 0, f"{name}: {r.stderr}"
         r = _git("apply", patch, cwd=clone)
         assert r.returncode == 0, f"{name}: {r.stderr}"
-    # Idempotenz-Erkennung von apply_patches.ps1: angewendete Patches lassen sich umkehren
-    for name in UPSTREAM_PATCHES:
+    # Idempotenz-Erkennung von apply_patches.ps1: Die Patches sind ein Stapel (der Speed-Patch
+    # ändert Zeilen des Truncation-Patches), also lassen sie sich von hinten nach vorn umkehren
+    for name in reversed(UPSTREAM_PATCHES):
         r = _git("apply", "--check", "--reverse", str(PATCH_DIR / name), cwd=clone)
         assert r.returncode == 0, f"{name}: {r.stderr}"
+        assert _git("apply", "--reverse", str(PATCH_DIR / name), cwd=clone).returncode == 0
+    assert _git("status", "--porcelain", "--untracked-files=no", cwd=clone).stdout == ""
 
 
 # --- B2 / R2: native Programme unter Windows PowerShell 5.1 ----------------------------------
@@ -120,17 +124,44 @@ def test_apply_patches_ps1_runs_under_ps51_on_a_fresh_checkout(tmp_path):
     assert _git("checkout", "-q", PINNED, cwd=clone).returncode == 0
     script = str(ROOT / "tools" / "apply_patches.ps1")
 
+    n = len(UPSTREAM_PATCHES)
     r = _ps("-File", script, "-Check", "-Repo", str(clone))
     assert r.returncode == 0, r.stdout + r.stderr
-    assert r.stdout.count("[anwendbar, nicht angewendet]") == 2, r.stdout
+    assert r.stdout.count("[anwendbar, nicht angewendet]") == n, r.stdout
+    # -Check prüft gestapelt an einer Kopie, der Klon bleibt unverändert
+    assert _git("status", "--porcelain", "--untracked-files=no", cwd=clone).stdout == ""
 
     r = _ps("-File", script, "-Repo", str(clone))
     assert r.returncode == 0, r.stdout + r.stderr
-    assert r.stdout.count("[angewendet]") == 2, r.stdout
+    assert r.stdout.count("[angewendet]") == n, r.stdout
 
     r = _ps("-File", script, "-Repo", str(clone))
     assert r.returncode == 0, r.stdout + r.stderr
-    assert r.stdout.count("[bereits angewendet]") == 2, r.stdout
+    assert r.stdout.count("[bereits angewendet]") == n, r.stdout
+
+
+@needs_ps51
+@needs_git
+@pytest.mark.skipif(not (UPSTREAM / ".git").exists(), reason="third_party/RLGymPPO_CPP fehlt")
+def test_apply_patches_ps1_completes_a_partially_applied_stack(tmp_path):
+    """Klon mit gcc- und Truncation-Patch (Stand vor G1): nur der Speed-Patch fehlt und wird
+    angewendet; -Check meldet genau ihn."""
+    clone = tmp_path / "upstream"
+    assert _git("clone", "-q", "--shared", "--no-checkout", str(UPSTREAM), str(clone)).returncode == 0
+    assert _git("checkout", "-q", PINNED, cwd=clone).returncode == 0
+    for name in UPSTREAM_PATCHES[:-1]:
+        assert _git("apply", str(PATCH_DIR / name), cwd=clone).returncode == 0
+    script = str(ROOT / "tools" / "apply_patches.ps1")
+
+    r = _ps("-File", script, "-Check", "-Repo", str(clone))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert r.stdout.count("[bereits angewendet]") == len(UPSTREAM_PATCHES) - 1, r.stdout
+    assert f"[anwendbar, nicht angewendet] {UPSTREAM_PATCHES[-1]}" in r.stdout
+
+    r = _ps("-File", script, "-Repo", str(clone))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert f"[angewendet] {UPSTREAM_PATCHES[-1]}" in r.stdout
+    assert _git("apply", "--check", "--reverse", str(PATCH_DIR / UPSTREAM_PATCHES[-1]), cwd=clone).returncode == 0
 
 
 @needs_ps51
@@ -220,7 +251,7 @@ def test_apply_patches_reset_replaces_the_first_truncation_patch(tmp_path):
 
     r = _ps("-File", script, "-Reset", "-Repo", str(clone))
     assert r.returncode == 0, r.stdout + r.stderr
-    assert r.stdout.count("[angewendet]") == 2, r.stdout
+    assert r.stdout.count("[angewendet]") == len(UPSTREAM_PATCHES), r.stdout
     gym_h = (clone / "RLGymPPO_CPP" / "RLGymSim_CPP" / "src" / "RLGymSim_CPP" / "Gym.h").read_text(encoding="utf-8")
     assert "RLGSC_HAS_FINAL_OBS" in gym_h
 

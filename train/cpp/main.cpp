@@ -17,6 +17,7 @@
 
 #include <RLGymPPO_CPP/Learner.h>
 
+#include <atomic>
 #include <chrono>
 #include <ctime>
 #include <filesystem>
@@ -39,6 +40,15 @@ static RLbot::MetricsCSVWriter g_metricsCSV;
 
 static RLbot::EpisodeLengthTracker g_episodeLengths;
 static int g_tickSkip = 8;
+static int g_numThreads = 1;
+
+// Zeit im Step-Callback (Teil von "Env Step Time"), Summe über alle Sammel-Threads in ns.
+// In metrics.csv je Thread gemittelt wie die Upstream-Zeiten (Geschwindigkeit, G1).
+static std::atomic<int64_t> g_stepCallbackNanos{ 0 }, g_playStatsNanos{ 0 };
+
+static int64_t NanosSince(std::chrono::steady_clock::time_point t0) {
+	return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t0).count();
+}
 
 // Wird aus vielen Threads gleichzeitig aufgerufen: nur die Argumente und den
 // (intern gesperrten) Längen-Tracker anfassen.
@@ -46,12 +56,15 @@ static void OnStep(GameInst* gameInst, const Gym::StepResult& stepResult, Report
 	// Skill-Eval-Spiele haben eigene Reports, die nie ausgelesen werden: nicht mitzählen.
 	if (gameInst->isEval)
 		return;
+	auto t0 = std::chrono::steady_clock::now();
 
 	RLbot::AccumStepMetrics(stepResult.state, gameMetrics);
 	RLbot::AccumRawReward(gameInst->match, gameMetrics);
 	// Spielanalyse: Anstoß, Angriffsdrittel, Luftkontakte, Team (env/cpp/PlayStats.h)
+	auto tPlay = std::chrono::steady_clock::now();
 	auto play = RLbot::PlayTrackerFor(gameInst, g_tickSkip).Step(stepResult.state, stepResult.done);
 	RLbot::AccumPlayMetrics(play, gameInst->match->teamSize, g_tickSkip, gameMetrics);
+	g_playStatsNanos += NanosSince(tPlay);
 
 	if (stepResult.done) {
 		// GameInst::Step erhöht totalSteps erst nach dem Callback, der aktuelle Step zählt also mit.
@@ -63,6 +76,7 @@ static void OnStep(GameInst* gameInst, const Gym::StepResult& stepResult, Report
 		auto end = RLbot::ClassifyEpisodeEnd(stepResult.state, gameInst->match, truncated);
 		RLbot::AccumEpisodeEnd(end, length, RLbot::CurrentSceneName(gameInst->match), gameMetrics);
 	}
+	g_stepCallbackNanos += NanosSince(t0);
 }
 
 static std::filesystem::path g_stopFile;
@@ -70,6 +84,8 @@ static bool g_stopRequested = false;
 
 static void OnIteration(Learner* learner, Report& allMetrics) {
 	RLbot::AggregateGameMetrics(learner->GetAllGameMetrics(), allMetrics);
+	allMetrics["Step Callback Time"] = g_stepCallbackNanos.exchange(0) * 1e-9 / g_numThreads;
+	allMetrics["Play Stats Time"] = g_playStatsNanos.exchange(0) * 1e-9 / g_numThreads;
 	g_metricsCSV.Append(allMetrics);
 
 	// Stop-Datei (R15): Die Learn()-Schleife prüft timestepLimit vor jeder Iteration, also endet
@@ -142,6 +158,7 @@ int main(int argc, char** argv) {
 
 	RocketSim::Init(meshDir);
 	g_tickSkip = cfg.tickSkip;
+	g_numThreads = cfg.numThreads > 0 ? cfg.numThreads : 1;
 
 	RLbot::EnvFactory factory(cfg);
 	g_factory = &factory;
