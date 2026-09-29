@@ -68,6 +68,14 @@ struct TrainConfig {
 	// Host-zu-GPU-Kopie je Minibatch, Shuffle-Gather auf der GPU; gleiche Ergebnisse, ~0,65 GB VRAM
 	// mehr. Default false = bisheriges Verhalten.
 	bool expBufferOnDevice = false;
+	// Sammeln während PPO lernt (Geschwindigkeit G5): mit collection_during_learn auf der GPU
+	// inferieren die Sammel-Threads mit einer eigenen Kopie der Policy auf eigenen CUDA-Streams
+	// weiter, statt zu warten. Die dabei gesammelten Schritte stammen von der Policy vor dem
+	// Update (eine Iteration älter). Default false = bisheriges Verhalten.
+	bool inferDuringLearn = false;
+	// Sammel-Limit der Threads als Vielfaches von timesteps_per_iteration (Upstream 1,5). Begrenzt
+	// mit collection_during_learn, wie weit die Threads vorauslaufen, also die Iterationsgröße.
+	float collectLimitFactor = 1.5f;
 	int64_t ppoBatchSize = 100000;
 	int64_t ppoMiniBatchSize = 50000;
 	float entCoef = 0.01f;

@@ -1,7 +1,5 @@
 // Geschwindigkeit (AUDIT.md §9): Optimierungen, die das Lernen nicht verändern dürfen, werden hier
 // über den echten Pfad gegen das alte Verhalten auf identische Ergebnisse geprüft.
-#include "test_util.h"
-
 #include "train/cpp/Config.h"
 #include "train/cpp/EnvFactory.h"
 
@@ -16,6 +14,13 @@
 #include <fstream>
 #include <memory>
 #include <thread>
+
+// Nach den torch-Headern: c10 definiert ein eigenes CHECK (bricht den Prozess ab); hier gilt das
+// der Test-Bibliothek (Fehlschlag als Ausnahme, die übrigen Tests laufen weiter)
+#undef CHECK
+#undef CHECK_EQ
+#undef CHECK_GT
+#include "test_util.h"
 
 using namespace RLbot;
 
@@ -213,4 +218,92 @@ TEST(G4_Config_exp_buffer_on_device_Default_aus_und_kommt_im_Learner_an) {
 	CHECK(MakeLearnerConfig(cfg).expBufferOnDevice);
 	// config_used.json trägt den Wert und ist wieder ladbar (R7)
 	CHECK(LoadSpeedConfig(cfg.ToJSONString()).expBufferOnDevice);
+}
+
+// G5: Sammeln während des PPO-Lernens (collection_during_learn + infer_during_learn). Die Agenten
+// inferieren mit einer eigenen Kopie der Policy auf eigenen CUDA-Streams und sammeln weiter,
+// während PPO lernt; danach bekommt die Kopie die neuen Gewichte. Echter Learn()-Lauf auf der GPU.
+TEST(G5_Agenten_sammeln_waehrend_PPO_lernt_mit_eigener_Policy_Kopie) {
+	if (!g_arenaReady || !torch::cuda::is_available()) return;
+	TrainConfig cfg = SpeedTestConfig();
+	EnvFactory factory(cfg);
+	RLGPC::LearnerConfig lc = SmallLearner(cfg);
+	lc.deviceType = RLGPC::LearnerDeviceType::GPU_CUDA;
+	lc.ppo.policyLayerSizes = { 256, 256 };
+	lc.ppo.criticLayerSizes = { 256, 256 };
+	lc.ppo.epochs = 4;                  // Lernphase lang genug, dass währenddessen gesammelt wird
+	lc.collectionDuringLearn = true;
+	lc.inferDuringLearn = true;
+	lc.collectLimitFactor = 1.1f;
+	lc.timestepLimit = 600 * 4;
+
+	std::vector<RLGPC::Report> reports;
+	bool weightsSynced = true, separateCopy = true;
+	{
+		RLGPC::Learner learner([&]() { return factory.Create(); }, lc);
+		CHECK(learner.inferPolicy != NULL);
+		CHECK(learner.agentMgr->policy == learner.inferPolicy);   // Agenten nutzen die Kopie
+		learner.iterationCallback = [&](RLGPC::Learner* l, RLGPC::Report& r) {
+			reports.push_back(r);
+			auto a = l->ppo->policy->parameters(), b = l->inferPolicy->parameters();
+			separateCopy &= a[0].data_ptr() != b[0].data_ptr();
+			for (size_t i = 0; i < a.size(); i++)
+				weightsSynced &= torch::equal(a[i].detach().cpu(), b[i].detach().cpu());
+		};
+		learner.Learn();   // endet (G3) und hängt nicht beim Stoppen der Agenten
+	}
+	CHECK(separateCopy);
+	CHECK(weightsSynced);              // nach jeder Lernphase hat die Kopie die neuen Gewichte
+	CHECK_GT(reports.size(), 2);
+	double duringLearn = 0, collected = 0;
+	for (auto& r : reports) {
+		CHECK(r.Has("Steps Collected During Learn"));
+		duringLearn += r["Steps Collected During Learn"];
+		collected += r["Timesteps Collected"];
+		// Iterationsgröße bleibt nahe timesteps_per_iteration (Sammel-Limit 1,1)
+		CHECK(r["Timesteps Collected"] <= 600 * 1.1 + 64);
+	}
+	CHECK_GT(duringLearn, 24.0 * reports.size());   // mehr als nur ein laufender Schritt je Agent
+}
+
+// G5 Gegenstück: ohne infer_during_learn blockiert der Learner die Agenten während PPO lernt
+// (Upstream-Verhalten auf der GPU), es entsteht keine Kopie.
+TEST(G5_Ohne_Schalter_blockiert_die_GPU_Lernphase_die_Agenten_wie_bisher) {
+	if (!g_arenaReady || !torch::cuda::is_available()) return;
+	TrainConfig cfg = SpeedTestConfig();
+	EnvFactory factory(cfg);
+	RLGPC::LearnerConfig lc = SmallLearner(cfg);
+	lc.deviceType = RLGPC::LearnerDeviceType::GPU_CUDA;
+	lc.collectionDuringLearn = true;
+	lc.timestepLimit = 600 * 3;
+	std::vector<RLGPC::Report> reports;
+	{
+		RLGPC::Learner learner([&]() { return factory.Create(); }, lc);
+		CHECK(learner.inferPolicy == NULL);
+		CHECK(learner.agentMgr->policy == learner.ppo->policy);
+		learner.iterationCallback = [&](RLGPC::Learner*, RLGPC::Report& r) { reports.push_back(r); };
+		learner.Learn();
+	}
+	// Höchstens ein Schritt je Agent, der beim Sperren schon lief (2 Agenten x 3 Spiele x bis zu 4 Spieler)
+	for (auto& r : reports)
+		CHECK(r["Steps Collected During Learn"] <= 24);
+}
+
+TEST(G5_Config_infer_during_learn_Default_aus_braucht_collection_during_learn) {
+	TrainConfig def = {};
+	CHECK(!def.inferDuringLearn);
+	CHECK_NEAR(def.collectLimitFactor, 1.5, 1e-9);   // Upstream-Wert
+	CHECK(!MakeLearnerConfig(def).inferDuringLearn);
+	CHECK_NEAR(MakeLearnerConfig(def).collectLimitFactor, 1.5, 1e-9);
+	TrainConfig cfg = LoadSpeedConfig(
+		R"({"learner": {"collection_during_learn": true, "infer_during_learn": true, "collect_limit_factor": 1.1}})");
+	CHECK(MakeLearnerConfig(cfg).inferDuringLearn);
+	CHECK_NEAR(MakeLearnerConfig(cfg).collectLimitFactor, 1.1, 1e-6);
+	CHECK(LoadSpeedConfig(cfg.ToJSONString()).inferDuringLearn);
+	bool failed = false;
+	try { LoadSpeedConfig(R"({"learner": {"infer_during_learn": true}})"); } catch (const std::exception&) { failed = true; }
+	CHECK(failed);   // ohne collection_during_learn wirkungslos -> Fehler statt stiller Annahme
+	failed = false;
+	try { LoadSpeedConfig(R"({"learner": {"collect_limit_factor": 0.9}})"); } catch (const std::exception&) { failed = true; }
+	CHECK(failed);
 }

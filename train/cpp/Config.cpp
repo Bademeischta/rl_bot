@@ -127,6 +127,8 @@ TrainConfig TrainConfig::FromFile(const std::string& path) {
 			READ(l, seen, cfg.ppoEpochs, "ppo_epochs");
 			READ(l, seen, cfg.expBufferIterations, "exp_buffer_iterations");
 			READ(l, seen, cfg.expBufferOnDevice, "exp_buffer_on_device");
+			READ(l, seen, cfg.inferDuringLearn, "infer_during_learn");
+			READ(l, seen, cfg.collectLimitFactor, "collect_limit_factor");
 			READ(l, seen, cfg.ppoBatchSize, "ppo_batch_size");
 			READ(l, seen, cfg.ppoMiniBatchSize, "ppo_mini_batch_size");
 			READ(l, seen, cfg.entCoef, "ent_coef");
@@ -179,6 +181,10 @@ TrainConfig TrainConfig::FromFile(const std::string& path) {
 		RG_ERR_CLOSE("learner.extra_steps darf nicht negativ sein");
 	if (cfg.expBufferIterations < 1)
 		RG_ERR_CLOSE("learner.exp_buffer_iterations muss >= 1 sein");
+	if (cfg.inferDuringLearn && !cfg.collectionDuringLearn)
+		RG_ERR_CLOSE("learner.infer_during_learn braucht learner.collection_during_learn = true");
+	if (cfg.collectLimitFactor < 1.0f)
+		RG_ERR_CLOSE("learner.collect_limit_factor muss >= 1 sein");
 	if (cfg.states.kickoffDrill > 0 && cfg.kickoffDrillSecs <= 0)
 		RG_ERR_CLOSE("env.kickoff_drill_secs muss > 0 sein, wenn state_setters.kickoff_drill aktiv ist");
 	if (cfg.rewards.potentialShapingScale < 0)
@@ -233,6 +239,7 @@ std::string TrainConfig::ToJSONString() const {
 		{ "policy_layer_sizes", policyLayerSizes }, { "critic_layer_sizes", criticLayerSizes },
 		{ "ppo_epochs", ppoEpochs }, { "exp_buffer_iterations", expBufferIterations },
 		{ "exp_buffer_on_device", expBufferOnDevice },
+		{ "infer_during_learn", inferDuringLearn }, { "collect_limit_factor", collectLimitFactor },
 		{ "ppo_batch_size", ppoBatchSize },
 		{ "ppo_mini_batch_size", ppoMiniBatchSize }, { "ent_coef", entCoef },
 		{ "clip_range", clipRange }, { "policy_lr", policyLR }, { "critic_lr", criticLR },
@@ -267,6 +274,8 @@ RLGPC::LearnerConfig MakeLearnerConfig(const TrainConfig& cfg) {
 	lc.gaeGamma = cfg.gaeGamma;
 	lc.expBufferSize = cfg.timestepsPerIteration * cfg.expBufferIterations;
 	lc.expBufferOnDevice = cfg.expBufferOnDevice;
+	lc.inferDuringLearn = cfg.inferDuringLearn;
+	lc.collectLimitFactor = cfg.collectLimitFactor;
 
 	lc.ppo.policyLayerSizes = cfg.policyLayerSizes;
 	lc.ppo.criticLayerSizes = cfg.criticLayerSizes;
