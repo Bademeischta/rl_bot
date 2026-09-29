@@ -76,6 +76,9 @@ struct TrainConfig {
 	// Sammel-Limit der Threads als Vielfaches von timesteps_per_iteration (Upstream 1,5). Begrenzt
 	// mit collection_during_learn, wie weit die Threads vorauslaufen, also die Iterationsgröße.
 	float collectLimitFactor = 1.5f;
+	// Matrixprodukte in TF32 auf der GPU (Geschwindigkeit G6): Tensor-Kerne, 10 statt 23 Bit
+	// Mantisse, für Lernen und Inferenz. Default false = bisheriges Verhalten (FP32).
+	bool tf32 = false;
 	int64_t ppoBatchSize = 100000;
 	int64_t ppoMiniBatchSize = 50000;
 	float entCoef = 0.01f;

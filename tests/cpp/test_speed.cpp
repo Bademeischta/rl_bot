@@ -307,3 +307,37 @@ TEST(G5_Config_infer_during_learn_Default_aus_braucht_collection_during_learn) {
 	try { LoadSpeedConfig(R"({"learner": {"collect_limit_factor": 0.9}})"); } catch (const std::exception&) { failed = true; }
 	CHECK(failed);
 }
+
+// G6: TF32-Schalter. Default aus (FP32 wie bisher); mit learner.tf32 schaltet der Learner cuBLAS auf
+// TF32 um, und ein Matrixprodukt rechnet dann messbar ungenauer (Tensor-Kerne, 10 Bit Mantisse).
+TEST(G6_TF32_Default_aus_und_Schalter_wirkt_auf_cuBLAS) {
+	if (!g_arenaReady || !torch::cuda::is_available()) return;
+	TrainConfig def = {};
+	CHECK(!def.tf32);
+	CHECK(!MakeLearnerConfig(def).tf32);
+	TrainConfig cfg = LoadSpeedConfig(R"({"learner": {"tf32": true}})");
+	CHECK(MakeLearnerConfig(cfg).tf32);
+	CHECK(LoadSpeedConfig(cfg.ToJSONString()).tf32);
+
+	const bool before = at::globalContext().allowTF32CuBLAS();
+	auto opt = torch::TensorOptions().device(torch::kCUDA);
+	torch::manual_seed(5);
+	auto a = torch::randn({ 256, 512 }, opt), b = torch::randn({ 512, 512 }, opt);
+	auto exact = a.to(torch::kDouble).mm(b.to(torch::kDouble));
+	auto errOf = [&]() { return (a.mm(b).to(torch::kDouble) - exact).abs().max().item<double>(); };
+
+	at::globalContext().setAllowTF32CuBLAS(false);
+	double errFp32 = errOf();
+	{
+		TrainConfig speed = SpeedTestConfig();
+		EnvFactory factory(speed);
+		RLGPC::LearnerConfig lc = SmallLearner(speed);
+		lc.deviceType = RLGPC::LearnerDeviceType::GPU_CUDA;
+		lc.tf32 = true;
+		RLGPC::Learner learner([&]() { return factory.Create(); }, lc);
+		CHECK(at::globalContext().allowTF32CuBLAS());
+	}
+	double errTf32 = errOf();
+	at::globalContext().setAllowTF32CuBLAS(before);   // spätere Tests rechnen wieder wie vorher
+	CHECK_GT(errTf32, 10 * errFp32);
+}

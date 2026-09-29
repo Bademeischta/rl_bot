@@ -743,7 +743,7 @@ index e0b1c88..3f09499 100644
  }
 \ No newline at end of file
 diff --git a/RLGymPPO_CPP/src/public/RLGymPPO_CPP/Learner.cpp b/RLGymPPO_CPP/src/public/RLGymPPO_CPP/Learner.cpp
-index fca7dc3..66392ea 100644
+index fca7dc3..55c372d 100644
 --- a/RLGymPPO_CPP/src/public/RLGymPPO_CPP/Learner.cpp
 +++ b/RLGymPPO_CPP/src/public/RLGymPPO_CPP/Learner.cpp
 @@ -1,4 +1,6 @@
@@ -779,7 +779,19 @@ index fca7dc3..66392ea 100644
  
  #ifndef NDEBUG
  	RG_LOG("===========================");
-@@ -89,7 +97,10 @@ RLGPC::Learner::Learner(EnvCreateFn envCreateFn, LearnerConfig _config) :
+@@ -84,12 +92,22 @@ RLGPC::Learner::Learner(EnvCreateFn envCreateFn, LearnerConfig _config) :
+ 				"Make sure your libtorch comes with CUDA support, and that CUDA is installed properly."
+ 			)
+ 		device = at::Device(at::kCUDA);
++
++		// RLbot patch (speed, G6): only switched on, never off (libtorch defaults stay as they are)
++		if (config.tf32) {
++			at::globalContext().setAllowTF32CuBLAS(true);
++			at::globalContext().setAllowTF32CuDNN(true);
++			RG_LOG("\tTF32 matmuls: on");
++		}
+ 	} else {
+ 		RG_LOG("\tUsing CPU device...");
  		device = at::Device(at::kCPU);
  	}
  
@@ -791,7 +803,7 @@ index fca7dc3..66392ea 100644
  	torch::set_num_threads(1);
  
  	if (RocketSim::GetStage() != RocketSimStage::INITIALIZED) {
-@@ -111,17 +122,30 @@ RLGPC::Learner::Learner(EnvCreateFn envCreateFn, LearnerConfig _config) :
+@@ -111,17 +129,30 @@ RLGPC::Learner::Learner(EnvCreateFn envCreateFn, LearnerConfig _config) :
  
  	RG_LOG("\tCreating experience buffer...");
  	expBuffer = new ExperienceBuffer(config.expBufferSize, config.randomSeed, device);
@@ -824,7 +836,7 @@ index fca7dc3..66392ea 100644
  
  	RG_LOG("\tCreating " << config.numThreads << " agents...");
  	agentMgr->CreateAgents(envCreateFn, config.numThreads, config.numGamesPerThread);
-@@ -441,6 +465,10 @@ void RLGPC::Learner::Learn() {
+@@ -441,6 +472,10 @@ void RLGPC::Learner::Learn() {
  	RG_LOG("NOTE: Paranoid mode active. Additional checks will be run that may impact performance.");
  #endif
  
@@ -835,7 +847,7 @@ index fca7dc3..66392ea 100644
  	RG_LOG("\tStarting agents...");
  	agentMgr->SetStepCallback(stepCallback);
  	agentMgr->StartAgents();
-@@ -450,14 +478,23 @@ void RLGPC::Learner::Learn() {
+@@ -450,14 +485,23 @@ void RLGPC::Learner::Learn() {
  	RG_LOG("\tBeginning learning loop:");
  	int64_t tsSinceSave = 0;
  	Timer epochTimer = {};
@@ -859,7 +871,7 @@ index fca7dc3..66392ea 100644
  		uint64_t timestepsCollected = timesteps.size; // Use actual size instead of target size
  
  		totalTimesteps += timestepsCollected;
-@@ -475,11 +512,14 @@ void RLGPC::Learner::Learn() {
+@@ -475,11 +519,14 @@ void RLGPC::Learner::Learn() {
  			agentMgr->disableCollection = true;
  
  		// Add it to our experience buffer, also computing GAE in the process
@@ -874,7 +886,7 @@ index fca7dc3..66392ea 100644
  
  		Timer ppoLearnTimer = {};
  
-@@ -487,7 +527,8 @@ void RLGPC::Learner::Learn() {
+@@ -487,7 +534,8 @@ void RLGPC::Learner::Learn() {
  		// This is because learning is very GPU intensive, and letting iterations collect during that time slows it down
  		// On CPU, learning is its own thread, it's better to keep collecting
  		// Also, if config.collectionDuringLearn is false, we ignore this
@@ -884,7 +896,7 @@ index fca7dc3..66392ea 100644
  		{ // Run the actual PPO learning on the experience we have collected
  			
  			if (config.deterministic) {
-@@ -501,23 +542,41 @@ void RLGPC::Learner::Learn() {
+@@ -501,23 +549,41 @@ void RLGPC::Learner::Learn() {
  			if (blockAgentInferDuringLearn)
  				agentMgr->disableCollection = true;
  
@@ -926,7 +938,7 @@ index fca7dc3..66392ea 100644
  
  		double ppoLearnTime = ppoLearnTimer.Elapsed();
  		double relEpochTime = epochTimer.Elapsed();
-@@ -525,6 +584,8 @@ void RLGPC::Learner::Learn() {
+@@ -525,6 +591,8 @@ void RLGPC::Learner::Learn() {
  
  		double consumptionTime = relEpochTime - relCollectionTime;
  
@@ -935,7 +947,7 @@ index fca7dc3..66392ea 100644
  		if (skillTracker) {
  			RG_LOG("Running skill eval game(s)...");
  
-@@ -538,6 +599,8 @@ void RLGPC::Learner::Learn() {
+@@ -538,6 +606,8 @@ void RLGPC::Learner::Learn() {
  			}
  		}
  
@@ -944,7 +956,7 @@ index fca7dc3..66392ea 100644
  		// Get all metrics from agent manager
  		agentMgr->GetMetrics(report);
  
-@@ -571,10 +634,12 @@ void RLGPC::Learner::Learn() {
+@@ -571,10 +641,12 @@ void RLGPC::Learner::Learn() {
  		}
  
  		// Call iteration callback
@@ -957,7 +969,7 @@ index fca7dc3..66392ea 100644
  
  		{ // Print results
  			constexpr const char* DIVIDER = "======================";
-@@ -591,14 +656,17 @@ void RLGPC::Learner::Learn() {
+@@ -591,14 +663,17 @@ void RLGPC::Learner::Learn() {
  			metricSender->Send(report);
  
  		// Save if needed
@@ -975,7 +987,7 @@ index fca7dc3..66392ea 100644
  	}
  	
  	RG_LOG("Learner: Timestep limit of " << config.timestepLimit << " reached, stopping");
-@@ -618,6 +686,7 @@ void RLGPC::Learner::AddNewExperience(GameTrajectory& gameTraj, Report& report)
+@@ -618,6 +693,7 @@ void RLGPC::Learner::AddNewExperience(GameTrajectory& gameTraj, Report& report)
  	
  	// Construct input to the value function estimator that includes the final state (which an action was not taken in)
  	size_t valPredCount = count + 1;
@@ -983,7 +995,7 @@ index fca7dc3..66392ea 100644
  
  #if 0 // Does everything in one go, but can use too much VRAM
  	auto valInput = 
-@@ -625,14 +694,18 @@ void RLGPC::Learner::AddNewExperience(GameTrajectory& gameTraj, Report& report)
+@@ -625,14 +701,18 @@ void RLGPC::Learner::AddNewExperience(GameTrajectory& gameTraj, Report& report)
  		.to(ppo->device, true);
  	auto valPredsTensor = ppo->valueNet->Forward(valInput).cpu().flatten();
  #else
@@ -1004,7 +1016,7 @@ index fca7dc3..66392ea 100644
  			statesPart = torch::cat({ statesPart, finalNextState });
  		}
  		auto valPredsPart = ppo->valueNet->Forward(statesPart.to(ppo->device, true, true)).cpu().flatten();
-@@ -642,6 +715,7 @@ void RLGPC::Learner::AddNewExperience(GameTrajectory& gameTraj, Report& report)
+@@ -642,6 +722,7 @@ void RLGPC::Learner::AddNewExperience(GameTrajectory& gameTraj, Report& report)
  #endif
  
  	FList valPreds = TENSOR_TO_FLIST(valPredsTensor);
@@ -1012,7 +1024,7 @@ index fca7dc3..66392ea 100644
  
  	// Free CUDA cache
  #ifdef RG_CUDA_SUPPORT
-@@ -650,6 +724,7 @@ void RLGPC::Learner::AddNewExperience(GameTrajectory& gameTraj, Report& report)
+@@ -650,6 +731,7 @@ void RLGPC::Learner::AddNewExperience(GameTrajectory& gameTraj, Report& report)
  #endif
  	
  	float retStd = (config.standardizeReturns ? returnStats.GetSTD()[0] : 1);
@@ -1020,7 +1032,7 @@ index fca7dc3..66392ea 100644
  
  	// RLbot patch (truncation): value of the next state at every truncated step, so that
  	// timeouts (and the boundaries between concatenated game trajectories) bootstrap from the
-@@ -765,9 +840,11 @@ void RLGPC::Learner::AddNewExperience(GameTrajectory& gameTraj, Report& report)
+@@ -765,9 +847,11 @@ void RLGPC::Learner::AddNewExperience(GameTrajectory& gameTraj, Report& report)
  		int numToIncrement = RS_MIN(config.maxReturnsPerStatsInc, returns.size());
  		returnStats.Increment(returns, numToIncrement);
  	}
@@ -1033,7 +1045,7 @@ index fca7dc3..66392ea 100644
  			trajData.actions,
  			trajData.logProbs,
  			trajData.rewards,
-@@ -785,6 +862,21 @@ void RLGPC::Learner::AddNewExperience(GameTrajectory& gameTraj, Report& report)
+@@ -785,6 +869,21 @@ void RLGPC::Learner::AddNewExperience(GameTrajectory& gameTraj, Report& report)
  	expBuffer->SubmitExperience(
  		expTensors
  	);
@@ -1055,7 +1067,7 @@ index fca7dc3..66392ea 100644
  }
  
  void RLGPC::Learner::UpdateLearningRates(float policyLR, float criticLR) {
-@@ -801,6 +893,8 @@ void RLGPC::Learner::SetActionEntropyScales(RLGSC::FList newVals) {
+@@ -801,6 +900,8 @@ void RLGPC::Learner::SetActionEntropyScales(RLGSC::FList newVals) {
  void RLGPC::Learner::SetActionProbBonuses(RLGSC::FList newVals) {
  	RG_ASSERT(newVals.size() == actionAmount);
  	ppo->policy->actionProbBonuses = torch::tensor(newVals, ppo->policy->device);
@@ -1064,7 +1076,7 @@ index fca7dc3..66392ea 100644
  	if (ppo->policyHalf)
  		ppo->policyHalf->actionProbBonuses = torch::tensor(newVals, ppo->policy->device);
  }
-@@ -820,10 +914,14 @@ std::vector<RLGPC::Report> RLGPC::Learner::GetAllGameMetrics() {
+@@ -820,10 +921,14 @@ std::vector<RLGPC::Report> RLGPC::Learner::GetAllGameMetrics() {
  }
  
  RLGPC::Learner::~Learner() {
@@ -1103,10 +1115,10 @@ index 0e3e3d1..7b91839 100644
          void SetActionProbBonuses(RLGSC::FList newVals);
          void SetActionEntropyScales(RLGSC::FList newVals);
 diff --git a/RLGymPPO_CPP/src/public/RLGymPPO_CPP/LearnerConfig.h b/RLGymPPO_CPP/src/public/RLGymPPO_CPP/LearnerConfig.h
-index e011294..34b8176 100644
+index e011294..8bada07 100644
 --- a/RLGymPPO_CPP/src/public/RLGymPPO_CPP/LearnerConfig.h
 +++ b/RLGymPPO_CPP/src/public/RLGymPPO_CPP/LearnerConfig.h
-@@ -78,5 +78,25 @@ namespace RLGPC {
+@@ -78,5 +78,29 @@ namespace RLGPC {
  		std::string metricsRunName = "rlgymppo-cpp-run"; // Run name for the python metrics receiver
  
  		SkillTrackerConfig skillTrackerConfig = {};
@@ -1122,6 +1134,10 @@ index e011294..34b8176 100644
 +		// (upstream 1.5). With collection during learning it caps how far the agents run ahead,
 +		// i.e. how many steps one iteration can have.
 +		float collectLimitFactor = 1.5f;
++
++		// RLbot patch (speed, G6): matrix products in TF32 on the GPU (tensor cores, 10-bit mantissa
++		// instead of 23). Applies to the whole process: PPO learning and the agents' inference.
++		bool tf32 = false;
 +
 +		// RLbot patch (speed, G4): experience buffer in GPU memory (PPO batches without host-to-device
 +		// copies, shuffle gather on the GPU; ~0.65 GB VRAM at 300k steps). Same results.
