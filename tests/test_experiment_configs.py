@@ -171,7 +171,8 @@ def test_main_run_proposals_add_only_the_kept_changes():
 # --- Geschwindigkeit (AUDIT.md §9): Lernvergleich, nur Learner-Schalter gegenüber sp_kickoff_drill ---
 
 SPEED_OVERLAP = {"learner.collection_during_learn": (False, True), "learner.exp_buffer_on_device": (None, True),
-                 "learner.infer_during_learn": (None, True), "learner.collect_limit_factor": (None, 1.0)}
+                 "learner.infer_during_learn": (None, True), "learner.collect_limit_factor": (None, 1.0),
+                 "learner.learner_high_priority_stream": (None, True)}
 SPEED_EXPECTED = {
     "speed_overlap": SPEED_OVERLAP,
     "speed_overlap_amp": {**SPEED_OVERLAP, "learner.autocast_learn": (None, True)},

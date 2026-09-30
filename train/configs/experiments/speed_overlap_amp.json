@@ -69,6 +69,7 @@
     "exp_buffer_on_device": true,
     "infer_during_learn": true,
     "collect_limit_factor": 1.0,
+    "learner_high_priority_stream": true,
     "autocast_learn": true
   },
   "metrics": {

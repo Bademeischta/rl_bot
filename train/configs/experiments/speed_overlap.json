@@ -1,5 +1,5 @@
 {
-  "_comment": "Geschwindigkeit (AUDIT.md §9), NICHT gestartet ohne OK: sp_kickoff_drill.json (= Hauptlauf-Config lucy_1v1_zero_sum_drill als Experiment) plus Überlappen von Sammeln und Lernen (G5: collection_during_learn + infer_during_learn, collect_limit_factor 1.0 hält die Iteration bei ~100.000 Steps). Die während der Lernphase gesammelten Steps (82-93 %) stammen von der Policy vor dem Update. exp_buffer_on_device (G4) ist bitgleich zum CPU-Puffer und ändert das Lernen nicht.",
+  "_comment": "Geschwindigkeit (AUDIT.md §9), NICHT gestartet ohne OK: sp_kickoff_drill.json (= Hauptlauf-Config lucy_1v1_zero_sum_drill als Experiment) plus Überlappen von Sammeln und Lernen (G5: collection_during_learn + infer_during_learn, collect_limit_factor 1.0 hält die Iteration bei ~100.000 Steps), Lern-Stream hoher Priorität (G8). Ein Großteil der Steps einer Iteration stammt von der Policy vor dem letzten Update. exp_buffer_on_device (G4) ist bitgleich zum CPU-Puffer und ändert das Lernen nicht.",
   "env": {
     "tick_skip": 8,
     "max_players": 3,
@@ -68,7 +68,8 @@
     "random_seed": 123,
     "exp_buffer_on_device": true,
     "infer_during_learn": true,
-    "collect_limit_factor": 1.0
+    "collect_limit_factor": 1.0,
+    "learner_high_priority_stream": true
   },
   "metrics": {
     "send_metrics": false,
