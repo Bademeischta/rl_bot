@@ -576,3 +576,21 @@ def test_summarize_and_compare_show_play_stats_kickoffs_and_2v2(tmp_path):
     assert row.count(" : ") >= 5                                         # Kennzahlen je Seite A : B
     ko_row = [line for line in section.splitlines() if line.startswith("| k1 |")][-1]
     assert "%" in ko_row and "[" in ko_row                              # Anstoß-Rate mit KI und 2v2-Tordifferenz
+
+
+def test_compare_writes_its_report_even_if_the_console_cannot_encode_it(tmp_path):
+    """Geschwindigkeit, Lernvergleich 30.09.2026: Unter PowerShell 5.1 mit Umleitung (*>) ist stdout
+    cp1252; print() scheiterte am "σ" der Tabelle NACH der gemeinsamen Ladder, der Bericht (--out)
+    wurde nie geschrieben. Echter Aufruf mit cp1252-Konsole."""
+    import subprocess
+    make_result(tmp_path / "exp_baseline_x", "baseline", 0.30, 3.58)
+    make_result(tmp_path / "exp_h2_x", "h2_ent_coef_0004", 0.33, 3.40)
+    out = tmp_path / "compare.md"
+    env = {**os.environ, "PYTHONIOENCODING": "cp1252"}
+    r = subprocess.run([sys.executable, str(ROOT / "tools" / "experiments" / "compare.py"),
+                        str(tmp_path / "exp_*"), "--ladder-games", "0", "--out", str(out)],
+                       capture_output=True, env=env)
+    assert r.returncode == 0, r.stderr.decode("cp1252", errors="replace")
+    report = out.read_text(encoding="utf-8")
+    assert "mu-3σ" in report and "| h2_ent_coef_0004" in report
+    assert b"mu-3?" in r.stdout            # Konsole: ersetzt statt abgestürzt

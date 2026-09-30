@@ -64,6 +64,27 @@ struct TrainConfig {
 	// exp_buffer_iterations Batches pro Epoche, also ppo_epochs * exp_buffer_iterations
 	// Gradientenschritte pro Iteration (Default 3 * 2 = 6, wie bisher hartkodiert).
 	int expBufferIterations = 3;
+	// Experience-Puffer im GPU-Speicher (Geschwindigkeit G4, AUDIT.md §9): PPO-Batches ohne
+	// Host-zu-GPU-Kopie je Minibatch, Shuffle-Gather auf der GPU; gleiche Ergebnisse, ~0,65 GB VRAM
+	// mehr. Default false = bisheriges Verhalten.
+	bool expBufferOnDevice = false;
+	// Sammeln während PPO lernt (Geschwindigkeit G5): mit collection_during_learn auf der GPU
+	// inferieren die Sammel-Threads mit einer eigenen Kopie der Policy auf eigenen CUDA-Streams
+	// weiter, statt zu warten. Die dabei gesammelten Schritte stammen von der Policy vor dem
+	// Update (eine Iteration älter). Default false = bisheriges Verhalten.
+	bool inferDuringLearn = false;
+	// Sammel-Limit der Threads als Vielfaches von timesteps_per_iteration (Upstream 1,5). Begrenzt
+	// mit collection_during_learn, wie weit die Threads vorauslaufen, also die Iterationsgröße.
+	float collectLimitFactor = 1.5f;
+	// Matrixprodukte in TF32 auf der GPU (Geschwindigkeit G6): Tensor-Kerne, 10 statt 23 Bit
+	// Mantisse, für Lernen und Inferenz. Default false = bisheriges Verhalten (FP32).
+	bool tf32 = false;
+	// Gemischte Präzision im PPO-Lernschritt (Geschwindigkeit G7): Vorwärtsrechnung unter
+	// Autocast in BF16, Gewichte, Optimierer und Verluste in FP32, ohne Grad-Scaler. Default false.
+	bool autocastLearn = false;
+	// Mit infer_during_learn: Lern-Thread auf einem CUDA-Stream hoher Priorität (Geschwindigkeit
+	// G8), die GPU plant PPO-Kernel vor den Inferenz-Kerneln der Sammel-Threads ein. Default false.
+	bool learnerHighPriorityStream = false;
 	int64_t ppoBatchSize = 100000;
 	int64_t ppoMiniBatchSize = 50000;
 	float entCoef = 0.01f;

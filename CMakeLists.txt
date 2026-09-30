@@ -70,6 +70,7 @@ add_executable(rlbot_tests
     tests/cpp/test_play_stats.cpp
     tests/cpp/test_action_select.cpp
     tests/cpp/test_spieltest_rewards.cpp
+    tests/cpp/test_speed.cpp
     train/cpp/Config.cpp
     train/cpp/EnvFactory.cpp
     train/cpp/Metrics.cpp
