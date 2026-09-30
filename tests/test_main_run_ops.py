@@ -44,10 +44,11 @@ def _run_dir(tmp_path: Path, iterations: int, overrides: dict[tuple[int, str], s
     return run
 
 
-def _status(run: Path, *extra: str) -> subprocess.CompletedProcess:
+def _status(run: Path, *extra: str, console: str = "cp1252") -> subprocess.CompletedProcess:
+    """Wie in einer Windows-Konsole: stdout in cp1252 (so lief der erste echte Aufruf auf den Fehler)."""
     return subprocess.run([sys.executable, str(STATUS), "--run", str(run), "--window", "10", *extra],
-                          capture_output=True, text=True, encoding="utf-8", errors="replace",
-                          env={**os.environ, "PYTHONIOENCODING": "utf-8"})
+                          capture_output=True, text=True, encoding=console, errors="replace",
+                          env={**os.environ, "PYTHONIOENCODING": console})
 
 
 @needs_writer
@@ -67,9 +68,9 @@ def test_status_passes_a_healthy_run_and_treats_low_sps_only_as_a_hint(tmp_path)
     ("Mean KL Divergence", "0.02", "KL < 0,01"),
     ("SB3 Clip Fraction", "0.15", "Clip-Fraction < 0,10"),
     ("Value Function Loss", "nan", "keine nan/inf (Value Function Loss)"),
-    ("Value Function Loss", "5.0", "Value Loss stabil"),
-    ("ep_end_time", "0.05", "Timeouts"),
-    ("ep_end_goal", "0.5", "Tor-Anteil ohne Drill"),
+    ("Value Function Loss", "5.0", "Value Loss stabil (<= 3x"),
+    ("ep_end_time", "0.05", "Timeouts <= 0,01"),
+    ("ep_end_goal", "0.5", "Tor-Anteil ohne Drill >= 0,95"),
 ])
 def test_status_flags_each_violated_limit(tmp_path, key, value, rule):
     # Verletzung nur im letzten Fenster (Iterationen 15-24), davor normal

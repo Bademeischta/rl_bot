@@ -80,10 +80,10 @@ def evaluate(rows: list[dict], window: int, min_sps: float) -> dict:
         ("Clip-Fraction < 0,10", s["clip"] < 0.10),
         ("keine nan/inf (" + ", ".join(k for k, v in bad.items() if v) + ")" if s["nicht_endlich"] else "keine nan/inf",
          s["nicht_endlich"] == 0),
-        ("Value Loss stabil (≤ 3× Fenster davor)",
+        ("Value Loss stabil (<= 3x Fenster davor)",
          math.isfinite(s["value_loss"]) and (math.isnan(s["value_loss_davor"]) or s["value_loss"] <= 3 * s["value_loss_davor"])),
-        ("Tor-Anteil ohne Drill ≥ 0,95", s["tor_anteil_ohne_drill"] >= 0.95),
-        ("Timeouts ≤ 0,01", nz(s["ep_end_time"]) + nz(s["ep_end_notouch"]) <= 0.01),
+        ("Tor-Anteil ohne Drill >= 0,95", s["tor_anteil_ohne_drill"] >= 0.95),
+        ("Timeouts <= 0,01", nz(s["ep_end_time"]) + nz(s["ep_end_notouch"]) <= 0.01),
     ]
     s["checks"] = checks
     s["verletzt"] = [name for name, ok in checks if not ok]
@@ -106,6 +106,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--min-sps", type=float, default=150_000)
     ap.add_argument("--log", type=Path, default=None, help="Zeile an diese CSV anhängen")
     a = ap.parse_args(argv)
+    # Windows-Konsole (cp1252/cp850): nicht darstellbare Zeichen ersetzen statt abzubrechen
+    try:
+        sys.stdout.reconfigure(errors="replace")
+    except (AttributeError, ValueError):
+        pass
 
     metrics = a.run / "metrics.csv"
     if not metrics.exists():
