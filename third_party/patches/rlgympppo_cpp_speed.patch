@@ -1,3 +1,31 @@
+diff --git a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/FrameworkTorch.h b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/FrameworkTorch.h
+index 2e50642..a8d38f1 100644
+--- a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/FrameworkTorch.h
++++ b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/FrameworkTorch.h
+@@ -9,15 +9,19 @@
+ 
+ #define RG_NOGRAD torch::NoGradGuard _noGradGuard
+ 
++// RLbot patch (B3): the device-specific wrappers set_enabled / set_autocast_gpu_dtype /
++// set_autocast_cpu_dtype are deprecated in libtorch 2.x and emit a runtime warning on every call
++// (dozens per iteration with autocast_learn). They only forward to these calls, so the behaviour
++// is identical.
+ #define RG_AUTOCAST_ON() { \
+-at::autocast::set_enabled(true); \
+-at::autocast::set_autocast_gpu_dtype(torch::kBFloat16); \
+-at::autocast::set_autocast_cpu_dtype(torch::kFloat); \
++at::autocast::set_autocast_enabled(at::kCUDA, true); \
++at::autocast::set_autocast_dtype(at::kCUDA, torch::kBFloat16); \
++at::autocast::set_autocast_dtype(at::kCPU, torch::kFloat); \
+ }
+ 
+ #define RG_AUTOCAST_OFF() { \
+ at::autocast::clear_cache(); \
+-at::autocast::set_enabled(false); \
++at::autocast::set_autocast_enabled(at::kCUDA, false); \
+ }
+ 
+ #define RG_HALFPERC_TYPE torch::ScalarType::BFloat16
 diff --git a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/PPO/ExperienceBuffer.cpp b/RLGymPPO_CPP/src/private/RLGymPPO_CPP/PPO/ExperienceBuffer.cpp
 index f718202..f2667a8 100644
 --- a/RLGymPPO_CPP/src/private/RLGymPPO_CPP/PPO/ExperienceBuffer.cpp

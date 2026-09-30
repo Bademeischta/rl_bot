@@ -8,6 +8,9 @@
 #include <RLGymPPO_CPP/PPO/PPOLearner.h>
 #include <torch/cuda.h>
 #include <c10/cuda/CUDAStream.h>
+#include <c10/util/Exception.h>
+#include <ATen/autocast_mode.h>
+#include <RLGymPPO_CPP/FrameworkTorch.h>
 
 #include <atomic>
 #include <chrono>
@@ -440,4 +443,73 @@ TEST(G8_Config_learner_high_priority_stream_Default_aus) {
 	TrainConfig cfg = LoadSpeedConfig(R"({"learner": {"learner_high_priority_stream": true}})");
 	CHECK(MakeLearnerConfig(cfg).learnerHighPriorityStream);
 	CHECK(LoadSpeedConfig(cfg.ToJSONString()).learnerHighPriorityStream);
+}
+
+// B3: Die BF16-Autocast-Makros (RG_AUTOCAST_ON/OFF, G7) riefen die veralteten Wrapper
+// at::autocast::set_enabled / set_autocast_gpu_dtype / set_autocast_cpu_dtype. Jeder davon warnt zur
+// Laufzeit (TORCH_WARN_DEPRECATION), im Hauptlauf dutzende Zeilen je Iteration. Die neuen Aufrufe
+// (set_autocast_enabled / set_autocast_dtype mit Gerätetyp) sind das, wohin die Wrapper weiterleiten.
+struct CollectTorchWarnings : c10::WarningHandler {
+	std::vector<std::string> messages;
+	void process(const c10::Warning& w) override { messages.push_back(w.msg()); }
+	size_t Deprecated() const {
+		size_t n = 0;
+		for (auto& m : messages) n += m.find("deprecated") != std::string::npos;
+		return n;
+	}
+};
+
+TEST(B3_Autocast_ohne_Deprecation_Warnungen_und_gleich_wie_die_alte_API) {
+	if (!g_arenaReady || !torch::cuda::is_available()) return;
+	CollectTorchWarnings handler;
+	c10::WarningUtils::WarningHandlerGuard guard(&handler);
+	auto opt = torch::TensorOptions().device(torch::kCUDA);
+	torch::manual_seed(11);
+	auto a = torch::randn({ 64, 257 }, opt), b = torch::randn({ 257, 512 }, opt);
+
+	// 1. Neue Makros: Zustand wie vorher (CUDA an, BF16; CPU-Dtype float), keine Warnung
+	RG_AUTOCAST_ON();
+	CHECK(at::autocast::is_autocast_enabled(at::kCUDA));
+	CHECK(at::autocast::get_autocast_dtype(at::kCUDA) == at::kBFloat16);
+	CHECK(at::autocast::get_autocast_dtype(at::kCPU) == at::kFloat);
+	CHECK(!at::autocast::is_autocast_enabled(at::kCPU));
+	torch::Tensor viaNew = at::mm(a, b);
+	RG_AUTOCAST_OFF();
+	CHECK(!at::autocast::is_autocast_enabled(at::kCUDA));
+	CHECK_EQ(handler.Deprecated(), (size_t)0);
+	CHECK(viaNew.scalar_type() == at::kBFloat16);
+
+	// 2. Die alte API (so stand es bis B3 in den Makros) rechnet bitgleich
+#pragma warning(push)
+#pragma warning(disable : 4996)
+	at::autocast::set_enabled(true);
+	at::autocast::set_autocast_gpu_dtype(torch::kBFloat16);
+	at::autocast::set_autocast_cpu_dtype(torch::kFloat);
+	torch::Tensor viaOld = at::mm(a, b);
+	at::autocast::clear_cache();
+	at::autocast::set_enabled(false);
+#pragma warning(pop)
+	CHECK(torch::equal(viaNew, viaOld));
+	CHECK_GT((double)handler.Deprecated(), 0.0);   // die alte API warnt tatsächlich
+
+	// 3. Echter Pfad: ein PPO-Schritt mit autocast_learn erzeugt keine Deprecation-Warnung mehr
+	handler.messages.clear();
+	TrainConfig cfg = SpeedTestConfig();
+	EnvFactory factory(cfg);
+	RLGPC::LearnerConfig lc = SmallLearner(cfg);
+	lc.deviceType = RLGPC::LearnerDeviceType::GPU_CUDA;
+	lc.ppo.autocastLearn = true;
+	RLGPC::Learner learner([&]() { return factory.Create(); }, lc);
+	auto* mgr = learner.agentMgr;
+	mgr->StartAgents();
+	AgentStopper stopper{ mgr };
+	RLGPC::GameTrajectory traj = mgr->CollectTimesteps(600);
+	mgr->disableCollection = true;
+	RLGPC::Report report;
+	learner.AddNewExperience(traj, report);
+	learner.ppo->Learn(learner.expBuffer, report);
+	mgr->disableCollection = false;
+	CHECK(report.Has("Policy Entropy"));
+	if (handler.Deprecated() != 0)
+		FAIL_AT(handler.Deprecated() << " Deprecation-Warnungen im PPO-Schritt, z. B.: " << handler.messages[0]);
 }
