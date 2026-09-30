@@ -485,10 +485,16 @@ def main() -> int:
     md += ladder_section(ladder, reason) + "\n"
     md += changes_section(experiments, baseline) + "\n"
     md += verdict_hints(experiments, baseline) + "\n"
-    print(md)
+    # Erst die Datei, dann die Konsole: Unter Windows PowerShell 5.1 mit Umleitung (*>) ist stdout
+    # cp1252 und kennt z. B. "σ" nicht; das darf den Bericht nach der Ladder nicht mehr kosten
     if a.out:
         a.out.parent.mkdir(parents=True, exist_ok=True)
         a.out.write_text(md, encoding="utf-8")
+    try:
+        sys.stdout.reconfigure(errors="replace")
+    except (AttributeError, ValueError):
+        pass
+    print(md)
     return 0
 
 
