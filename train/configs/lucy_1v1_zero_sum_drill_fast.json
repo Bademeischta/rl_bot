@@ -1,5 +1,5 @@
 {
-  "_comment": "Vorschlag Geschwindigkeit (AUDIT.md §9.7), NICHT gestartet: lucy_1v1_zero_sum_drill.json plus nur Learner-Schalter. exp_buffer_on_device (G4, bitgleich), Sammeln während PPO lernt mit eigener Policy-Kopie (G5: collection_during_learn + infer_during_learn, collect_limit_factor 1.0 hält die Iteration bei ~100.000 Steps), BF16-Autocast im PPO-Schritt (G7), Lern-Stream hoher Priorität (G8). Gemessen ~168.000 SPS gegen ~90.000 (nur G2/G4) und ~63.000 mit dem alten Binary (gleiche Sitzung). Lernvergleich über 300 Mio. Steps: AUDIT.md §9.6. Lädt wie bisher aus runs/lucy_1v1/checkpoints (Obs 257, 90 Aktionen, gleiche Netze). Braucht ein mit claude/speed gebautes build\\cpp_cu128. Rückweg: die sechs Learner-Schalter entfernen (= lucy_1v1_zero_sum_drill.json).",
+  "_comment": "Hauptlauf-Config seit 30.09.2026 (AUDIT.md §9.6/§10): lucy_1v1_zero_sum_drill.json plus sechs Learner-Schalter für Geschwindigkeit (G4 GPU-Puffer bitgleich, G5 Sammeln während PPO lernt mit collect_limit_factor 1.0, G7 BF16-Autocast, G8 Lern-Stream hoher Priorität; ~180.000 SPS) und Checkpoint-Historie für diesen Durchsatz (B1): alle 50 Mio. Steps speichern, 200 behalten = 10 Mrd. Steps (~15 h, ~3,1 GB bei 15,6 MB je Checkpoint), Skill-Tracker alle 250 Mio. eine Version, 20 Versionen = 5 Mrd. (mehr Versionen kosten keine SPS, gemessen). Lädt aus runs/lucy_1v1/checkpoints (Obs 257, 90 Aktionen, gleiche Netze). Start/Stopp/Stand: LOCAL_RUNBOOK §5d.",
   "env": {
     "tick_skip": 8,
     "max_players": 3,
@@ -42,8 +42,8 @@
     "device": "cuda",
     "timestep_limit": 0,
     "timesteps_per_iteration": 100000,
-    "timesteps_per_save": 25000000,
-    "checkpoints_to_keep": 50,
+    "timesteps_per_save": 50000000,
+    "checkpoints_to_keep": 200,
     "checkpoint_folder": "runs/lucy_1v1/checkpoints",
     "policy_layer_sizes": [
       512,
@@ -77,7 +77,7 @@
     "group": "phase3",
     "run": "lucy_1v1",
     "skill_tracker": true,
-    "skill_timesteps_per_version": 500000000,
+    "skill_timesteps_per_version": 250000000,
     "skill_max_versions": 20,
     "skill_update_interval": 32
   }

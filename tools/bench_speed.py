@@ -109,6 +109,12 @@ def main() -> int:
     ap.add_argument("--steps", type=int, default=15_000_000)
     ap.add_argument("--repeats", type=int, default=3)
     ap.add_argument("--warmup", type=int, default=10, help="verworfene Iterationen am Anfang")
+    ap.add_argument("--history", type=int, default=1,
+                    help="so viele Checkpoints bis einschließlich Start mitkopieren (Skill-Tracker lädt alte "
+                         "Versionen aus dem Checkpoint-Ordner; Default 1 = nur der Start)")
+    ap.add_argument("--drop-checkpoints", action="store_true",
+                    help="nach der Auswertung den kopierten checkpoints-Ordner des Messlaufs löschen "
+                         "(nur runs/speed_<tag>_*, nie die Quelle)")
     ap.add_argument("--start", type=Path, default=None,
                     help="Start-Checkpoint (Default: neuester in runs/lucy_1v1/checkpoints, nur gelesen)")
     ap.add_argument("--variants", nargs="*", default=None, help="nur diese Varianten des Plans")
@@ -122,12 +128,15 @@ def main() -> int:
     names = a.variants or list(variants)
     start = a.start or latest_checkpoint(ROOT / "runs" / "lucy_1v1" / "checkpoints")
     out_dir = ROOT / "results" / f"speed_{a.tag}"
+    older = sorted((d for d in start.parent.iterdir() if d.is_dir() and d.name.isdigit()
+                    and (d / "PPO_POLICY.lt").exists() and int(d.name) <= int(start.name)), key=lambda d: int(d.name))
+    history = older[-max(1, a.history):]
     order = [(rep, name) for rep in range(1, a.repeats + 1) for name in names]
     for rep, name in order:
         run = ROOT / "runs" / f"speed_{a.tag}_{name}_{rep}"
         if run.exists():
             raise SystemExit(f"existiert schon: {run}")
-    print(f"Start-Checkpoint {start} (nur gelesen), {a.steps:,} Steps je Lauf, "
+    print(f"Start-Checkpoint {start} (nur gelesen, {len(history)} Checkpoint(s) Historie), {a.steps:,} Steps je Lauf, "
           f"{len(order)} Läufe: {' '.join(f'{n}#{r}' for r, n in order)}")
     if a.dry_run:
         return 0
@@ -139,7 +148,8 @@ def main() -> int:
     for rep, name in order:
         v = variants[name]
         run = ROOT / "runs" / f"speed_{a.tag}_{name}_{rep}"
-        shutil.copytree(start, run / "checkpoints" / start.name)
+        for src in history:
+            shutil.copytree(src, run / "checkpoints" / src.name)
         cfg = deep_merge(base, v.get("config", {}))
         cfg["learner"]["checkpoint_folder"] = f"runs/speed_{a.tag}_{name}_{rep}/checkpoints"
         cfg["learner"]["extra_steps"] = a.steps
@@ -165,6 +175,8 @@ def main() -> int:
             continue
         shutil.copyfile(metrics, out_dir / f"{name}_{rep}.csv")
         ev = evaluate(metrics, a.warmup)
+        if a.drop_checkpoints and run.name.startswith(f"speed_{a.tag}_"):
+            shutil.rmtree(run / "checkpoints", ignore_errors=True)
         ev.update({"variant": name, "rep": rep, "exit": rc, "wall_s": round(wall, 1),
                    "sps_wall": a.steps / wall})
         results.append(ev)
