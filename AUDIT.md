@@ -1497,6 +1497,12 @@ und Luftberührungs-Reward verworfen. Vorschläge `lucy_1v1_zero_sum_drill.json`
 `lucy_team_zero_sum.json`, nicht gestartet.
 
 ### Stufe 4 — Geschwindigkeit (erst wenn das Lernsignal stimmt)
+
+**Stand 30.09.2026 (§9):** Umgesetzt als G1–G9 (Branch `claude/speed`). Bitgleich und immer an: G2
+(+24 %), G3. Als Schalter: G4 (+17 %, bitgleich), Overlap G5, TF32 G6, AMP G7, Stream-Priorität G8.
+Vorschlag `lucy_1v1_zero_sum_drill_fast.json` (~2,3–2,7× gegenüber dem bisherigen Hauptlauf),
+300-Mio.-Lernvergleich im Trainingsrauschen, gemeinsame Ladder vorn; nicht gestartet. H5 bleibt offen,
+M6 nicht nötig (Obs-Aufbau ist kein Engpass).
 15. **H5** `expBufferIterations` konfigurierbar machen, dann A/B über 6 / 3 / 2 Gradientenschritte
     pro Iteration. Bis zu +10 % Durchsatz, aber nur behalten, wenn die Lernkurve nicht leidet.
 16. **M6** Obs-Allokationen. Einstelliger Prozentbereich; lohnt nur als Nebeneffekt des
@@ -2153,3 +2159,179 @@ stabilen Team-Kennzahlen τ auf 1,0 anheben (§8.7).
 * Trainingsrauschen: Mit zwei Referenzläufen ist es nur grob bekannt. Für knappe Entscheidungen
   wären drei oder mehr Wiederholungen nötig, oder das Duell gegen mehrere feste Gegner (Panel).
 * Der geskriptete Anstoß ist im echten Rocket League noch ungetestet.
+
+## 9. Geschwindigkeit (29./30.09.2026, lokal)
+
+### 9.1 Auftrag, Werkzeug, Messmethode
+
+Ziel: Training möglichst ~2× schneller, ohne dass die Lernqualität pro Step leidet. Obs 257,
+90 Aktionen und Netze 512×3 bleiben (Checkpoint-kompatibel). Branch `claude/speed`, ein Commit je
+Befund G1–G9 (Tabelle in `AUDIT_PROGRESS.md`; G9 ist ein Nebenbefund in `compare.py`). Der Hauptlauf lief bei Beginn nicht (letzte
+Iteration 28.09. 16:34); `runs\lucy_1v1` wurde nur gelesen.
+
+Die Upstream-Änderungen liegen im neuen gestapelten Patch `third_party/patches/rlgympppo_cpp_speed.patch`
+(über dem Truncation-Patch; `tools/apply_patches.ps1` bestimmt den Stand von hinten,
+`tools/export_upstream_patch.py` schreibt den Patch aus dem Klon). Jede Optimierung, die das Lernen
+verändern kann, ist ein Config-Schalter mit Default = bisheriges Verhalten (wie R6).
+
+Messwerkzeug `tools/bench_speed.py`: Jede Variante startet von einer Kopie von 6.037.692.544,
+trainiert 15 Mio. Steps mit `lucy_1v1_zero_sum_drill.json` plus den Schaltern der Variante, die ersten
+20 Iterationen fallen weg, drei Wiederholungen laufen **abwechselnd** (A B C A B C …). SPS = Steps
+je Iteration ÷ `Total Iteration Time` (Wanduhr von Iteration zu Iteration, gilt auch mit
+Überlappen). Rohdaten `results\speed_{g2,s1,s2,s3b,s4,s5}\` (`summary.md`, `runs.csv`, `metrics.csv` je
+Lauf), Läufe `runs\speed_*`. Die Streuung zwischen Wiederholungen lag bei 0,2–2 %, in einer Sitzung
+direkt nach einem Spiel bei ~8 % (s3b; die paarweisen Vergleiche blieben eindeutig).
+
+**Absolute Zahlen schwanken zwischen Sitzungen, Vergleiche gelten nur innerhalb einer Sitzung.**
+Am Morgen des 29.09. lief zero_sum mit dem alten Binary bei 72.050 SPS, am Mittag die Drill-Config
+mit demselben Binary bei 62.900; der Drill selbst kostet nur 1,6 % (s1). Sammeln und Lernen waren
+gleichmäßig ~0,1 s langsamer, also ein Maschinenzustand, kein Code-Effekt. Eine Messreihe (s3)
+lief neben VALORANT und ist verworfen (`results\speed_s3\`, nicht ausgewertet).
+
+### 9.2 Die Lücke zu Phase 0 (117.247 gegen ~63.000–73.000 SPS)
+
+Phase 0 maß die **Benchmark-Config** (`bench/cpp/main.cpp`): Netz 3×256, DefaultObs (172), einfacher
+Reward, 1 Epoche (3 Gradientenschritte je Iteration), kein Skill-Tracker, 16×64, ohne
+`collection_during_learn`: 0,72 s Sammeln + 0,16 s Lernen je 100.000 Steps. Die Trainings-Config mit
+dem alten Binary (G1-Profil, `runs\speed_g1probe_g1_1`): 0,92 s Sammeln + 0,67 s Lernen.
+
+| Posten | Phase 0 | Training, alt | Ursache |
+|---|---|---|---|
+| PPO-Lernen | 0,16 s | 0,57 s | Netz 512×3 statt 256×3 (~4× FLOPs je Sample) und 6 statt 3 Gradientenschritte (`ppo_epochs` 2 × Puffer 3, H5). Darin 0,10 s Shuffle-Gather auf der CPU (ein Thread, 300.000 × 257 Floats je Epoche) und ~0,1 s Host→GPU-Kopien der Minibatches |
+| Experience einfügen | (im Lernen) | 0,10 s | davon 0,07 s Umkopieren des vollen CPU-Puffers (`SubmitExperience`) |
+| Sammeln | 0,72 s | 0,92 s | schwereres Env (Lucy-Rewards, 257er-Obs, Metrik-Callback 0,03 s), größeres Netz in der Inferenz, Skill-Eval und Iterations-Callback im Iterationsrest (~0,04 s) |
+
+Zu den einzelnen Verdachtsmomenten:
+
+* **Overlap:** kein Teil der Lücke. Auch die 117.247 sind ohne `collection_during_learn` gemessen;
+  mit der Option waren es 115.661. Auf der GPU sperrt Upstream die Sammel-Threads während PPO
+  ohnehin (§9.4).
+* **Rewards/Obs:** stecken in `Env Step Time` (0,25–0,35 s je Thread und Iteration, samt Physik).
+  Sie lassen sich nicht abschalten, ohne das Lernproblem zu ändern.
+* **Metriken (PlayStats):** 0,008–0,013 s von 0,6–0,9 s Sammelzeit je Thread, der ganze
+  Step-Callback 0,025–0,039 s. Das ist unter 1 % der Iteration, **seltener berechnen lohnt nicht.**
+* **Anstoß-Drill:** 1,6 % (s1: 78.486 ohne gegen 77.224 SPS mit Drill).
+* **Netz und Epochen:** der größte Posten. Beide lassen sich nicht ändern, ohne die Checkpoints zu
+  brechen bzw. die Lern-Hyperparameter zu ändern (Phase 0 §7: `ppo_epochs` 1 +19 %, H5 offen).
+
+### 9.3 Wo die Zeit hingeht (Profil G1, altes Verhalten)
+
+G1 schreibt die Aufteilung in `metrics.csv`: Sammeln je Thread (`Infer Call`, `Traj Append`,
+`Obs Tensor`, `Obs To Device`, `Env Step` mit `Step Callback` und `Play Stats`, `Agent Wait`),
+Lernen (`Add Experience` mit `Exp Value Pred/GAE/Submit`, `PPO Shuffle/Minibatch/Optim/Param Copy`,
+`Empty Cache`), Iterationsrest (`Prev Tail/Skill Eval/Iteration Callback/Save Time`).
+`RLBOT_PROFILE_SYNC=1` wartet an den Phasengrenzen auf die GPU, damit GPU-Zeit der richtigen Phase
+zugeordnet wird (nur zum Profilen; die Aufteilung änderte sich damit kaum).
+
+| Teil | s je Iteration | Befund |
+|---|---|---|
+| Trajektorien anhängen | 0,36 (je Thread) | ~20 winzige Tensor-Operationen je Spieler und Schritt (`torch::tensor`, `index_copy_`, `unsqueeze`); der größte Einzelposten, reine CPU-Verwaltung. „Policy Infer Time“ enthielt ihn immer mit |
+| GPU-Inferenz | 0,13 (je Thread) | Batch 128 Zeilen, die GPU-Arbeit je Aufruf ist klein; alle 16 Threads teilen sich den Standard-Stream, jedes `.cpu()` wartet |
+| Env-Schritt | 0,35 (je Thread) | Physik, Obs, Rewards, Callback |
+| Obs-Tensor / Kopie zur GPU | 0,04 / 0,01 | `FLIST2_TO_TENSOR` je Spiel plus `concat` / pageable H2D (Transfers sind kein Engpass) |
+| Trajektorien zusammenfügen | 0,09 | `MultiAppend` über 2.048 Teilstücke |
+| Shuffle | 0,10 | CPU-Gather in einem Thread |
+| Minibatches | 0,46 | 12 × 50.000 Samples; H2D je Minibatch, fünf `.item()`-Synchronisationen je Minibatch |
+| Puffer nachschieben | 0,07 | 2 × 205 MB Klonen/Kopieren auf der CPU |
+| `emptyCache` | 0,004 | vernachlässigbar, nicht geändert |
+
+Nach G2 verschob sich das Bild: Ohne das Anhängen stauen sich die Threads an der Inferenz
+(`Infer Call` 0,13 → 0,30 s je Thread), die CPU ist dabei nur zu ~30 % ausgelastet. Das Sammeln hängt
+seitdem an der serialisierten GPU-Inferenz, nicht an der Simulation. Mit Overlap (G5) wird die
+Lernphase zum Engpass: PPO braucht unter GPU-Konkurrenz 0,55–0,74 statt 0,44 s.
+
+### 9.4 Kandidaten und SPS
+
+| # | Änderung | SPS vorher → nachher (Sitzung) | Einfluss aufs Lernen | Empfehlung |
+|---|---|---|---|---|
+| G2 | Trajektorien als Arrays statt Tensor-Ops | 62.896 → 78.015, **+24,0 %** (g2) | keiner: bitgleich, Test gegen den alten Pfad | übernehmen (immer an) |
+| G3 | Warte-Schleifen prüfen `shouldRun` | – | keiner (Hänger beim Beenden, Voraussetzung für G5) | übernehmen (immer an) |
+| G4 | `exp_buffer_on_device` | 77.224 → 90.652, **+17,4 %** (s1) | keiner: bitgleich (Test über 5 Iterationen inkl. vollem Puffer) | übernehmen |
+| – | `collection_during_learn` wie bisher | 90.652 → 92.019, +1,5 % (s1, im Rauschen) | wenige Steps (~2 %) aus der Policy vor dem Update | allein wirkungslos |
+| G5 | `infer_during_learn`, `collect_limit_factor` 1,0 | 89.948 → 112.233, **+24,8 %** (s2) | 89 % der Steps einer Iteration von der Policy vor dem letzten Update; KL 0,0031 → 0,0051, Clip-Fraction 3,0 → 5,2 % (gemessen gegen die sammelnde Policy) | Lernvergleich §9.6 |
+| G5 | … mit Upstream-Limit 1,5 | → 139.780 (s1) | Iteration wächst auf ~148.700 Steps, weniger Updates je Sample | **nicht** vergleichbar, nicht verwenden |
+| G6 | `tf32` (mit Overlap) | 112.233 → 128.205, +14,2 % (s2) | Numerik (10-Bit-Mantisse, auch in der Inferenz) | nur ohne AMP sinnvoll; zusätzlich zu AMP +1 % → nicht übernehmen |
+| G7 | `autocast_learn` (BF16, ohne Grad-Scaler) | ohne Overlap 89.948 → 109.404, +21,6 %; mit Overlap 112.233 → 146.065, **+30,1 %** (s2) | Numerik der Vorwärtsrechnung: ohne Overlap KL 0,0031 → 0,0034, Clip 3,0 → 3,3 %; mit Overlap 0,0053 / 5,5 % | Lernvergleich §9.6 |
+| G8 | `learner_high_priority_stream` | mit AMP 152.632 → 171.682, **+12,5 %** (s3b, jedes Paar +10 bis +15 %); ohne AMP +2,4 % (Rauschen) | Rechnung unverändert (nur Ablaufplanung); die Lernphase ist kürzer, also stammen weniger Steps aus der alten Policy (89 → 63 %, KL 0,0051 → 0,0042, Clip 5,3 → 4,3 %) | mit Overlap übernehmen |
+| – | Threads × Spiele (Overlap+AMP+G8) | 16×64 167.978 → 16×96 186.028 (+10,7 %), 16×128 193.874 (+15,4 %), 16×160 197.558 (+17,6 %) (s4); 8×128 und 12×96 langsamer (s3b) | kürzere Trajektorienstücke je Iteration (16×64: ~49, 16×128: ~25, 16×160: ~20 Steps): die GAE (λ 0,95, γ 0,9954, Reichweite ~18 Steps) bootstrappt öfter vom Critic; sichtbar am Value Loss 0,214 → 0,197 / 0,178 / 0,164 | vorerst 16×64; mehr Spiele erst nach eigenem Lernvergleich |
+| – | PlayStats seltener | – (Kosten < 1 %) | – | nicht nötig |
+
+Nicht umgesetzt:
+
+* **CUDA Graphs für die Inferenz:** Die Inferenz kostet nach G2/G5/G8 noch 0,18 s je Thread und
+  Iteration (16×64), mit größeren Batches 0,08–0,12 s. Graphen bräuchten feste Batchgrößen je Thread
+  (1v1/2v2-Mix) und eine graph-sichere Zufallszahlen-Behandlung für `multinomial`. Der Aufwand lohnt
+  erst, wenn die Inferenz wieder der Engpass ist; derzeit ist es die Lernphase.
+* **FP16/BF16-Inferenz:** Die Upstream-Option ist absichtlich deaktiviert („Potential cause of learning
+  errors“). Die Inferenz ist latenz-, nicht rechenbegrenzt, und abweichende Log-Wahrscheinlichkeiten
+  zwischen Inferenz und Lernen verzerren das PPO-Verhältnis. Kein Versuch.
+* **Minibatch-Größe** (s5, Overlap+AMP+G8): 50.000 → 100.000 (ganzer Batch; die Minibatches werden
+  vor dem Optimierer-Schritt ohnehin aufsummiert, die Rechnung bleibt bis auf Rundung gleich) ergibt
+  181.479 → 160.524 SPS, **−11,5 %**. PPO wird schneller (0,33 → 0,26 s), aber die größeren Kernel
+  verdrängen die Inferenz der Sammel-Threads (0,18 → 0,24 s je Thread). 50.000 bleibt; VRAM wäre mit
+  4,9 von 12,2 GB (inkl. Desktop) kein Hindernis.
+
+### 9.5 Lernvergleich (30.09.2026, je 300 Mio. Steps)
+
+Frage: Leidet die Lernqualität pro Step unter Overlap (Daten aus der Policy vor dem letzten Update)
+und BF16-Autocast? Aufbau wie Phase C: Start 6.037.692.544, Seed 123, 300 Mio. Steps,
+`run_experiment.ps1` (Build `build\cpp_cu128_speed`, Git `778ca91`), Duelle je 1000 Spiele à 300 s,
+Anstöße je 1000, gemeinsame Ladder (compare.py, 100 Spiele je Paarung). Referenz ist der Phase-C-Lauf
+`sp_kickoff_drill` (= Hauptlauf-Config `lucy_1v1_zero_sum_drill` als Experiment). Weil zwei Läufe
+derselben Config in Phase C bis 3,4 Tore/Spiel auseinanderlagen, lief dieselbe Config noch einmal mit
+dem neuen Build und ohne Speed-Schalter (G2 ist bitgleich); ihr Abstand zur Referenz ist das Rauschen.
+Treiber `results\speed_quality_2026-09-29\run_quality.ps1`, Vergleich `compare.md` dort,
+Einzelergebnisse `results\exp_{speed_overlap_amp,speed_overlap,replicate_sp_kickoff_drill}_2026-09-30_*`.
+
+| Lauf | Wanduhr 300 Mio. | SPS (letztes Fünftel) | Duell gg. Start | Duell gg. Referenz-Ende | Ladder μ−3σ | Anstoß zuerst gg. Start |
+|---|---|---|---|---|---|---|
+| Referenz `sp_kickoff_drill` (Phase C, altes Binary) | 4.529 s (teils neben VALORANT) | 70.685 | +0,28 [+0,18; +0,39] | – | 22,44 | 22,6 % |
+| Wiederholung, gleiche Config, neuer Build | 3.465 s | 88.315 | +0,67 [+0,56; +0,77] | +0,29 [+0,19; +0,39] | 23,86 | 74,8 % |
+| `speed_overlap` (G4+G5+G8, FP32) | 2.291 s | 138.823 | +0,58 [+0,47; +0,68] | +0,38 [+0,27; +0,48] | 24,17 | 53,5 % |
+| `speed_overlap_amp` (+G7) | **1.841 s** | **167.822** | +0,81 [+0,70; +0,92] | +0,58 [+0,46; +0,69] | **24,35** | 52,9 % |
+
+Trainingsmetriken im letzten Fünftel (Referenz / Wiederholung / Overlap / Overlap+AMP): Entropie
+2,81 / 2,79 / 2,79 / 2,77; Tor-Anteil der Episodenenden 0,645 / 0,640 / 0,639 / 0,636; Value Loss
+0,192 / 0,190 / 0,198 / 0,203; Anstoß-Zeit bis zur ersten Berührung 3,00 / 3,00 / 3,12 / 3,06 s;
+Tore/min 0,57 / 0,63 / 0,69 / 0,69; Drittel-Konversion 0,124 / 0,135 / 0,145 / 0,148. KL und
+Clip-Fraction sind mit Overlap höher (0,0031 → 0,0038 / 0,0042; 3,0 → 3,9 / 4,2 %), weil sie gegen die
+sammelnde Policy gemessen werden, die eine Version älter ist; die Entropie fällt dabei nicht.
+
+Bewertung (vorsichtig, eine Wiederholung je Variante):
+
+* **Kein Hinweis auf Schaden.** Beide Speed-Läufe schlagen das Referenz-Ende und den Start, liegen in
+  der gemeinsamen Ladder vor beiden Läufen mit unveränderter Config und in jeder Trainingskennzahl im
+  Bereich der beiden Referenzläufe. compare.py nennt beide Effekte „im Trainingsrauschen“ (Abstand der
+  Wiederholung zur Referenz 0,29–0,39 Tore/Spiel): also gleich gut, nicht nachweislich besser.
+* **Anstoß:** Die beiden Läufe mit derselben Config liegen bei 22,6 % und 74,8 % „zuerst am Ball“
+  gegen den Start; die Speed-Läufe mit 53 % dazwischen. Die Anstoß-Zeit im Training ist 0,06–0,12 s
+  länger, bei einer Streuung zwischen Läufen von ~0,3 s (Phase C). Beobachten, kein Befund.
+* **Overlap und AMP einzeln:** Overlap allein (FP32) und mit AMP zeigen dasselbe Bild; AMP verschlechtert
+  nichts messbar.
+
+### 9.6 Vorschlag Hauptlauf (nicht gestartet)
+
+`train/configs/lucy_1v1_zero_sum_drill_fast.json` = `lucy_1v1_zero_sum_drill.json` plus sechs
+Learner-Schalter: `exp_buffer_on_device`, `collection_during_learn`, `infer_during_learn`,
+`collect_limit_factor` 1,0, `autocast_learn`, `learner_high_priority_stream`; 16×64 wie bisher, gleicher
+Checkpoint-Ordner (Test `test_fast_main_run_proposal_adds_only_speed_switches`). Gemessen ~168.000 SPS im
+15-Mio.-Fenster und 167.822 im 300-Mio.-Lauf, gegen ~88.000 mit dem neuen Build ohne Schalter und
+~63.000–73.000 mit dem alten Binary: **Faktor ~2,3–2,7 gegenüber dem bisherigen Hauptlauf, 1,9 gegenüber
+dem neuen Build allein.** Voraussetzung: `build\cpp_cu128` aus `claude/speed` neu bauen
+(`run_all_checks.ps1` tut das). Mit der alten Config verhält sich der neue Build wie bisher (G2
+bitgleich, alle Schalter Default aus), ist aber durch G2 schon ~25 % schneller.
+
+Rückweg ohne Risiko für das Lernen: nur `exp_buffer_on_device` (bitgleich) setzen, ~90.000 SPS.
+
+Mehr Spiele je Thread (16×96 bis 16×160, weitere +11 bis +18 %) sind nicht im Vorschlag: Sie verkürzen
+die Trajektorienstücke je Iteration und ändern damit die GAE-Ziele (Value Loss 0,214 → 0,164). Erst mit
+eigenem Lernvergleich.
+
+### 9.7 Offen
+
+* Mehr Spiele je Thread (s. o.), eigener 300-Mio.-Vergleich.
+* Längerer Beleg: Der Vergleich deckt 300 Mio. Steps ab; im Hauptlauf die Duell-Werkzeuge regelmäßig
+  gegen ältere Checkpoints laufen lassen (wie in §8.11 vorgesehen).
+* CUDA Graphs für die Inferenz, falls sie nach größeren Batches wieder zum Engpass wird.
+* Der Phase-0-Benchmark (`bench_cpp_sps`) wurde nicht neu gemessen; die Lücke ist über die Bauteile
+  erklärt (§9.2), nicht über eine neue Referenzmessung.

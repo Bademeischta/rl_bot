@@ -7,8 +7,65 @@ Roadmap-Punkt fortgeschrieben.
 Branches: `claude/rlbot-audit-roadmap-c8t7nl` (Audit-Roadmap, abgezweigt von `main` @ `54105bf`,
 als PR #1 in `main` gemergt) und `claude/review-fixes` (Review-Befunde R1-R19, von `main` @
 `bb7f93e`, eigener PR), `claude/duel-and-experiments` (Stufe 3); alle drei in `main` gemergt.
-Aktuell: `claude/spieltest-analyse` (Spieltest, ab 28.09.2026). Regel: ein Commit pro Punkt, ID in
-der Commit-Message.
+`claude/spieltest-analyse` (Spieltest) ist als PR #4 gemergt. Aktuell: `claude/speed`
+(Geschwindigkeit, ab 29.09.2026). Regel: ein Commit pro Punkt, ID in der Commit-Message.
+
+## Geschwindigkeit (Branch `claude/speed`, ab 29.09.2026)
+
+Abgezweigt von `main` @ `5c85976`. Auftrag: Training ~2× schneller ohne Verlust an Lernqualität pro
+Step; Obs 257, 90 Aktionen, Netzgrößen unverändert; `runs\lucy_1v1` nur gelesen; Messungen in eigenen
+Ordnern (`runs\speed_*`, `results\speed_*`); Hauptlauf-Config nur mit OK. Bewertung und Zahlen:
+AUDIT.md §9. Varianten-Build: `build\cpp_cu128_speed` (das Hauptlauf-Binary `build\cpp_cu128` blieb
+bis zum Schluss unberührt).
+
+| ID | Änderung | Test (ohne die Änderung rot bzw. neu) |
+|---|---|---|
+| G1 | Zeitaufschlüsselung in `metrics.csv` (Sammeln je Thread, Experience, PPO-Teile, Iterationsrest, Step-Callback, PlayStats); `RLBOT_PROFILE_SYNC=1`; neuer gestapelter Upstream-Patch `rlgympppo_cpp_speed.patch` (`apply_patches.ps1` bestimmt den Stand von hinten, `-Check` gestapelt an einer Kopie; `tools/export_upstream_patch.py`); Messwerkzeug `tools/bench_speed.py` | `tests/test_speed_metrics.py` (echter Trainer; mit altem Binary rot), `test_apply_patches_ps1_completes_a_partially_applied_stack`, Stapel-Umkehr im Frisch-Checkout-Test |
+| G2 | Trajektorien als `RawTrajectory` (Arrays) statt ~20 Tensor-Ops je Spieler und Schritt, `CollectTimesteps` per memcpy; Obs-Tensor mit einer Allokation | `G2_Trajektorien_als_Arrays_sind_bitgleich_zum_alten_Tensor_Pfad` (Prüfmodus füllt beide Pfade; Gegenprobe: falscher Folgezustand am Episodenende rot) |
+| G3 | Warte-Schleifen prüfen `shouldRun` (Hänger „Stopping agents...“) | `G3_StopAgents_haengt_nicht_am_Sammel_Limit` (Gegenprobe rot) |
+| G4 | `learner.exp_buffer_on_device`: Puffer im GPU-Speicher, Gather auf der GPU | `G4_Puffer_auf_der_GPU_lernt_bitgleich_zum_Puffer_auf_der_CPU` (5 Iterationen, voller Puffer; Gegenprobe ohne Verschieben rot), Config-Test |
+| G5 | `learner.infer_during_learn` (+ `collection_during_learn`): Policy-Kopie, eigene CUDA-Streams, Sync nach jeder Lernphase; `learner.collect_limit_factor` | `G5_Agenten_sammeln_waehrend_PPO_lernt_mit_eigener_Policy_Kopie` (Gegenproben: mit Sperre rot, ohne Sync rot), `G5_Ohne_Schalter_...`, Config-Test |
+| G6 | `learner.tf32` | `G6_TF32_Default_aus_und_Schalter_wirkt_auf_cuBLAS` (Gegenprobe rot) |
+| G7 | `learner.autocast_learn`: BF16 ohne Grad-Scaler (Upstream clippte skalierte Gradienten) | `G7_Autocast_BF16_macht_Updates_so_gross_wie_FP32` (Gegenprobe mit Upstream-Scaler: 0,24 / 0,19 → rot), Config-Test |
+| G8 | `learner.learner_high_priority_stream`: Lern-Thread auf CUDA-Stream höchster Priorität | `G8_Lern_Thread_auf_Stream_hoher_Prioritaet` (Gegenprobe ohne Stream-Wechsel rot), Config-Test |
+| G9 | Nebenbefund: `compare.py` schrieb `--out` erst nach der Konsolenausgabe; unter PowerShell 5.1 mit Umleitung (cp1252) brach es am „σ“ ab, nach der ganzen Ladder | `test_compare_writes_its_report_even_if_the_console_cannot_encode_it` (cp1252-Konsole; mit altem Code rot) |
+| – | Experiment-Configs `speed_overlap(_amp).json` (nur Learner-Schalter gegen `sp_kickoff_drill`), Hauptlauf-Vorschlag `lucy_1v1_zero_sum_drill_fast.json` | `test_speed_experiments_change_only_speed_switches_against_the_drill_run`, `test_fast_main_run_proposal_adds_only_speed_switches` |
+
+Verifikation: Jede Gegenprobe wurde per Mutation am Upstream-Code gebaut und rot gesehen.
+`run_all_checks.ps1` am Ende (30.09.2026, `2ebc0c7`, sauber): alle 6 Schritte OK in 4,4 min, C++ 118/118
+und Python 192/192 je zweimal, Golden-Fixtures unverändert, Smoke `sanity.json` und Deployment-Smoke
+OK. Dabei wurde `build\cpp_cu128` neu gebaut (alle Schalter Default aus: verhält sich mit den alten
+Configs wie bisher, G2 bitgleich).
+
+### Messungen (je 15 Mio. Steps ab 6.037.692.544, 3 Wiederholungen abwechselnd)
+
+| Sitzung | Varianten | Ergebnis (SPS) |
+|---|---|---|
+| `speed_g2` (29.09. 12:08) | altes Binary / G2 | 62.896 / 78.015 |
+| `speed_s1` (12:52) | G2, G4, cdl, G5 (Limit 1,5), +TF32, +AMP, ohne Drill | 77.224, 90.652, 92.019, (139.780, 157.879, 174.065: Iteration ~148.700, nicht vergleichbar), 78.486 |
+| `speed_s2` (16:42) | G4, G5 Limit 1,0, +TF32, +AMP, +AMP+TF32, AMP ohne Overlap | 89.948, 112.233, 128.205, 146.065, 147.479, 109.404 |
+| `speed_s3` (17:32) | – | **verworfen**, VALORANT lief |
+| `speed_s3b` (17:52) | Overlap, +G8, +AMP, +AMP+G8, 8×128, 12×96, 16×96 | 123.318, 126.293, 152.632, 171.682, 147.858, 176.140, 200.595 |
+| `speed_s4` (30.09. 08:25) | Overlap+AMP+G8 16×64/96/128/160, Overlap+G8 16×96 | 167.978, 186.028, 193.874, 197.558, 149.210 |
+| `speed_s5` (30.09. 12:15) | Overlap+AMP+G8, Minibatch 50.000 / 100.000 | 181.479 / 160.524 |
+
+### Lernvergleich (30.09.2026, je 300 Mio. Steps ab 6.037.692.544, Seed 123, Build `778ca91`)
+
+Treiber `results\speed_quality_2026-09-29\run_quality.ps1` (vom Nutzer freigegeben), Vergleich
+`results\speed_quality_2026-09-29\compare.md`. Referenz: Phase-C-Lauf `sp_kickoff_drill`.
+
+| Lauf | Wanduhr | Duell gg. Start | Duell gg. Referenz-Ende | Ladder μ−3σ |
+|---|---|---|---|---|
+| Wiederholung `sp_kickoff_drill` (neuer Build, keine Schalter) | 3.465 s | +0,67 [+0,56; +0,77] | +0,29 [+0,19; +0,39] | 23,86 |
+| `speed_overlap` | 2.291 s | +0,58 [+0,47; +0,68] | +0,38 [+0,27; +0,48] | 24,17 |
+| `speed_overlap_amp` | 1.841 s | +0,81 [+0,70; +0,92] | +0,58 [+0,46; +0,69] | 24,35 |
+| (Referenz-Ende / Start) | 4.529 s | +0,28 | – | 22,44 / 22,04 |
+
+Ergebnis: im Trainingsrauschen, kein Hinweis auf Schaden (AUDIT.md §9.5). Vorschlag
+`train/configs/lucy_1v1_zero_sum_drill_fast.json`, nicht gestartet (AUDIT.md §9.6, LOCAL_RUNBOOK §5c).
+
+Angelegt, nicht gelöscht: `runs\speed_*` (Messläufe, je eine Checkpoint-Kopie), `runs\exp_{speed_overlap_amp,speed_overlap,replicate_sp_kickoff_drill}_2026-09-30_*`,
+`build\cpp_cu128_speed` (Varianten-Build). Können gelöscht werden.
 
 ## Spieltest (Branch `claude/spieltest-analyse`, ab 28.09.2026)
 
@@ -410,6 +467,9 @@ Review-Fixes oben; hier unverändert als Stand der Cloud-Session.
 * 25.09.2026 — Schritt 2 (Experiment-Configs, Runner, Abbruchkriterien, compare), Schritt 3 (H5,
   N6/M6 dokumentiert), Schritt 4 (`run_all_checks.ps1`, Deployment-Smoke, Runbook). Stand:
   75 C++-Tests, 97 Python-Tests grün in der VM; alle PowerShell-Skripte syntaktisch geparst.
+* 29./30.09.2026 (lokal) — Geschwindigkeit: Profil (G1), G2–G9, Messreihen s1–s5 (s3 wegen VALORANT
+  verworfen), Lernvergleich 3 × 300 Mio., Hauptlauf-Vorschlag. Details im Abschnitt Geschwindigkeit
+  oben und in AUDIT.md §9.
 * 28./29.09.2026 (lokal) — Spieltest: Phase A (Werkzeuge, Metriken, Bausteine, Tests), Phase B
   (Messungen ohne Training), Phase C Kernserie (7 × 300 Mio.), SPS-Nachmessung, Hauptlauf-Vorschläge,
   geskripteter Anstoß als Bot-Option. Details im Abschnitt Spieltest oben und in AUDIT.md §8.

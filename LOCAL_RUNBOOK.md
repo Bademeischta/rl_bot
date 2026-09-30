@@ -247,6 +247,26 @@ Weitere vorbereitete Experimente (nicht gelaufen): `sp_goal_x3`, `sp_aerial_shar
 `sp_kickoff_first_touch`, Aufruf wie in §4 mit `-Baseline` auf den Ergebnisordner des Referenzlaufs
 (Teamläufe zusätzlich `-TeamDuel`).
 
+## 5c. Geschwindigkeit (30.09.2026, AUDIT.md §9): Vorschlag, nicht gestartet
+
+Voraussetzung: `build\cpp_cu128` aus `claude/speed` (bzw. nach dem Merge aus `main`) gebaut, z. B. über
+`tools\local\run_all_checks.ps1`. Der neue Build ist mit den bisherigen Configs gleichwertig (alle neuen
+Schalter Default aus) und durch G2 schon ~25 % schneller.
+
+```powershell
+# Hauptlauf 1v1 mit Anstoß-Drill, ~2,3-2,7x schneller (Overlap, BF16-Autocast, GPU-Puffer, Stream-Priorität)
+.\build\cpp_cu128\train_bot.exe train\configs\lucy_1v1_zero_sum_drill_fast.json
+```
+
+Worauf achten (in `metrics.csv`): `Timesteps Collected` ~100.300 je Iteration (sonst stimmt
+`collect_limit_factor` nicht), `Steps Collected During Learn` ~60-70 % davon, KL ~0,004 und
+Clip-Fraction ~4 % (gegen die sammelnde Policy gemessen, eine Version älter), Entropie wie bisher
+~2,78. Neue Zeitspalten (`Infer Call Time`, `PPO Learn Time`, ...) zeigen, wo die Zeit hingeht.
+Rückweg ohne Einfluss aufs Lernen: nur `"exp_buffer_on_device": true` (bitgleich, ~90.000 SPS).
+
+SPS messen: `tools\bench_speed.py --plan <plan.json> --tag <name>` (Varianten abwechselnd, eigene
+Ordner `runs\speed_*`, `results\speed_*`). Vorher prüfen, dass kein Spiel läuft.
+
 ## 6. Optional: Stufe 4, Gradientenschritte 6 / 3 / 2 (~1 Stunde)
 
 Erst wenn Stufe 3 entschieden ist:
