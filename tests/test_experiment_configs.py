@@ -186,3 +186,15 @@ def test_speed_experiments_change_only_speed_switches_against_the_drill_run(name
     assert diff(load("sp_kickoff_drill"), load(name)) == expected
     assert load(name)["metrics.run"] == name
     assert "NICHT gestartet" in load(name)["_comment"]
+
+
+def test_fast_main_run_proposal_adds_only_speed_switches():
+    """Hauptlauf-Vorschlag Geschwindigkeit (AUDIT.md §9.7): lucy_1v1_zero_sum_drill.json plus nur die
+    Learner-Schalter aus speed_overlap_amp (gleicher Checkpoint-Ordner, Obs/Aktionen/Netze unverändert)."""
+    drill = flatten(json.loads((ROOT / "train" / "configs" / "lucy_1v1_zero_sum_drill.json").read_text(encoding="utf-8")))
+    fast = flatten(json.loads((ROOT / "train" / "configs" / "lucy_1v1_zero_sum_drill_fast.json").read_text(encoding="utf-8")))
+    assert diff(drill, fast) == SPEED_EXPECTED["speed_overlap_amp"]
+    assert fast["learner.checkpoint_folder"] == "runs/lucy_1v1/checkpoints"
+    assert fast["env.max_players"] == 3 and fast["env.action_stack_size"] == 5
+    assert fast["learner.policy_layer_sizes"] == [512, 512, 512]
+    assert "NICHT gestartet" in fast["_comment"]
