@@ -7,8 +7,33 @@ Roadmap-Punkt fortgeschrieben.
 Branches: `claude/rlbot-audit-roadmap-c8t7nl` (Audit-Roadmap, abgezweigt von `main` @ `54105bf`,
 als PR #1 in `main` gemergt) und `claude/review-fixes` (Review-Befunde R1-R19, von `main` @
 `bb7f93e`, eigener PR), `claude/duel-and-experiments` (Stufe 3); alle drei in `main` gemergt.
-`claude/spieltest-analyse` (Spieltest) ist als PR #4 gemergt. Aktuell: `claude/speed`
-(Geschwindigkeit, ab 29.09.2026). Regel: ein Commit pro Punkt, ID in der Commit-Message.
+`claude/spieltest-analyse` (Spieltest) und `claude/speed` (Geschwindigkeit) sind als PR #4 und #5
+gemergt. Aktuell: `claude/hauptlauf-betrieb` (30.09.2026). Regel: ein Commit pro Punkt, ID in der
+Commit-Message.
+
+## Hauptlauf-Betrieb (Branch `claude/hauptlauf-betrieb`, 30.09.2026)
+
+Abgezweigt von `main` @ `3308fed` (PR #5 Geschwindigkeit gemergt). Auftrag: Checkpoint-Historie und
+Skill-Tracker, Regressions-Check, Autocast-Warnungen; danach Hauptlauf neu starten und beobachten.
+Keine lernrelevanten Werte geändert. Bewertung und Zahlen: AUDIT.md §10. Beim Start der Arbeit lief der
+Hauptlauf nicht (12:43:09 gestartet, 12:44:25 ohne Checkpoint beendet); neu gestartet um 13:15:16.
+
+| ID | Änderung | Test (ohne die Änderung rot bzw. neu) |
+|---|---|---|
+| B3 | `RG_AUTOCAST_ON/OFF` mit `set_autocast_enabled`/`set_autocast_dtype` und Gerätetyp statt der veralteten Wrapper (Patch `rlgympppo_cpp_speed.patch`) | `B3_Autocast_ohne_Deprecation_Warnungen_und_gleich_wie_die_alte_API` (Gegenprobe mit alten Makros rot) |
+| B1 | Hauptlauf-Config: `timesteps_per_save` 50 Mio., `checkpoints_to_keep` 200, `skill_timesteps_per_version` 250 Mio.; `bench_speed.py --history/--drop-checkpoints` | `test_main_run_keeps_billions_of_steps_history_within_the_disk_budget`, angepasste Config-Diff-Prüfung (beide mit alten Werten rot) |
+| B2 | `tools/regression_check.py` | `tests/test_regression_check.py` (echte Checkpoint-Kopien, echtes duel.exe, halb geschriebener Checkpoint, Quelle per Hash unverändert) |
+| B4 | `tools/local/start_main_run.ps1`, `run_main.ps1`, `stop_main_run.ps1`, `main_run_status.py`; Nachtrag: Status-Skript stürzte in der cp1252-Konsole ab | `tests/test_main_run_ops.py` (Status mit echter C++-CSV und cp1252-Konsole, Stopp gegen echten Prozess, Start als DryRun) |
+
+Verifikation: `run_all_checks.ps1` vor dem Neustart (`5b18265`, sauber): alle 6 Schritte OK in 5,9 min,
+C++ 119/119 und Python 207/207 je zweimal, Golden-Fixtures unverändert, Smoke und Deployment-Smoke OK;
+`build\cpp_cu128` damit neu gebaut. Gegenprobe B3 per Mutation gebaut und rot gesehen.
+
+Neustart 13:15:16 über `start_main_run.ps1` (Aufgabenplanung, eigenes Fenster), Beobachtung 13:17-15:16
+alle ~15 min: alle Grenzwerte eingehalten, ~179.000 SPS (159.000 während des Regressions-Checks),
+Entropie 2,77 -> 2,87. Regressions-Check nach 1 Mrd. Steps (7.038.624.000 gegen 6.037.692.544): **besser**,
++1,69 [+1,58; +1,80] Tore/Spiel, Siege 757:96, Anstoß zuerst 94,8 %. Tabelle: AUDIT.md §10.7/10.8.
+Der Hauptlauf läuft weiter (Stopp: `tools\local\stop_main_run.ps1`).
 
 ## Geschwindigkeit (Branch `claude/speed`, ab 29.09.2026)
 
@@ -467,6 +492,9 @@ Review-Fixes oben; hier unverändert als Stand der Cloud-Session.
 * 25.09.2026 — Schritt 2 (Experiment-Configs, Runner, Abbruchkriterien, compare), Schritt 3 (H5,
   N6/M6 dokumentiert), Schritt 4 (`run_all_checks.ps1`, Deployment-Smoke, Runbook). Stand:
   75 C++-Tests, 97 Python-Tests grün in der VM; alle PowerShell-Skripte syntaktisch geparst.
+* 30.09.2026 (lokal) — Hauptlauf-Betrieb: B1-B4, Prüfpaket grün, Neustart des Hauptlaufs mit der
+  Fast-Config, zwei Stunden Beobachtung, Regressions-Check „besser“. Details im Abschnitt oben und in
+  AUDIT.md §10.
 * 29./30.09.2026 (lokal) — Geschwindigkeit: Profil (G1), G2–G9, Messreihen s1–s5 (s3 wegen VALORANT
   verworfen), Lernvergleich 3 × 300 Mio., Hauptlauf-Vorschlag. Details im Abschnitt Geschwindigkeit
   oben und in AUDIT.md §9.

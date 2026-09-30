@@ -189,12 +189,40 @@ def test_speed_experiments_change_only_speed_switches_against_the_drill_run(name
 
 
 def test_fast_main_run_proposal_adds_only_speed_switches():
-    """Hauptlauf-Vorschlag Geschwindigkeit (AUDIT.md §9.7): lucy_1v1_zero_sum_drill.json plus nur die
-    Learner-Schalter aus speed_overlap_amp (gleicher Checkpoint-Ordner, Obs/Aktionen/Netze unverändert)."""
+    """Hauptlauf-Config Geschwindigkeit (AUDIT.md §9.6): lucy_1v1_zero_sum_drill.json plus nur die
+    Learner-Schalter aus speed_overlap_amp und die Checkpoint-/Skill-Tracker-Abstände (B1, AUDIT.md §10);
+    gleicher Checkpoint-Ordner, Obs/Aktionen/Netze/Rewards/PPO unverändert."""
     drill = flatten(json.loads((ROOT / "train" / "configs" / "lucy_1v1_zero_sum_drill.json").read_text(encoding="utf-8")))
     fast = flatten(json.loads((ROOT / "train" / "configs" / "lucy_1v1_zero_sum_drill_fast.json").read_text(encoding="utf-8")))
-    assert diff(drill, fast) == SPEED_EXPECTED["speed_overlap_amp"]
+    assert diff(drill, fast) == {**SPEED_EXPECTED["speed_overlap_amp"], **HISTORY_EXPECTED}
     assert fast["learner.checkpoint_folder"] == "runs/lucy_1v1/checkpoints"
     assert fast["env.max_players"] == 3 and fast["env.action_stack_size"] == 5
     assert fast["learner.policy_layer_sizes"] == [512, 512, 512]
-    assert "NICHT gestartet" in fast["_comment"]
+    assert "Hauptlauf-Config" in fast["_comment"]
+
+
+# B1 (Hauptlauf-Betrieb, 30.09.2026): Bei ~180.000 SPS deckten 50 Checkpoints à 25 Mio. Steps nur ~2 h ab,
+# und der Skill-Tracker (500 Mio. Abstand) fand beim Neustart 3 von 20 alten Versionen.
+HISTORY_EXPECTED = {
+    "learner.timesteps_per_save": (25_000_000, 50_000_000),
+    "learner.checkpoints_to_keep": (50, 200),
+    "metrics.skill_timesteps_per_version": (500_000_000, 250_000_000),
+}
+CHECKPOINT_MB = 15.63           # gemessen: runs/lucy_1v1/checkpoints/6037692544 (Policy, Critic, 2 Optimizer, Stats)
+SPS = 180_000
+
+
+def test_main_run_keeps_billions_of_steps_history_within_the_disk_budget():
+    fast = flatten(json.loads((ROOT / "train" / "configs" / "lucy_1v1_zero_sum_drill_fast.json").read_text(encoding="utf-8")))
+    save, keep = fast["learner.timesteps_per_save"], fast["learner.checkpoints_to_keep"]
+    history = save * keep
+    assert history >= 5_000_000_000                                # mehrere Milliarden Steps
+    assert history / SPS / 3600 >= 8                               # mindestens eine Nacht bei ~180.000 SPS
+    assert keep * CHECKPOINT_MB / 1024 <= 10                       # Platte: ~35 GB frei, 10 GB Reserve, Rest Luft
+    assert save / SPS / 60 <= 5                                    # höchstens ~5 min Fortschritt bei einem Absturz
+    # Skill-Tracker: alle Versionen liegen in der Historie (Learner::Load sucht sie dort) ...
+    per_version, versions = fast["metrics.skill_timesteps_per_version"], fast["metrics.skill_max_versions"]
+    assert per_version * versions <= history
+    assert per_version % save == 0                                 # ... und fallen auf gespeicherte Checkpoints
+    # Regressions-Check (tools/regression_check.py): Gegner ~1 Mrd. Steps älter muss vorhanden sein
+    assert history >= 2 * 1_000_000_000
