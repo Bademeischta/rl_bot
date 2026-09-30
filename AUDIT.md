@@ -2446,3 +2446,35 @@ wäre es etwa die Hälfte bei doppelter Dauer.
 * Das Trainer-Log wächst ~140 MB am Tag; alte Logs in `runs\hauptlauf\` gelegentlich löschen.
 * `metrics.csv` enthält die zwei Kurzläufe vom Mittag (88 und 92 Iterationen ab 6,0378 Mrd.) vor dem
   Neustart; Auswertungen über Steps sehen den Bereich 6,038–6,047 Mrd. dreifach.
+
+### 10.10 Weiterer Verlauf bis 10 Mrd. Steps (30.09./01.10.2026)
+
+* Der Lauf von 13:15 wurde um 15:28 durch Schließen des Fensters beendet, ein neuer lief ab 15:31 (ab
+  7.438.952.192) und endete um 20:19 ebenfalls durch Schließen des Fensters bei 9.737.629.440 Steps
+  („forrtl: error (200): program aborting due to window-CLOSE event“). Das Schließen beendet den Trainer
+  sofort, ohne End-Checkpoint: verloren waren ~8 und ~47 Mio. Steps (höchstens ein Speicherabstand,
+  50 Mio.). Sauber und ohne Verlust stoppt nur die Stop-Datei (`tools\local\stop_main_run.ps1`).
+* Verlauf 6,0–9,74 Mrd. (Mittel je 250 Mio.): Entropie 2,77 → 2,97, ab 8,5 Mrd. flach bei ~2,97; KL
+  0,0041–0,0043 und Clip 3,9–4,3 % konstant; Value Loss 0,211 → 0,158; Tor-Anteil ohne Drill 1,000;
+  Anstoß-Zeit im Training 3,2 → 2,6 s (bis 7,0 Mrd.), danach wieder ~3,0–3,2 s (Spitze 4,1 s bei
+  8,5–8,75 Mrd.). Ab ~8,25 Mrd. lag die SPS bei 107.000–123.000 (vermutlich Spiele nebenher).
+* Neustart am 30.09. um 23:42 mit `start_main_run.ps1` ab 9.690.605.696: der Skill-Tracker findet jetzt
+  alle 20 Versionen, ~200.000 SPS, keine Warnungen. Beobachtung bis 00:42 (Tabelle unten): alle
+  Grenzwerte eingehalten.
+* Zweiter Regressions-Check (23:44): 9.690.605.696 gegen 8.690.024.064 **besser**, +1,48 [+1,33; +1,64]
+  Tore/Spiel, Siege 655:211 (134 remis), Anstoß zuerst 71,8 % [67,7; 75,6], erste Berührung 2,82 s gegen
+  2,80 s. Der Lauf wird also trotz steigender Entropie und wieder längerer Anstoß-Zeit im Selbstspiel
+  weiter deutlich stärker; die Anstoß-Überlegenheit gegen den 1 Mrd. älteren Stand ist kleiner als beim
+  ersten Check (94,8 %).
+
+| Zeit | Steps | SPS | Entropie | KL | Clip | Value Loss | Tor-Anteil ohne Drill | Hinweis |
+|---|---|---|---|---|---|---|---|---|
+| 09-30 23:58 | 9.842.517.376 | 172.330 | 2,975 | 0,0043 | 0,042 | 0,162 | 1,000 | Regressions-Check läuft |
+| 10-01 00:11 | 9.981.309.440 | 172.041 | 2,979 | 0,0042 | 0,041 | 0,159 | 1,000 | Fenster enthält noch Iterationen während des Checks |
+| 10-01 00:27 | 10.154.514.944 | 191.782 | 2,952 | 0,0042 | 0,040 | 0,158 | 1,000 |  |
+| 10-01 00:42 | 10.327.127.168 | 190.321 | 2,967 | 0,0042 | 0,040 | 0,156 | 1,000 |  |
+
+Offen (zusätzlich zu §10.9): Die Entropie liegt knapp unter 3,0; steigt sie weiter, wäre das der Punkt, an
+dem der Entropie-Bonus relativ zu stark wird (Muster K3/E1). Solange die Regressions-Checks „besser“
+melden, ist das kein Handlungsbedarf. Optional: train_bot.exe könnte das Schließen des Fensters abfangen
+(CTRL_CLOSE_EVENT, ~5 s Zeit) und noch speichern; nicht umgesetzt.

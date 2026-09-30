@@ -33,7 +33,7 @@ Neustart 13:15:16 über `start_main_run.ps1` (Aufgabenplanung, eigenes Fenster),
 alle ~15 min: alle Grenzwerte eingehalten, ~179.000 SPS (159.000 während des Regressions-Checks),
 Entropie 2,77 -> 2,87. Regressions-Check nach 1 Mrd. Steps (7.038.624.000 gegen 6.037.692.544): **besser**,
 +1,69 [+1,58; +1,80] Tore/Spiel, Siege 757:96, Anstoß zuerst 94,8 %. Tabelle: AUDIT.md §10.7/10.8.
-Der Hauptlauf läuft weiter (Stopp: `tools\local\stop_main_run.ps1`).
+Der Hauptlauf läuft weiter (Stopp: `tools\local\stop_main_run.ps1`). Nachtrag 01.10.2026: zweimal per Fenster geschlossen (15:28, 20:19; ~8 und ~47 Mio. Steps ohne Checkpoint verloren), Neustart 23:42 ab 9.690.605.696; zweiter Regressions-Check 9,69 gegen 8,69 Mrd. **besser** (+1,48 Tore/Spiel); Entropie ~2,97 (AUDIT.md §10.10).
 
 ## Geschwindigkeit (Branch `claude/speed`, ab 29.09.2026)
 
