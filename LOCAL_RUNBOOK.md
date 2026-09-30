@@ -267,6 +267,38 @@ Rückweg ohne Einfluss aufs Lernen: nur `"exp_buffer_on_device": true` (bitgleic
 SPS messen: `tools\bench_speed.py --plan <plan.json> --tag <name>` (Varianten abwechselnd, eigene
 Ordner `runs\speed_*`, `results\speed_*`). Vorher prüfen, dass kein Spiel läuft.
 
+## 5d. Hauptlauf betreiben (30.09.2026, AUDIT.md §10)
+
+Der Hauptlauf läuft mit `train\configs\lucy_1v1_zero_sum_drill_fast.json` aus `build\cpp_cu128`, gestartet
+über die Aufgabenplanung in einem eigenen Fenster „RLbot Hauptlauf“. Er läuft weiter, wenn die Sitzung
+endet, die ihn gestartet hat.
+
+```powershell
+# Starten (bricht ab, wenn schon ein train_bot.exe läuft; entfernt eine alte Stop-Datei)
+powershell -ExecutionPolicy Bypass -File tools\local\start_main_run.ps1
+
+# Stand prüfen: Mittel der letzten 200 Iterationen, Grenzwerte, Checkpoints, Platte (Exit 3 = verletzt)
+.\.venv\Scripts\python tools\local\main_run_status.py
+.\.venv\Scripts\python tools\local\main_run_status.py --log runs\hauptlauf\status.csv   # mit Verlaufszeile
+
+# Sauber stoppen: Stop-Datei, laufende Iteration fertig, End-Checkpoint (--save-on-exit); nie hart
+powershell -ExecutionPolicy Bypass -File tools\local\stop_main_run.ps1
+
+# Regressions-Check neben dem Training (2 Threads): neuester gegen ~1 Mrd. Steps älteren Checkpoint
+.\.venv\Scripts\python tools\regression_check.py
+```
+
+* Log des Trainers: `runs\hauptlauf\train_<datum>.log` (UTF-8, ~1 KB je Iteration, ~150 MB je Tag;
+  alte Logs dürfen gelöscht werden). Ohne Werkzeug: `New-Item runs\hauptlauf\STOP` stoppt ebenso sauber.
+* Verlauf der Regressions-Checks: `results\regression\lucy_1v1_history.md` (und `.csv`).
+* Checkpoints: alle 50 Mio. Steps, 200 bleiben (10 Mrd. Steps, ~3,1 GB). Der Skill-Tracker lädt beim
+  Start bis zu 20 Versionen im Abstand von 250 Mio. aus diesem Ordner.
+* Grenzwerte (main_run_status.py): Entropie > 2,5, KL < 0,01, Clip-Fraction < 0,10, kein nan/inf,
+  Value Loss ohne Sprung, Tor-Anteil der Episodenenden ohne Anstoß-Drill ≥ 0,95 (ep_end_goal selbst
+  ist mit Drill ~0,64), Timeouts ≤ 0,01. SPS unter 150.000 ist nur ein Hinweis (Spiele nebenbei).
+* Ein neues Binary nach `build\cpp_cu128` erst bauen, wenn der Hauptlauf gestoppt ist (die .exe ist
+  gesperrt); vorher in einen eigenen Ordner bauen (`bench\cpp\build.ps1 -BuildSuffix _next`).
+
 ## 6. Optional: Stufe 4, Gradientenschritte 6 / 3 / 2 (~1 Stunde)
 
 Erst wenn Stufe 3 entschieden ist:

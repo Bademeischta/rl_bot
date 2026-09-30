@@ -2335,3 +2335,114 @@ eigenem Lernvergleich.
 * CUDA Graphs für die Inferenz, falls sie nach größeren Batches wieder zum Engpass wird.
 * Der Phase-0-Benchmark (`bench_cpp_sps`) wurde nicht neu gemessen; die Lücke ist über die Bauteile
   erklärt (§9.2), nicht über eine neue Referenzmessung.
+
+## 10. Hauptlauf-Betrieb (30.09.2026, lokal)
+
+### 10.1 Auftrag und Ausgangslage
+
+Der Hauptlauf sollte mit `lucy_1v1_zero_sum_drill_fast.json` laufen (~180.000–200.000 SPS). Auftrag: drei
+Verbesserungen (Checkpoint-Historie/Skill-Tracker, Regressions-Check, Autocast-Warnungen), danach den
+Hauptlauf selbst neu starten und mindestens eine Stunde beobachten; keine lernrelevanten Werte ändern.
+Branch `claude/hauptlauf-betrieb` (von `main` @ `3308fed`), Commits B1–B4.
+
+Befund beim Start der Arbeit (12:45): **Der Hauptlauf lief nicht.** Er war zweimal kurz gestartet worden
+(zuletzt 12:43:09, `config_used.json`, `_git` 2ebc0c7) und endete zuletzt um 12:44:25 bei 6.046.918.784
+Steps, jeweils ohne neuen Checkpoint (der neueste blieb 6.037.692.544) und ohne Absturzeintrag im
+Ereignisprotokoll. Die ~9 Mio. Steps fehlen; `metrics.csv` enthält die 88 und 92 Zeilen der beiden
+Kurzläufe. Punkt „laufenden Hauptlauf sauber stoppen“ entfiel damit.
+
+### 10.2 B1: Checkpoint-Historie und Skill-Tracker
+
+Bei ~180.000 SPS deckten 50 Checkpoints à 25 Mio. Steps nur 1,25 Mrd. Steps (~2 h) ab. Der Skill-Tracker
+(20 Versionen im Abstand von 500 Mio.) lädt alte Versionen beim Start aus dem Checkpoint-Ordner und fand
+deshalb 3 von 20. Checkpoint gemessen: 15,6 MB (Policy 2,8, Critic 2,6, Optimizer 5,6 + 5,3 MB).
+
+| Wert | vorher | jetzt | Folge |
+|---|---|---|---|
+| `timesteps_per_save` | 25 Mio. | **50 Mio.** | alle ~4,6 min; ein Absturz kostet höchstens so viel, ein geplanter Stopp mit `--save-on-exit` nichts |
+| `checkpoints_to_keep` | 50 | **200** | Historie 10 Mrd. Steps (~15 h bei 180.000 SPS), 3,1 GB (Reserve bleibt weit über 10 GB) |
+| `skill_timesteps_per_version` | 500 Mio. | **250 Mio.** | 20 Versionen über 5 Mrd. Steps, alle innerhalb der Historie und auf gespeicherten Checkpoints; beim Neustart jetzt 5 statt 3 gefunden, voll nach ~7,7 h |
+
+Mehr Gegner kosten keine SPS: Die Skill-Eval spielt eine feste Spielzeit (`simTime` verteilt auf
+`numEnvs` Spiele), die Zahl der Versionen bestimmt nur, gegen wen. Gemessen (`results\speed_b1skill`, je
+3 × 15 Mio. Steps mit 50 kopierten Checkpoints): 3 geladene Versionen 179.236 SPS, 20 Versionen 179.626
+(+0,2 %), Skill-Eval 0,020 s je Iteration in beiden.
+
+### 10.3 B2: Regressions-Check
+
+`tools/regression_check.py`: neuester vollständiger Checkpoint gegen den vollständigen, der am nächsten
+an „neuester − 1 Mrd.“ liegt. Beide Policies werden zuerst kopiert (Lauf nur gelesen, Rotation kann nichts
+wegnehmen). Duell 1000 × 300 s mit `--threads 2`, Anstöße mit `eval/kickoff_eval.py` (500, ein
+Torch-Thread). Urteil nach dem 95-%-Intervall der Tordifferenz: besser / gleich / schlechter; Verlauf mit
+Datum in `results\regression\lucy_1v1_history.md` und `.csv`.
+
+### 10.4 B3: Autocast-Warnungen
+
+`RG_AUTOCAST_ON/OFF` riefen die veralteten Wrapper `at::autocast::set_enabled`,
+`set_autocast_gpu_dtype`, `set_autocast_cpu_dtype`; jeder löst zur Laufzeit `TORCH_WARN_DEPRECATION` aus
+(4 je Minibatch, ~48 Zeilen je Iteration). Jetzt `set_autocast_enabled(at::kCUDA, …)` und
+`set_autocast_dtype(at::kCUDA/at::kCPU, …)`, genau die Aufrufe, an die die Wrapper weiterleiten. Test:
+eigener c10-Warning-Handler, Zustand und ein BF16-Produkt bitgleich zur alten API, echter PPO-Schritt
+ohne Warnung; im Hauptlauf-Log nach dem Neustart 0 Deprecation-Zeilen.
+
+### 10.5 B4: Starten, Stoppen, Prüfen
+
+`tools\local\start_main_run.ps1` (Aufgabenplanung, eigenes Fenster, keine 72-h-Grenze; Eltern-Prozess
+ist die Aufgabenplanung, nicht die startende Sitzung), `run_main.ps1` (Trainer mit `--stop-file
+runs\hauptlauf\STOP --save-on-exit`, Log `runs\hauptlauf\train_<datum>.log`), `stop_main_run.ps1`
+(Stop-Datei, wartet, nie hart), `main_run_status.py` (Grenzwerte über die letzten 200 Iterationen).
+Befehle: LOCAL_RUNBOOK §5d.
+
+Hinweis zu „ep_end_goal nahe 1“: Mit dem Anstoß-Drill enden ~36 % der Episoden planmäßig nach 6 s
+(`ep_end_drill`), `ep_end_goal` liegt deshalb bei ~0,64. Geprüft wird der Tor-Anteil der übrigen Episoden,
+`ep_end_goal / (1 − ep_end_drill)`; er liegt bei 1,000.
+
+### 10.6 Neustart (30.09.2026, 13:15)
+
+Prüfpaket vorher grün (`5b18265`, sauber): 6/6 Schritte in 5,9 min, C++ 119/119 und Python 207/207 je
+zweimal, Golden-Fixtures unverändert, Smoke und Deployment-Smoke OK; `build\cpp_cu128` dabei neu gebaut
+(der Hauptlauf lief nicht, die .exe war frei). Start mit `start_main_run.ps1` um 13:15:16: train_bot.exe
+(PID 32880) mit `--stop-file runs\hauptlauf\STOP --save-on-exit`, Eltern-Prozess powershell.exe, dessen
+Eltern svchost.exe (Aufgabenplanung). Geprüft: lädt 6.037.692.544, Skill-Tracker findet 5 Versionen
+(250 Mio. Abstand), Lern-Stream hoher Priorität aktiv, nach 153 Iterationen 0 Deprecation-Zeilen im Log
+(vorher dutzende je Iteration), 183.494 SPS. Log `runs\hauptlauf\train_2026-09-30_131516.log`
+(~5,8 MB je Stunde).
+
+### 10.7 Beobachtung (Mittel der letzten 200 Iterationen, `main_run_status.py`, `runs\hauptlauf\status.csv`)
+
+| Zeit | Steps | SPS | Entropie | KL | Clip | Value Loss | ep_end_goal (ohne Drill) | Timeouts | Checkpoints | Hinweis |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 13:17 | 6.058.854.656 | 177.428 | 2,770 | 0,0043 | 0,043 | 0,216 | 0,630 (1,000) | 0,0003 | 50 | Fenster noch mit Zeilen der Kurzläufe |
+| 13:31 | 6.203.574.016 | 178.763 | 2,768 | 0,0043 | 0,044 | 0,206 | 0,642 (1,000) | 0,0001 | 53 | |
+| 13:46 | 6.364.951.296 | 178.343 | 2,775 | 0,0043 | 0,043 | 0,205 | 0,639 (1,000) | 0,0000 | 56 | |
+| 14:01 | 6.528.225.408 | 179.860 | 2,797 | 0,0043 | 0,043 | 0,206 | 0,630 (1,000) | 0,0002 | 59 | |
+| 14:16 | 6.689.199.360 | 179.015 | 2,844 | 0,0042 | 0,042 | 0,189 | 0,635 (0,999) | 0,0006 | 63 | |
+| 14:31 | 6.851.175.680 | 179.091 | 2,842 | 0,0042 | 0,042 | 0,190 | 0,633 (1,000) | 0,0002 | 66 | |
+| 14:46 | 7.012.145.792 | 179.542 | 2,848 | 0,0042 | 0,042 | 0,191 | 0,639 (1,000) | 0,0002 | 69 | |
+| 15:01 | 7.160.859.648 | 159.389 | 2,861 | 0,0044 | 0,043 | 0,187 | 0,642 (1,000) | 0,0001 | 72 | Regressions-Check läuft (2 Threads) |
+| 15:16 | 7.307.261.312 | 169.390 | 2,870 | 0,0042 | 0,042 | 0,177 | 0,641 (1,000) | 0,0002 | 75 | Check endete 15:16 |
+
+Alle Grenzwerte in jeder Prüfung eingehalten, kein Spiel nebenher. Die Entropie steigt langsam
+(2,77 → 2,87 in 1,3 Mrd. Steps; im Phase-C-Drill-Lauf 2,77 → 2,81 in 300 Mio.), weit über der
+Grenze 2,5 — beobachten. KL und Clip liegen wegen des Overlaps über dem alten Lauf (0,0031 / 3,0 %,
+§9.5) und sind konstant. Die Anstoß-Zeit bis zur ersten Berührung fällt im Training von 3,6 auf 2,65 s.
+
+### 10.8 Regressions-Check nach 1 Mrd. Steps
+
+`tools/regression_check.py` um 14:48 (1000 Spiele, 2 Threads, 500 Anstöße, 27 min):
+
+| neu | alt | Urteil | Tordifferenz/Spiel [95-%-KI] | Siege neu:alt | Anstoß zuerst (neu) | erste Berührung neu/alt |
+|---|---|---|---|---|---|---|
+| 7.038.624.000 | 6.037.692.544 | **besser** | **+1,69** [+1,58; +1,80] | 757:96 (147 remis) | 94,8 % [92,5; 96,4] | 2,56 s / 3,17 s |
+
+Der neue Stand ist nach 1 Mrd. Steps mit der Fast-Config deutlich stärker, vor allem beim Anstoß (der Drill
+wirkt). Kosten des Checks für das Training: 179.500 → 159.400 SPS (−11 %) für ~27 min; mit `--threads 1`
+wäre es etwa die Hälfte bei doppelter Dauer.
+
+### 10.9 Offen
+
+* Entropie-Anstieg weiter beobachten (Grenze 2,5 ist weit weg; ein Anstieg über ~3,0 wäre ein Hinweis
+  wie bei K3/E1, dass der Entropie-Bonus relativ zu stark wird).
+* Das Trainer-Log wächst ~140 MB am Tag; alte Logs in `runs\hauptlauf\` gelegentlich löschen.
+* `metrics.csv` enthält die zwei Kurzläufe vom Mittag (88 und 92 Iterationen ab 6,0378 Mrd.) vor dem
+  Neustart; Auswertungen über Steps sehen den Bereich 6,038–6,047 Mrd. dreifach.
