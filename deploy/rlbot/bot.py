@@ -21,6 +21,8 @@ Wichtig für die Übereinstimmung mit dem Training:
   Danach entscheidet sofort wieder die Policy; die Aktionshistorie enthält die nächsten
   Tabelleneinträge der Skript-Eingaben. Im Teamspiel fährt nur der ballnächste Mitspieler das Skript.
       $env:RLBOT_SCRIPTED_KICKOFF = "speedflip"
+- Zweiter Stand als Gegner (B6): `bot.py --policy <datei>` lädt statt policy.pt eine andere Datei
+  (relativ zu diesem Ordner). bot_alt.toml startet so policy_alt.pt als "Lucy alt (RLbot)".
 """
 from __future__ import annotations
 
@@ -134,6 +136,22 @@ def obs_delay_from_env(environ=None) -> int:
     return value
 
 
+def policy_path_from_argv(argv=None) -> Path:
+    """Policy-Datei aus `--policy <datei>` der Kommandozeile (B6), sonst policy.pt neben bot.py.
+
+    Relative Pfade gelten ab dem Bot-Ordner, egal aus welchem Ordner RLBot den Bot startet. So
+    können zwei Einträge (bot.toml, bot_alt.toml) denselben Code mit verschiedenen Ständen starten.
+    """
+    args = list(sys.argv[1:] if argv is None else argv)
+    if "--policy" not in args:
+        return DEFAULT_POLICY
+    i = args.index("--policy")
+    if i + 1 >= len(args) or not args[i + 1].strip():
+        raise ValueError("--policy braucht eine Datei, z. B. --policy policy_alt.pt")
+    path = Path(args[i + 1])
+    return path if path.is_absolute() else DEFAULT_POLICY.parent / path
+
+
 def scripted_kickoff_from_env(environ=None) -> str | None:
     """Variante aus RLBOT_SCRIPTED_KICKOFF; leer, "0", "off" oder "aus" = aus (Standard)."""
     raw = (os.environ if environ is None else environ).get(SCRIPTED_KICKOFF_ENV, "").strip().lower()
@@ -213,7 +231,7 @@ def check_policy_compatible(policy, max_players: int = MAX_PLAYERS,
 
 class RLbotAgent(Bot):
     def initialize(self):
-        policy_path = Path(__file__).parent / "policy.pt"
+        policy_path = policy_path_from_argv()
         if not policy_path.exists():
             raise FileNotFoundError(
                 f"{policy_path} fehlt. Export mit:\n"
@@ -221,7 +239,8 @@ class RLbotAgent(Bot):
             )
         self.policy = load_policy(policy_path)
         check_policy_compatible(self.policy)
-        self.logger.info(f"Policy geladen: {self.policy.meta.layer_sizes}, "
+        self.logger.info(f"Policy geladen: {policy_path.name} ({self.policy.meta.timesteps:,} Steps), "
+                         f"{self.policy.meta.layer_sizes}, "
                          f"Obs {self.policy.meta.obs_size}, Aktionen {self.policy.meta.action_count}")
 
         pad_locations = np.array([[p.location.x, p.location.y, p.location.z]
@@ -350,4 +369,5 @@ class RLbotAgent(Bot):
 
 
 if __name__ == "__main__":
+    # Die Agent-ID kommt beim Start über RLBot aus RLBOT_AGENT_ID (bot.toml bzw. bot_alt.toml)
     RLbotAgent("rlbot/lucy").run()

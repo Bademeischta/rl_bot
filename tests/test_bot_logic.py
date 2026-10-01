@@ -2,8 +2,14 @@
 Paketpuffer (Audit H1)."""
 from __future__ import annotations
 
+import sys
+import tomllib
+from pathlib import Path
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
+import torch
 
 pytest.importorskip("rlbot_flatbuffers")
 pytest.importorskip("rlbot")
@@ -355,3 +361,56 @@ def test_two_bots_in_one_team_see_their_teammate_and_both_opponents():
         assert np.allclose(pos(opp_start)[:2], [-500, 3000], atol=1e-3)         # Blau: nicht gespiegelt
         assert np.allclose(pos(opp_start + PLAYER_FEATURES)[:2], [800, 2500], atol=1e-3)
         assert not obs[opp_start + 2 * PLAYER_FEATURES:].any()                  # dritter Gegner-Slot leer
+
+
+# --- Zweiter Stand als Gegner (B6) -----------------------------------------------------------
+
+BOT_DIR = Path(__file__).resolve().parents[1] / "deploy" / "rlbot"
+
+
+def _args_after_bot_py(run_command: str) -> list[str]:
+    parts = run_command.split()
+    return parts[parts.index("bot.py") + 1:]
+
+
+def test_policy_file_comes_from_the_command_line_and_defaults_to_policy_pt(monkeypatch):
+    from deploy.rlbot.bot import policy_path_from_argv
+    assert policy_path_from_argv([]) == BOT_DIR / "policy.pt"
+    assert policy_path_from_argv(["--policy", "policy_alt.pt"]) == BOT_DIR / "policy_alt.pt"
+    absolute = Path(__file__).resolve()
+    assert policy_path_from_argv(["--policy", str(absolute)]) == absolute
+    with pytest.raises(ValueError, match="--policy"):
+        policy_path_from_argv(["--policy"])
+    monkeypatch.setattr(sys, "argv", ["bot.py", "--policy", "x.pt"])
+    assert policy_path_from_argv() == BOT_DIR / "x.pt"
+
+
+def test_alt_entry_starts_the_same_bot_with_another_policy_and_agent_id():
+    from deploy.rlbot.bot import policy_path_from_argv
+    main = tomllib.loads((BOT_DIR / "bot.toml").read_text(encoding="utf-8"))["settings"]
+    alt = tomllib.loads((BOT_DIR / "bot_alt.toml").read_text(encoding="utf-8"))["settings"]
+    assert alt["agent_id"] != main["agent_id"] and alt["name"] != main["name"]
+    for key in ("run_command", "run_command_linux"):
+        assert policy_path_from_argv(_args_after_bot_py(main[key])) == BOT_DIR / "policy.pt"
+        assert policy_path_from_argv(_args_after_bot_py(alt[key])) == BOT_DIR / "policy_alt.pt"
+        assert alt[key].split()[0] == main[key].split()[0]          # derselbe Interpreter
+
+
+def test_bot_loads_the_policy_named_on_the_command_line(tmp_path, monkeypatch):
+    """Echter Start-Pfad: initialize() lädt die Datei aus --policy, nicht policy.pt."""
+    seq = _build_sequential(obs_size(3, 5), len(LOOKUP_TABLE), [8])
+    meta = PolicyMeta(obs_size=obs_size(3, 5), action_count=len(LOOKUP_TABLE), layer_sizes=[8],
+                      source="alt", timesteps=6037692544)
+    out = tmp_path / "policy_alt.pt"
+    torch.save({"state_dict": seq.state_dict(), "meta": meta.__dict__}, out)
+
+    lines: list[str] = []
+    agent = object.__new__(RLbotAgent)
+    agent.logger = SimpleNamespace(info=lines.append)
+    agent.field_info = SimpleNamespace(boost_pads=[
+        SimpleNamespace(location=SimpleNamespace(x=float(x), y=float(y), z=float(z))) for x, y, z in BOOST_LOCATIONS])
+    monkeypatch.setattr(sys, "argv", ["bot.py", "--policy", str(out)])
+    monkeypatch.delenv("RLBOT_OBS_DELAY", raising=False)
+    agent.initialize()
+    assert agent.policy.meta.timesteps == 6037692544 and agent.policy.meta.layer_sizes == [8]
+    assert any("policy_alt.pt" in line and "6,037,692,544" in line for line in lines)
