@@ -233,6 +233,10 @@ def test_main_run_keeps_billions_of_steps_history_within_the_disk_budget():
 SPIELTEST2_EXPECTED = {
     "sp2_kickoff_first_touch": {"rewards.kickoff_first_touch": (None, 2.0)},
     "sp2_aerial_share": {"state_setters.aerial": (0.5, 2.0)},
+    # zweite Runde (§11.5): save_boost als vermutete Ursache des Anstoßes ohne Boost
+    "sp2_save_boost_01": {"rewards.save_boost": (0.3, 0.1)},
+    # Bündel: beide Anstoß-Hebel zusammen
+    "sp2_save_boost_01_kickoff": {"rewards.save_boost": (0.3, 0.1), "rewards.kickoff_first_touch": (None, 2.0)},
 }
 
 
@@ -249,7 +253,7 @@ def test_spieltest2_reference_is_the_running_main_config_as_an_experiment():
 
 
 @pytest.mark.parametrize("name,expected", list(SPIELTEST2_EXPECTED.items()))
-def test_spieltest2_experiment_changes_exactly_one_thing_against_the_reference(name, expected):
+def test_spieltest2_experiment_changes_only_the_named_values_against_the_reference(name, expected):
     assert diff(load("sp2_reference"), load(name)) == expected
     assert load(name)["metrics.run"] == name
     assert load(name)["env.max_players"] == 3 and load(name)["env.action_stack_size"] == 5
