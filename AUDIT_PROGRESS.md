@@ -24,6 +24,7 @@ Hauptlauf nicht (12:43:09 gestartet, 12:44:25 ohne Checkpoint beendet); neu gest
 | B1 | Hauptlauf-Config: `timesteps_per_save` 50 Mio., `checkpoints_to_keep` 200, `skill_timesteps_per_version` 250 Mio.; `bench_speed.py --history/--drop-checkpoints` | `test_main_run_keeps_billions_of_steps_history_within_the_disk_budget`, angepasste Config-Diff-Prüfung (beide mit alten Werten rot) |
 | B2 | `tools/regression_check.py` | `tests/test_regression_check.py` (echte Checkpoint-Kopien, echtes duel.exe, halb geschriebener Checkpoint, Quelle per Hash unverändert) |
 | B4 | `tools/local/start_main_run.ps1`, `run_main.ps1`, `stop_main_run.ps1`, `main_run_status.py`; Nachtrag: Status-Skript stürzte in der cp1252-Konsole ab | `tests/test_main_run_ops.py` (Status mit echter C++-CSV und cp1252-Konsole, Stopp gegen echten Prozess, Start als DryRun) |
+| B5 | `tools/export_policy.py` lief als Skript (README-Befehl) nicht: „No module named 'deploy'“; Projektordner jetzt im Suchpfad (01.10.2026, vor dem Spieltest mit 16.946.547.712) | `test_export_tool_runs_as_a_script_like_in_the_readme` in `tests/test_policy_parity.py` (ohne Fix rot) |
 
 Verifikation: `run_all_checks.ps1` vor dem Neustart (`5b18265`, sauber): alle 6 Schritte OK in 5,9 min,
 C++ 119/119 und Python 207/207 je zweimal, Golden-Fixtures unverändert, Smoke und Deployment-Smoke OK;

@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -110,3 +111,15 @@ def test_export_roundtrip_keeps_outputs(checkpoint, obs_batch, tmp_path):
     after = reloaded.action_probs(obs_batch)
     assert np.array_equal(before, after), "Export verändert die Ausgaben"
     assert out.with_suffix(".json").exists(), "Metadaten-JSON fehlt"
+
+
+def test_export_tool_runs_as_a_script_like_in_the_readme(checkpoint, tmp_path):
+    """B5: `python tools\export_policy.py ...` endete mit "No module named 'deploy'" (nur tools/ im Suchpfad)."""
+    out = tmp_path / "policy.pt"
+    env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+    r = subprocess.run([sys.executable, str(ROOT / "tools" / "export_policy.py"), str(checkpoint.parent), "--out", str(out)],
+                       cwd=ROOT, env={**env, "PYTHONIOENCODING": "cp1252"},
+                       capture_output=True, text=True, encoding="cp1252", errors="replace")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "Reimport geprüft: identisch" in r.stdout
+    assert load_policy(out).meta.timesteps == int(checkpoint.parent.name)
