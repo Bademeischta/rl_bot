@@ -130,3 +130,49 @@ def test_start_script_refuses_a_second_trainer_and_plans_stop_file_and_log(tmp_p
     assert "run_main.ps1" in r.stdout and "--stop-file" in r.stdout and "--save-on-exit" in r.stdout
     assert "Alte Stop-Datei" in r.stdout and stale.exists()   # DryRun löscht nichts
     assert "lucy_1v1_zero_sum_drill_fast.json" in r.stdout
+
+
+def _task_state(name: str) -> str:
+    r = _ps("-Command", f"$t = Get-ScheduledTask -TaskName '{name}' -ErrorAction SilentlyContinue; if ($t) {{ $t.State }} else {{ 'fehlt' }}")
+    return r.stdout.strip()
+
+
+@needs_ps51
+@pytest.mark.skipif(not (BUILD / "train_bot.exe").exists(), reason="start_main_run.ps1 verlangt build\\cpp_cu128\\train_bot.exe")
+def test_start_script_restarts_after_a_clean_stop_left_the_task_window_open(tmp_path):
+    """B7: Nach dem sauberen Stopp bleibt das -NoExit-Fenster offen, die Aufgabe gilt als laufend und der
+    nächste Start wurde ignoriert ("train_bot ist nach 90 s nicht gestartet", 01.10.2026).
+
+    Echte Aufgabenplanung mit eigenem Aufgabennamen; als "Trainer" läuft eine Kopie von ping.exe unter
+    eigenem Namen, gestartet von einem Ersatz für run_main.ps1.
+    """
+    ping = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "ping.exe"
+    if not ping.exists():
+        pytest.skip("ping.exe fehlt")
+    tag = f"{os.getpid()}_{int(time.time())}"
+    trainer = f"rlbot_fake_trainer_{tag}"
+    task = f"RLbot Test {tag}"
+    exe = tmp_path / f"{trainer}.exe"
+    shutil.copyfile(ping, exe)
+    runner = tmp_path / "fake_runner.ps1"
+    runner.write_text("param([string]$Config, [string]$StopFile)\n"
+                      f"& '{exe}' -n 600 127.0.0.1 | Out-Null\n", encoding="ascii")
+    start = str(ROOT / "tools" / "local" / "start_main_run.ps1")
+    args = ["-File", start, "-TaskName", task, "-TrainerName", trainer, "-Runner", str(runner),
+            "-StopFile", str(tmp_path / "STOP")]
+    kill = ["taskkill", "/F", "/IM", f"{trainer}.exe"]
+    try:
+        r = _ps(*args)
+        assert r.returncode == 0 and "PID" in r.stdout, r.stdout + r.stderr
+        # "sauberer Stopp": der Trainer endet, das Fenster der Aufgabe bleibt offen
+        subprocess.run(kill, capture_output=True)
+        time.sleep(2)
+        assert _task_state(task) == "Running"
+        r = _ps(*args)
+        assert r.returncode == 0 and "PID" in r.stdout, r.stdout + r.stderr
+        assert "alte Instanz wird beendet" in r.stdout
+    finally:
+        subprocess.run(kill, capture_output=True)
+        _ps("-Command", f"Stop-ScheduledTask -TaskName '{task}' -ErrorAction SilentlyContinue; "
+                        f"Unregister-ScheduledTask -TaskName '{task}' -Confirm:$false -ErrorAction SilentlyContinue")
+    assert _task_state(task) == "fehlt"

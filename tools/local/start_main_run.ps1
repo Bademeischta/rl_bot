@@ -4,12 +4,16 @@
 #   powershell -ExecutionPolicy Bypass -File tools\local\start_main_run.ps1 [-Config <json>] [-DryRun]
 #
 # Vorher: Läuft schon ein train_bot.exe, bricht das Skript ab. Eine alte Stop-Datei (vom letzten
-# sauberen Stopp) wird entfernt, sonst würde der Trainer den Start verweigern.
+# sauberen Stopp) wird entfernt, sonst würde der Trainer den Start verweigern. Steht nach einem Stopp
+# noch das alte Fenster offen (-NoExit), gilt die Aufgabe als laufend und ein neuer Start würde
+# ignoriert (B7); die alte Instanz wird deshalb vorher beendet.
 param(
     [string]$Config = "train\configs\lucy_1v1_zero_sum_drill_fast.json",
     [string]$StopFile = "runs\hauptlauf\STOP",
     [string]$TaskName = "RLbot Hauptlauf",
     [string]$TrainerName = "train_bot",
+    # Skript, das die Aufgabe startet (Tests: Ersatz, der keinen echten Trainer startet)
+    [string]$Runner = "tools\local\run_main.ps1",
     [switch]$DryRun
 )
 
@@ -31,7 +35,19 @@ if (Test-Path $stopPath) {
     if (-not $DryRun) { Remove-Item $stopPath }
 }
 
-$runner = Join-Path $Root "tools\local\run_main.ps1"
+# B7: Nach einem sauberen Stopp bleibt das Fenster der Aufgabe offen (-NoExit) und die Aufgabe im Zustand
+# "Running"; mit MultipleInstances IgnoreNew würde Start-ScheduledTask dann nichts starten.
+$oldTask = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+if ($oldTask -and $oldTask.State -eq 'Running') {
+    Write-Host "Aufgabe '$TaskName' gilt noch als laufend (altes Fenster ohne Trainer); die alte Instanz wird beendet."
+    if (-not $DryRun) {
+        Stop-ScheduledTask -TaskName $TaskName
+        $taskDeadline = (Get-Date).AddSeconds(20)
+        while ((Get-ScheduledTask -TaskName $TaskName).State -eq 'Running' -and (Get-Date) -lt $taskDeadline) { Start-Sleep -Milliseconds 500 }
+    }
+}
+
+$runner = if ([IO.Path]::IsPathRooted($Runner)) { $Runner } else { Join-Path $Root $Runner }
 $argument = "-NoExit -NoProfile -ExecutionPolicy Bypass -File `"$runner`" -Config `"$Config`" -StopFile `"$StopFile`""
 Write-Host "Aufgabe '$TaskName': powershell.exe $argument"
 Write-Host "Arbeitsordner $Root; Trainer mit --stop-file $StopFile --save-on-exit; Log runs\hauptlauf\train_<datum>.log"
