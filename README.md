@@ -64,7 +64,7 @@ Derselbe Befehl setzt einen abgebrochenen Lauf am jüngsten Checkpoint fort.
 Dann `deploy/rlbot/bot.toml` im RLBot-Launcher laden.
 
 Alt gegen neu im Spiel: einen älteren Checkpoint als zweite Policy exportieren und zusätzlich
-`deploy/rlbot/bot_alt.toml` laden („Lucy alt (RLbot)“, derselbe Bot-Code mit `--policy policy_alt.pt`):
+`deploy/rlbot_alt/bot.toml` laden („Lucy alt (RLbot)“, derselbe Bot-Code mit `--policy policy_alt.pt`):
 ```powershell
 .\.venv\Scripts\python tools\export_policy.py <älterer Checkpoint> --out deploy\rlbot\policy_alt.pt
 ```

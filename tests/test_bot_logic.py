@@ -368,9 +368,13 @@ def test_two_bots_in_one_team_see_their_teammate_and_both_opponents():
 BOT_DIR = Path(__file__).resolve().parents[1] / "deploy" / "rlbot"
 
 
-def _args_after_bot_py(run_command: str) -> list[str]:
+ALT_DIR = BOT_DIR.parent / "rlbot_alt"
+
+
+def _script_and_args(run_command: str) -> tuple[str, list[str]]:
     parts = run_command.split()
-    return parts[parts.index("bot.py") + 1:]
+    i = next(k for k, part in enumerate(parts) if part.endswith("bot.py"))
+    return parts[i], parts[i + 1:]
 
 
 def test_policy_file_comes_from_the_command_line_and_defaults_to_policy_pt(monkeypatch):
@@ -388,12 +392,21 @@ def test_policy_file_comes_from_the_command_line_and_defaults_to_policy_pt(monke
 def test_alt_entry_starts_the_same_bot_with_another_policy_and_agent_id():
     from deploy.rlbot.bot import policy_path_from_argv
     main = tomllib.loads((BOT_DIR / "bot.toml").read_text(encoding="utf-8"))["settings"]
-    alt = tomllib.loads((BOT_DIR / "bot_alt.toml").read_text(encoding="utf-8"))["settings"]
+    # Der RLBot-Launcher lehnt andere Namen ab ("Only bot.toml or script.toml files are allowed")
+    alt_toml = ALT_DIR / "bot.toml"
+    assert sorted(p.name for p in BOT_DIR.parent.glob("rlbot*/*.toml")) == ["bot.toml", "bot.toml"]
+    alt = tomllib.loads(alt_toml.read_text(encoding="utf-8"))["settings"]
     assert alt["agent_id"] != main["agent_id"] and alt["name"] != main["name"]
     for key in ("run_command", "run_command_linux"):
-        assert policy_path_from_argv(_args_after_bot_py(main[key])) == BOT_DIR / "policy.pt"
-        assert policy_path_from_argv(_args_after_bot_py(alt[key])) == BOT_DIR / "policy_alt.pt"
-        assert alt[key].split()[0] == main[key].split()[0]          # derselbe Interpreter
+        script, args = _script_and_args(main[key])
+        assert script == "bot.py" and policy_path_from_argv(args) == BOT_DIR / "policy.pt"
+        script, args = _script_and_args(alt[key])
+        # RLBot startet den Befehl im Ordner der toml: von dort muss der Pfad auf denselben bot.py zeigen
+        assert (ALT_DIR / script.replace("\\", "/")).resolve() == BOT_DIR / "bot.py"
+        assert policy_path_from_argv(args) == BOT_DIR / "policy_alt.pt"
+        interpreter = alt[key].split()[0].replace("\\", "/")
+        assert interpreter == main[key].split()[0].replace("\\", "/")          # derselbe Interpreter
+        assert (ALT_DIR / interpreter).resolve().parent.parent.name == ".venv"
 
 
 def test_bot_loads_the_policy_named_on_the_command_line(tmp_path, monkeypatch):

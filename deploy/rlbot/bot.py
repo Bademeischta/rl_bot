@@ -22,7 +22,7 @@ Wichtig für die Übereinstimmung mit dem Training:
   Tabelleneinträge der Skript-Eingaben. Im Teamspiel fährt nur der ballnächste Mitspieler das Skript.
       $env:RLBOT_SCRIPTED_KICKOFF = "speedflip"
 - Zweiter Stand als Gegner (B6): `bot.py --policy <datei>` lädt statt policy.pt eine andere Datei
-  (relativ zu diesem Ordner). bot_alt.toml startet so policy_alt.pt als "Lucy alt (RLbot)".
+  (relativ zu diesem Ordner). deploy/rlbot_alt/bot.toml startet so policy_alt.pt als "Lucy alt (RLbot)".
 """
 from __future__ import annotations
 
@@ -140,7 +140,7 @@ def policy_path_from_argv(argv=None) -> Path:
     """Policy-Datei aus `--policy <datei>` der Kommandozeile (B6), sonst policy.pt neben bot.py.
 
     Relative Pfade gelten ab dem Bot-Ordner, egal aus welchem Ordner RLBot den Bot startet. So
-    können zwei Einträge (bot.toml, bot_alt.toml) denselben Code mit verschiedenen Ständen starten.
+    können zwei Einträge (rlbot/bot.toml, rlbot_alt/bot.toml) denselben Code mit verschiedenen Ständen starten.
     """
     args = list(sys.argv[1:] if argv is None else argv)
     if "--policy" not in args:
@@ -369,5 +369,5 @@ class RLbotAgent(Bot):
 
 
 if __name__ == "__main__":
-    # Die Agent-ID kommt beim Start über RLBot aus RLBOT_AGENT_ID (bot.toml bzw. bot_alt.toml)
+    # Die Agent-ID kommt beim Start über RLBot aus RLBOT_AGENT_ID (rlbot/bot.toml bzw. rlbot_alt/bot.toml)
     RLbotAgent("rlbot/lucy").run()
