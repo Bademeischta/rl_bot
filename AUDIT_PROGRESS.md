@@ -11,6 +11,24 @@ als PR #1 in `main` gemergt) und `claude/review-fixes` (Review-Befunde R1-R19, v
 gemergt. Aktuell: `claude/hauptlauf-betrieb` (30.09.2026). Regel: ein Commit pro Punkt, ID in der
 Commit-Message.
 
+## Spieltest 2 (Branch `claude/hauptlauf-beobachtung`, 01.10.2026)
+
+Details und Zahlen: AUDIT.md §11.
+
+* Nutzer-Test 16,95 Mrd. gegen 6,04 Mrd. in Rocket League: Luftspiel und Anstoß (ohne Skript) nicht
+  wirklich besser, der Rest schon. Duell im Simulator: +8,43 Tore/Spiel, 1000:0.
+* Befund Anstoß: im Selbstspiel seit ~15,25 Mrd. Steps ohne Boost und abwartend (erste Berührung 3,5 → ~5 s,
+  26–36 % unberührt); gegen einen schnell anfahrenden Gegner fährt der Bot selbst schnell. Vermutete
+  Ursache: `save_boost` im Zero-Sum (ungeprüft). Regressions-Checks: 16,95 gegen 15,95 Mrd. +0,19;
+  17,10 gegen 15,10 Mrd. +0,69, Anstoß zuerst 17 %.
+* Befund Luftspiel: 0,4–0,7 Kontakte über 450 uu je Spielerminute.
+* Experimente (freigegeben, je 300 Mio. Steps ab 17.097.466.368): `sp2_kickoff_first_touch` +0,67 gegen
+  das Referenz-Ende, ±0 gegen den Start, unberührt 16,6 % → 4,3 %, aber weiter ohne Boost;
+  `sp2_aerial_share` +0,53 / +0,30, kein Aerial-Lerneffekt; Referenz selbst −1,25 gegen ihren Start
+  (Trainingsrauschen ~±1 Tor/Spiel, hängt am Anstoß).
+* Hauptlauf seit 15:25 wieder mit unveränderter Config; Config-Entscheidung beim Nutzer (Vorschläge §11.4).
+* Dabei behoben: B5 (Export als Skript), B6 (zweiter Bot-Eintrag), B7 (Neustart nach sauberem Stopp).
+
 ## Hauptlauf-Betrieb (Branch `claude/hauptlauf-betrieb`, 30.09.2026)
 
 Abgezweigt von `main` @ `3308fed` (PR #5 Geschwindigkeit gemergt). Auftrag: Checkpoint-Historie und

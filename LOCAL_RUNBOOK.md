@@ -299,6 +299,37 @@ powershell -ExecutionPolicy Bypass -File tools\local\stop_main_run.ps1
 * Ein neues Binary nach `build\cpp_cu128` erst bauen, wenn der Hauptlauf gestoppt ist (die .exe ist
   gesperrt); vorher in einen eigenen Ordner bauen (`bench\cpp\build.ps1 -BuildSuffix _next`).
 
+## 5e. Spieltest 2 (01.10.2026, AUDIT.md §11)
+
+**Alt gegen neu in Rocket League:** zwei Einträge im RLBot-Launcher laden, `deploy\rlbot\bot.toml`
+(„Lucy (RLbot)“, `policy.pt`) und `deploy\rlbot_alt\bot.toml` („Lucy alt (RLbot)“, `policy_alt.pt`). Der
+Launcher nimmt nur Dateien, die `bot.toml` heißen. Das Bot-Log nennt beim Start Datei und Steps.
+
+```powershell
+.\.venv\Scripts\python tools\export_policy.py runs\lucy_1v1\checkpoints --out deploy\rlbot\policy.pt
+.\.venv\Scripts\python tools\export_policy.py <älterer Checkpoint> --out deploy\rlbot\policy_alt.pt
+```
+
+**Experimente der Serie** (gelaufen, je 300 Mio. Steps, ~28 min Training und ~12–15 min Duelle je Lauf
+bei ~190.000 SPS; der Hauptlauf muss dafür gestoppt sein):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\local\stop_main_run.ps1
+$C = (.\.venv\Scripts\python tools\experiments\pick_checkpoint.py runs\lucy_1v1\checkpoints).Trim()
+powershell -ExecutionPolicy Bypass -File tools\experiments\run_experiment.ps1 -Config train\configs\experiments\sp2_reference.json -StartCheckpoint $C -Steps 300000000 -Seed 123
+$Z = "results\exp_sp2_reference_<datum>"
+powershell -ExecutionPolicy Bypass -File tools\experiments\run_experiment.ps1 -Config train\configs\experiments\sp2_kickoff_first_touch.json -StartCheckpoint $C -Steps 300000000 -Seed 123 -Baseline $Z
+powershell -ExecutionPolicy Bypass -File tools\experiments\run_experiment.ps1 -Config train\configs\experiments\sp2_aerial_share.json -StartCheckpoint $C -Steps 300000000 -Seed 123 -Baseline $Z
+.\.venv\Scripts\python tools\experiments\compare.py $Z results\exp_sp2_kickoff_first_touch_* results\exp_sp2_aerial_share_* --baseline $Z --out results\compare_sp2.md
+powershell -ExecutionPolicy Bypass -File tools\local\start_main_run.ps1
+```
+
+Anstoß-Fahrweg eines Standes (argmax wie im Spiel), auch gegen einen anderen Stand:
+
+```powershell
+.\.venv\Scripts\python eval\kickoff_eval.py --trajectory "policy:<ckpt>@argmax" [--opponent "policy:<anderer ckpt>@argmax"]
+```
+
 ## 6. Optional: Stufe 4, Gradientenschritte 6 / 3 / 2 (~1 Stunde)
 
 Erst wenn Stufe 3 entschieden ist:

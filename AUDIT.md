@@ -2478,3 +2478,118 @@ Offen (zusätzlich zu §10.9): Die Entropie liegt knapp unter 3,0; steigt sie we
 dem der Entropie-Bonus relativ zu stark wird (Muster K3/E1). Solange die Regressions-Checks „besser“
 melden, ist das kein Handlungsbedarf. Optional: train_bot.exe könnte das Schließen des Fensters abfangen
 (CTRL_CLOSE_EVENT, ~5 s Zeit) und noch speichern; nicht umgesetzt.
+
+## 11. Spieltest 2 (01.10.2026, lokal)
+
+### 11.1 Anlass und Urteil des Nutzers
+
+Der Hauptlauf stand am 01.10. um 12:30 bei 16,97 Mrd. Steps (hart beendet, neuester Checkpoint
+16.946.547.712). Der Nutzer hat diesen Stand in Rocket League gegen den Stand des ersten Spieltests
+(6.037.692.544) spielen lassen (zweiter Bot-Eintrag `deploy/rlbot_alt/bot.toml`, B6). Urteil: Luftspiel
+und Anstoß (ohne Skript) sind „nicht wirklich besser geworden“, der Rest schon.
+
+### 11.2 Messungen dazu
+
+**Gesamtstärke.** Duell 16.946.547.712 gegen 6.037.692.544 (1000 Spiele, beide ziehen wie im Training):
++8,43 [+8,28; +8,58] Tore/Spiel, 1000:0 Siege. Ein argmax-gegen-argmax-Duell hat nur 10 verschiedene
+Spiele (5 Anstoßpositionen × 2 Seiten) und wurde nicht gewertet.
+
+**Fortschritt je Milliarde Steps wird klein** (Regressions-Checks, `results/regression/lucy_1v1_history.md`):
+
+| neu gegen alt | Tordifferenz/Spiel | Siege | Anstoß: neu zuerst | erste Berührung neu / alt |
+|---|---|---|---|---|
+| 7,04 gegen 6,04 Mrd. | +1,69 [+1,58; +1,80] | 757:96 | 94,8 % | 2,56 s / 3,17 s |
+| 9,69 gegen 8,69 Mrd. | +1,48 [+1,33; +1,64] | 655:211 | 71,8 % | 2,82 s / 2,80 s |
+| 16,95 gegen 15,95 Mrd. | +0,19 [+0,03; +0,34] | 441:406 | 61,4 % | 4,52 s / 3,26 s |
+| 17,10 gegen 15,10 Mrd. | +0,69 [+0,53; +0,85] | 551:324 | 17,2 % | 3,47 s / 3,50 s |
+
+**Anstoß im Selbstspiel** (Trainingsmetriken des Hauptlaufs, Mittel je Milliarde Steps):
+
+| Mrd. Steps | 6–7 | 9–10 | 12–13 | 14–15 | 15–16 | 16–17 |
+|---|---|---|---|---|---|---|
+| erste Berührung (s) | 2,80 | 3,18 | 3,03 | 3,52 | 4,51 | 4,96 |
+| Tempo bei der Berührung (uu/s) | 1445 | 1433 | 1473 | 1283 | 1091 | 1139 |
+| Boost verbraucht | 37,6 | 29,5 | 32,4 | 25,0 | 20,3 | 17,7 |
+| Anstöße ohne Berührung | 0,0 % | 0,0 % | 0,0 % | 0,1 % | 10,4 % | 28,6 % |
+
+Der Umschlag liegt bei ~15,25 Mrd. Steps (Mittel je 250 Mio.: unberührt 0,1 % → 5,8 % → 20 %, zuletzt
+26–36 %). Der Anstoß-Drill endet nach 6 s; „unberührt“ heißt, dass in dieser Zeit keiner am Ball war.
+
+Was der Bot tut (`eval/kickoff_eval.py --trajectory`, argmax wie im Spiel, 16.946.547.712):
+
+* gegen sich selbst: Boost 0–3, Spitze 1320–1410 uu/s, erste Berührung 3,0–3,6 s; beim Mittel-Anstoß
+  berührt keiner den Ball;
+* gegen 6.037.692.544 (fährt mit bis zu 45 Boost an): derselbe Bot fährt auf vier von fünf Positionen
+  mit 40–47 Boost bis 2300 uu/s und ist in 2,4–3,0 s zuerst am Ball (500 Anstöße argmax: 100 % zuerst, das sind 10 verschiedene Abläufe;
+  gezogen 55,4 % [51,0; 59,7], Tore in 10 s 28:10).
+
+Der Bot kann also schnell anfahren, tut es aber nur, wenn der Gegner Druck macht. Ein Speedflip
+(1,9–2,5 s, §8.4) bleibt schneller. Gegen den 2 Mrd. älteren Stand (15,10 Mrd., fährt noch normal an)
+verliert der aktuelle Stand 83 % der ersten Berührungen.
+
+**Wahrscheinliche Ursache (nicht per Experiment geprüft):** `save_boost` zahlt 0,3·√Boost je Step, mit
+Zero-Sum also die Differenz zum Gegner. Wer beim Anstoß seine 33 Boost verbraucht und der Gegner
+nicht, verliert bis zum nächsten Pad 0,17 je Step, das sind 2,6 je Sekunde; ein Tor ist 10 wert.
+Alle anderen Shaping-Terme sind beim Anstoß symmetrisch und heben sich im Zero-Sum auf,
+`velocity_player_to_ball` bringt dem Schnelleren höchstens ~0,04 je Step. Der Verlauf passt dazu:
+Der Boost-Verbrauch beim Anstoß sinkt seit 6 Mrd. Steps fast stetig (37,6 → 17,7).
+
+**Luftspiel.** Ballkontakte mit Ball über 450 uu je Spielerminute: im Duell 0,40 (16,95 Mrd.) gegen 0,012
+(6,04 Mrd.), im Training 0,02 (6–7 Mrd.) → 0,34 (9–10 Mrd.) → 0,69 (16–17 Mrd.); mittlere Ballhöhe bei
+Luftkontakten 160 → 200 uu. Das ist ein Kontakt alle 1,5–2,5 Minuten und im Spiel kaum zu sehen.
+Aerial-Startzustände haben mit dem Drill nur noch 0,5 von 11,5 Gewichtsanteilen (~4 % der Episoden).
+
+### 11.3 Experimente (vom Nutzer freigegeben)
+
+Je 300 Mio. Steps ab 17.097.466.368 (sauberer Stopp des Hauptlaufs 13:13), Seed 123, Build `d857d26`,
+nacheinander als Aufgabe „RLbot Experimente“; Referenz ist die laufende Hauptlauf-Config als Experiment
+(`sp2_reference.json`). Während des Referenzlaufs liefen die beiden letzten Regressions-Checks mit
+(SPS 177.000 statt 190.000–198.000, gleiche Step-Zahl). `results/compare_sp2.md`.
+
+| | Referenz | `kickoff_first_touch` 2,0 | `state_setters.aerial` 0,5 → 2,0 |
+|---|---|---|---|
+| Duell Ende gegen Referenz-Ende | – | **+0,67** [+0,51; +0,83] | **+0,53** [+0,37; +0,69] |
+| Duell Ende gegen den eigenen Start | **−1,25** [−1,42; −1,08] | +0,03 [−0,13; +0,19] | +0,30 [+0,14; +0,46] |
+| TrueSkill gemeinsame Ladder (mu; Start 25,67) | 25,14 | 25,45 | 25,93 |
+| Training: Anstöße ohne Berührung | 16,6 % | 4,3 % (Fünftel 2–4: unter 1 %) | 8,6 % |
+| Training: erste Berührung / Tempo / Boost | 4,41 s / 1214 / 23,0 | 4,06 s / 1302 / 23,4 | 4,45 s / 1156 / 19,3 |
+| Anstoß gegen 15,10 Mrd. zuerst (500, gezogen; Start: 17,2 %) | 3,6 % | 16,4 % | 32,4 % |
+| Anstoß argmax gegen sich selbst: unberührt (von 5), Boost | 4, 0 | 3, 0 | 0, 0 |
+| Training: Aerials je Minute (Fünftel 1 → 5) | 0,72 → 0,72 | 0,77 → 0,75 | 0,80 → 0,78 |
+| Duell gegen Referenz-Ende: Aerials je Minute | – | 0,65 : 0,70 | 0,68 : 0,72 |
+
+Lesart:
+
+* **Das Trainingsrauschen ist groß.** Der unveränderte Referenzlauf ist nach 300 Mio. Steps 1,25
+  Tore/Spiel schwächer als sein eigener Start; sein Anstoß ist fast ganz passiv geworden (zuerst am Ball
+  4 % gegen den Start, argmax 4 von 5 Positionen unberührt). Die Vorsprünge der beiden Experimente auf
+  das Referenz-Ende kommen zum großen Teil daher. Einzelne Checkpoints des Hauptlaufs schwanken also um
+  etwa ±1 Tor/Spiel, je nachdem, wo der Anstoß gerade steht; das erklärt auch die kleinen und
+  uneinheitlichen Regressions-Checks seit 15 Mrd.
+* **Anstoß-Reward:** nimmt das gemeinsame Abwarten weitgehend weg (unberührt 16,6 % → 4,3 %) und hält
+  die Stärke (±0 gegen den Start, wo die Referenz 1,25 verliert). Schneller wird der Anstoß in 300 Mio.
+  Steps nicht: weiter ohne Boost, argmax bleiben 3 von 5 Positionen unberührt. +2 für die erste
+  Berührung ist klein gegen den `save_boost`-Nachteil des Boostens.
+* **Mehr Aerial-Starts:** kein Lerneffekt sichtbar. Die höhere Rate im Training (0,78 gegen 0,72) ist von
+  Beginn an da (mehr Aerial-Szenen in der Mischung) und steigt im Lauf nicht; im Duell hat das Experiment
+  nicht mehr Aerials als die Referenz. Nicht schädlich (+0,30 gegen den Start).
+* Beide Hebel schaden nicht, lösen das jeweilige Problem aber in 300 Mio. Steps auch nicht.
+
+### 11.4 Stand und offene Entscheidung
+
+Der Hauptlauf läuft seit 15:25 wieder mit unveränderter Config ab 17.097.466.368 (~182.000 SPS, alle
+Grenzwerte eingehalten). An der Config wurde nichts geändert; die Entscheidung liegt beim Nutzer.
+Vorschläge:
+
+1. `kickoff_first_touch` 2,0 in die Hauptlauf-Config übernehmen: stabilisiert den Anstoß gegen das
+   Abwarten, kein Nachteil gemessen.
+2. Die `save_boost`-Vermutung prüfen (ein Lauf, ~45 min): Referenz plus `save_boost` 0,3 → 0,1, oder der
+   Anstoß-Reward mit deutlich höherem Wert. Erwartung: Boost-Verbrauch und Tempo beim Anstoß steigen.
+3. Luftspiel: `sp_air_touch` (Reward für Luftkontakte, skaliert mit der Ballhöhe) als nächstes Experiment
+   statt mehr Aerial-Starts; dazu ein längerer Lauf, 300 Mio. Steps sind für Aerials zu kurz.
+4. Wegen des Rauschens: Entscheidungen an den gezielten Kennzahlen festmachen (Boost/Tempo/Zeit beim
+   Anstoß, Aerials je Minute) und beim Duell eine Wiederholung der Referenz mitlaufen lassen.
+
+Betrieb: `start_main_run.ps1` scheiterte nach dem sauberen Stopp („nach 90 s nicht gestartet“), weil das
+alte Fenster die Aufgabe im Zustand „Running“ hielt; behoben (B7). `tools/export_policy.py` lief als
+Skript nicht (B5). Für Spiele gegen Menschen bleibt `RLBOT_SCRIPTED_KICKOFF=speedflip` der schnellste Weg.
