@@ -2683,3 +2683,21 @@ Einordnung: Das Ziel der Umstellung ist erreicht, der Anstoß ist aktiv, stabil 
 Wechsel. Die Gesamtstärke hat in dieser Milliarde nicht zugelegt (davor +0,19 und +0,69 je 1–2 Mrd.); ob das
 die Umgewöhnung an den kleineren Boost-Vorrat ist oder ein dauerhafter Preis von `save_boost` 0,1, zeigt
 erst der nächste Check. Rückweg bei Bedarf: stoppen und `start_main_run.ps1` ohne `-Config`.
+
+**Nachtrag nach 2 Mrd. Steps (02.10.2026, 12:30–13:15).** Alle Grenzwerte weiter eingehalten (20,53 Mrd.
+Steps um 12:30, ~195.000 SPS). Trainingsmetriken je 250 Mio. Steps seit dem Wechsel: Anstoß ab 500 Mio.
+unverändert bei 2,47 s, 1820–1864 uu/s, ~30 Boost, nie unberührt; `boost_held` 0,34–0,35; Entropie
+3,02–3,05; Tore/min 1,39 → 1,46–1,50. Aerials je Minute sinken langsam: 0,77 (davor) → 0,70–0,73 (bis
+1,25 Mrd.) → 0,68 (1,25–2 Mrd.).
+
+| neu gegen alt | Urteil | Tordifferenz/Spiel | Siege | Anstoß: neu zuerst | Anstoß-Tore 10 s |
+|---|---|---|---|---|---|
+| 19.528.093.568 gegen 18.527.085.056 (Wechsel) | gleich | +0,00 [−0,16; +0,16] | 401:437 | 86,0 % | 474:258 |
+| 20.529.058.304 gegen 19.528.093.568 | gleich | −0,14 [−0,31; +0,03] | 399:446 | 31,8 % | 231:173 |
+| 20.729.243.520 gegen 18.727.286.656 (200 Mio. nach dem Wechsel) | **besser** | +0,70 [+0,54; +0,87] | 518:325 | 74,2 % | 353:215 |
+
+Die drei Checks passen nicht transitiv zusammen (0,00 und −0,14 je Milliarde, aber +0,70 über zwei); einzelne
+Checkpoints schwanken weiter um mehrere Zehntel Tore/Spiel (§11.3). Zusammen: kein Rückschritt durch die
+Umstellung, über 2 Mrd. Steps ein Fortschritt in der Größe der letzten Checks vor dem Wechsel (+0,69 für
+17,10 gegen 15,10 Mrd.), bei jetzt stabilem, schnellerem Anstoß. Offen: der langsame Rückgang der Aerials
+(vermutlich der kleinere Boost-Vorrat) und weiterhin das Luftspiel insgesamt (§11.4, Punkt 3).

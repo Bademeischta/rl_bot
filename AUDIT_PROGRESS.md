@@ -39,8 +39,9 @@ Details und Zahlen: AUDIT.md §11.
   `lucy_1v1_zero_sum_drill_fast_kickoff.json`. Beobachtung über 1 Mrd. Steps: alle Grenzwerte eingehalten;
   Anstoß 3,0 → 2,5 s, 1514 → ~1830 uu/s, Boost 21 → 30, nie unberührt; `boost_held` 0,43 → 0,35, Entropie
   2,97 → 3,05, beides stabil. Regressions-Check 19,53 gegen 18,53 Mrd.: **gleich** (+0,00 [−0,16; +0,16]),
-  Anstoß zuerst 86 %, Anstoß-Tore 474:258, außerhalb der Anstöße ~0,2 Tore/Spiel zurück. Offen: nächster
-  Check nach einer weiteren Milliarde.
+  Anstoß zuerst 86 %, Anstoß-Tore 474:258, außerhalb der Anstöße ~0,2 Tore/Spiel zurück. Nach 2 Mrd. Steps:
+  20,53 gegen 19,53 Mrd. **gleich** (−0,14 [−0,31; +0,03]), 20,73 gegen 18,73 Mrd. **besser** (+0,70 [+0,54; +0,87]);
+  Anstoß stabil bei 2,47 s, Grenzwerte eingehalten. Offen: Aerials sinken langsam (0,77 → 0,68 je Minute).
 * Dabei behoben: B5 (Export als Skript), B6 (zweiter Bot-Eintrag), B7 (Neustart nach sauberem Stopp).
 
 ## Hauptlauf-Betrieb (Branch `claude/hauptlauf-betrieb`, 30.09.2026)
