@@ -2642,3 +2642,44 @@ Hauptlauf-Config plus `save_boost` 0,1 und `kickoff_first_touch` 2,0 (Test
 (unberührt, Zeit, Boost), `boost_held`, Entropie, und nach ~1 Mrd. Steps der Regressions-Check; die 200
 Checkpoints erlauben den Rückweg. Der Hauptlauf läuft seit 02.10. 08:00 mit unveränderter Config ab
 17.395.505.920 weiter.
+
+### 11.6 Umstellung des Hauptlaufs und Beobachtung (02.10.2026, vom Nutzer freigegeben)
+
+Am 02.10. um 09:35 sauber gestoppt (End-Checkpoint 18.527.085.056) und mit
+`train/configs/lucy_1v1_zero_sum_drill_fast_kickoff.json` neu gestartet (`save_boost` 0,1,
+`kickoff_first_touch` 2,0; beide Werte stehen so im Trainer-Log). Vorher lief der Hauptlauf von 08:00 bis
+09:35 mit der alten Config von 17.395.505.920 bis 18.527.085.056.
+
+Vorbemerkung: In der letzten Milliarde Steps vor dem Wechsel war der Anstoß unter der alten Config von
+selbst wieder aktiv (unberührt 0,3 %, erste Berührung 3,0 s). Er pendelt dort zwischen aktiv und passiv
+(§11.2: 26–36 % unberührt bei 16–17 Mrd.).
+
+Verlauf (Trainingsmetriken, Mittel je 100 Mio. Steps seit dem Wechsel; Kontrollen alle ~15 min, alle
+Grenzwerte aus §10 bei jeder Kontrolle eingehalten, SPS 188.000–197.000, keine Warnungen):
+
+| Steps seit Wechsel | unberührt | erste Berührung | Tempo | Boost | `boost_held` | Entropie | Aerials/min | Tore/min | Value Loss | KL | Clip |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 Mrd. davor | 0,3 % | 3,01 s | 1514 | 20,7 | 0,432 | 2,967 | 0,77 | 1,39 | 0,166 | 0,0047 | 0,038 |
+| 0–100 Mio. | 0,0 % | 2,80 s | 1618 | 26,6 | 0,378 | 3,031 | 0,77 | 1,41 | 0,156 | 0,0046 | 0,037 |
+| 200–300 Mio. | 0,0 % | 2,57 s | 1773 | 29,1 | 0,354 | 3,063 | 0,71 | 1,41 | 0,158 | 0,0046 | 0,036 |
+| 500–600 Mio. | 0,0 % | 2,49 s | 1832 | 30,1 | 0,346 | 3,054 | 0,71 | 1,44 | 0,153 | 0,0046 | 0,036 |
+| 800–900 Mio. | 0,0 % | 2,46 s | 1853 | 30,4 | 0,346 | 3,052 | 0,74 | 1,44 | 0,151 | 0,0046 | 0,036 |
+| 900–1000 Mio. | 0,0 % | 2,48 s | 1829 | 29,6 | 0,346 | 3,053 | 0,71 | 1,43 | 0,153 | 0,0045 | 0,036 |
+
+* Der Anstoß wird in den ersten ~500 Mio. Steps stetig schneller und bleibt dann bei ~2,5 s, ~1830 uu/s
+  und ~30 Boost; kein Anstoß bleibt unberührt. Das ist schneller als der bisherige Bestwert (~2,6 s bei 7 Mrd., §10.10).
+* `boost_held` fällt in den ersten 200 Mio. Steps von 0,43 auf ~0,35 und bleibt dort; die Entropie steigt
+  von 2,97 auf ~3,05 und bleibt dort. KL, Clip und Value Loss ruhig; kein Sprung beim Wechsel.
+* Aerials je Minute schwanken zwischen 0,68 und 0,75 (vorher 0,77), ohne Trend.
+
+Regressions-Check nach 1 Mrd. Steps (11:03, 1000 Spiele): 19.528.093.568 gegen 18.527.085.056 (Stand beim
+Wechsel) **gleich**, +0,00 [−0,16; +0,16] Tore/Spiel, Siege 401:437 (162 remis). Im Duell: Anstoß zuerst
+84,9 % (Anstoß-Auswertung 86,0 % [82,7; 88,8]), Tempo bei der Berührung 2002 gegen 1730 uu/s, Boost 37,5
+gegen 27,5, Tore binnen 10 s nach Anstoß 474:258. Außerhalb der Anstöße liegt der neue Stand also um etwa
+0,2 Tore/Spiel zurück (Schüsse/min 1,30 gegen 0,99, aber Konversion im Angriffsdrittel 0,236 gegen 0,257,
+Aerials 0,70 gegen 0,75).
+
+Einordnung: Das Ziel der Umstellung ist erreicht, der Anstoß ist aktiv, stabil und klar besser als vor dem
+Wechsel. Die Gesamtstärke hat in dieser Milliarde nicht zugelegt (davor +0,19 und +0,69 je 1–2 Mrd.); ob das
+die Umgewöhnung an den kleineren Boost-Vorrat ist oder ein dauerhafter Preis von `save_boost` 0,1, zeigt
+erst der nächste Check. Rückweg bei Bedarf: stoppen und `start_main_run.ps1` ohne `-Config`.

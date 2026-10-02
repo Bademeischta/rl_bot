@@ -328,8 +328,8 @@ Zweite Runde (AUDIT.md §11.5), ab demselben Start-Checkpoint und gegen dieselbe
 `sp2_save_boost_01.json` und `sp2_save_boost_01_kickoff.json`, Aufruf wie oben mit `-Baseline $Z`;
 Tabelle über alle Läufe in `results\compare_sp2b.md`.
 
-**Vorschlag Hauptlauf mit beiden Anstoß-Werten** (`save_boost` 0,1 und `kickoff_first_touch` 2,0),
-nicht gestartet ohne OK; lädt wie bisher den neuesten Checkpoint aus `runs\lucy_1v1\checkpoints`:
+**Hauptlauf mit beiden Anstoß-Werten** (`save_boost` 0,1 und `kickoff_first_touch` 2,0), läuft so seit
+02.10.2026 09:35 (AUDIT.md §11.6); lädt wie bisher den neuesten Checkpoint aus `runs\lucy_1v1\checkpoints`:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File tools\local\stop_main_run.ps1

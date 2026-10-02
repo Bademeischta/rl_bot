@@ -35,6 +35,12 @@ Details und Zahlen: AUDIT.md §11.
   Abbruch von Hand zu Ende ausgewertet; Hauptlauf stand 01.10. 15:52 bis 02.10. 08:00.
 * Vorschlag `train/configs/lucy_1v1_zero_sum_drill_fast_kickoff.json` (beide Anstoß-Werte), nicht gestartet;
   Hauptlauf läuft seit 02.10. 08:00 unverändert ab 17.395.505.920.
+* Umstellung (§11.6, freigegeben): seit 02.10. 09:35 läuft der Hauptlauf ab 18.527.085.056 mit
+  `lucy_1v1_zero_sum_drill_fast_kickoff.json`. Beobachtung über 1 Mrd. Steps: alle Grenzwerte eingehalten;
+  Anstoß 3,0 → 2,5 s, 1514 → ~1830 uu/s, Boost 21 → 30, nie unberührt; `boost_held` 0,43 → 0,35, Entropie
+  2,97 → 3,05, beides stabil. Regressions-Check 19,53 gegen 18,53 Mrd.: **gleich** (+0,00 [−0,16; +0,16]),
+  Anstoß zuerst 86 %, Anstoß-Tore 474:258, außerhalb der Anstöße ~0,2 Tore/Spiel zurück. Offen: nächster
+  Check nach einer weiteren Milliarde.
 * Dabei behoben: B5 (Export als Skript), B6 (zweiter Bot-Eintrag), B7 (Neustart nach sauberem Stopp).
 
 ## Hauptlauf-Betrieb (Branch `claude/hauptlauf-betrieb`, 30.09.2026)
