@@ -27,6 +27,14 @@ Details und Zahlen: AUDIT.md §11.
   `sp2_aerial_share` +0,53 / +0,30, kein Aerial-Lerneffekt; Referenz selbst −1,25 gegen ihren Start
   (Trainingsrauschen ~±1 Tor/Spiel, hängt am Anstoß).
 * Hauptlauf seit 15:25 wieder mit unveränderter Config; Config-Entscheidung beim Nutzer (Vorschläge §11.4).
+* Zweite Runde (§11.5, freigegeben): `sp2_save_boost_01` −0,30 gegen das Referenz-Ende, −0,60 gegen den Start,
+  mehr Boost beim Anstoß, aber argmax weiter passiv; `sp2_save_boost_01_kickoff` (Bündel) +0,22 / +0,14,
+  kein unberührter Anstoß mehr, 58 % erste Berührungen gegen 15,10 Mrd. (Start 17 %), Anstoß-Tore 354:126
+  gegen den Start. Die Schwankung der Gesamtstärke ist der Anstoß (Referenz-Ende 111:988 Anstoß-Tore gegen
+  ihren Start). Nebenwirkung: `boost_held` 0,43 → 0,36, Entropie 3,04. Erster Lauf nach versehentlichem
+  Abbruch von Hand zu Ende ausgewertet; Hauptlauf stand 01.10. 15:52 bis 02.10. 08:00.
+* Vorschlag `train/configs/lucy_1v1_zero_sum_drill_fast_kickoff.json` (beide Anstoß-Werte), nicht gestartet;
+  Hauptlauf läuft seit 02.10. 08:00 unverändert ab 17.395.505.920.
 * Dabei behoben: B5 (Export als Skript), B6 (zweiter Bot-Eintrag), B7 (Neustart nach sauberem Stopp).
 
 ## Hauptlauf-Betrieb (Branch `claude/hauptlauf-betrieb`, 30.09.2026)

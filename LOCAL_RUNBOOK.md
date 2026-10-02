@@ -324,6 +324,20 @@ powershell -ExecutionPolicy Bypass -File tools\experiments\run_experiment.ps1 -C
 powershell -ExecutionPolicy Bypass -File tools\local\start_main_run.ps1
 ```
 
+Zweite Runde (AUDIT.md §11.5), ab demselben Start-Checkpoint und gegen dieselbe Referenz `$Z`:
+`sp2_save_boost_01.json` und `sp2_save_boost_01_kickoff.json`, Aufruf wie oben mit `-Baseline $Z`;
+Tabelle über alle Läufe in `results\compare_sp2b.md`.
+
+**Vorschlag Hauptlauf mit beiden Anstoß-Werten** (`save_boost` 0,1 und `kickoff_first_touch` 2,0),
+nicht gestartet ohne OK; lädt wie bisher den neuesten Checkpoint aus `runs\lucy_1v1\checkpoints`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\local\stop_main_run.ps1
+powershell -ExecutionPolicy Bypass -File tools\local\start_main_run.ps1 -Config train\configs\lucy_1v1_zero_sum_drill_fast_kickoff.json
+```
+
+Zurück zur bisherigen Config: stoppen und `start_main_run.ps1` ohne `-Config` starten.
+
 Anstoß-Fahrweg eines Standes (argmax wie im Spiel), auch gegen einen anderen Stand:
 
 ```powershell

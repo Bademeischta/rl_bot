@@ -2593,3 +2593,52 @@ Vorschläge:
 Betrieb: `start_main_run.ps1` scheiterte nach dem sauberen Stopp („nach 90 s nicht gestartet“), weil das
 alte Fenster die Aufgabe im Zustand „Running“ hielt; behoben (B7). `tools/export_policy.py` lief als
 Skript nicht (B5). Für Spiele gegen Menschen bleibt `RLBOT_SCRIPTED_KICKOFF=speedflip` der schnellste Weg.
+
+### 11.5 Zweite Runde: `save_boost` als Ursache (01./02.10.2026, vom Nutzer freigegeben)
+
+Zwei weitere Läufe ab demselben Start (17.097.466.368, 300 Mio. Steps, Seed 123, Build `8508dfa`) gegen die
+Referenz aus §11.3: `sp2_save_boost_01` (`save_boost` 0,3 → 0,1) und `sp2_save_boost_01_kickoff` (dazu
+`kickoff_first_touch` 2,0). Der erste Lauf wurde am 01.10. bei der Anstoß-Auswertung versehentlich
+abgebrochen (Training und beide Duelle waren fertig, Anstoß-Auswertung und Zusammenfassung von Hand mit
+denselben Aufrufen nachgeholt, ohne Lauf-Ladder), der zweite lief am 02.10. ab 07:07. Der Hauptlauf stand
+dadurch von 01.10. 15:52 bis 02.10. 08:00. `results/compare_sp2b.md`.
+
+| | Referenz | nur `kickoff_first_touch` 2,0 | nur `save_boost` 0,1 | beides |
+|---|---|---|---|---|
+| Duell Ende gegen Referenz-Ende | – | +0,67 [+0,51; +0,83] | −0,30 [−0,47; −0,13] | **+0,22** [+0,06; +0,38] |
+| Duell Ende gegen den eigenen Start | −1,25 [−1,42; −1,08] | +0,03 [−0,13; +0,19] | −0,60 [−0,75; −0,44] | **+0,14** [−0,03; +0,30] |
+| davon Tore in 10 s nach Anstoß (Ende : Start, 1000 Spiele) | 111 : 988 | 93 : 113 | 169 : 423 | **354 : 126** |
+| TrueSkill gemeinsame Ladder (mu; Start 25,66) | 25,21 | 25,56 | 25,07 | 25,64 |
+| Training: Anstöße ohne Berührung (letztes Fünftel) | 16,6 % | 4,3 % | 6,0 % | **0,0 %** (ab Fünftel 3) |
+| Training: erste Berührung / Tempo / Boost (letztes Fünftel) | 4,41 s / 1214 / 23,0 | 4,06 s / 1302 / 23,4 | 4,03 s / 1238 / 30,3 | 3,89 s / 1182 / 24,0 |
+| Anstoß gegen 15,10 Mrd. zuerst (500, gezogen; Start 17,2 %) | 3,6 % | 16,4 % | 24,8 % | **58,0 %** |
+| Anstoß argmax gegen sich selbst: unberührt (von 5) | 4 | 3 | 4 | **0** |
+| Boost-Vorrat im Spiel (`boost_held`) | 0,43 | 0,43 | 0,35 | 0,36 |
+| Entropie (letztes Fünftel) | 2,97 | 2,99 | 3,08 | 3,04 |
+| Aerials je Minute im Training | 0,72 | 0,75 | 0,68 | 0,69 |
+
+Lesart:
+
+* **Die Schwankung der Gesamtstärke ist der Anstoß.** Das Referenz-Ende kassiert gegen seinen Start in
+  1000 Spielen 988 Tore binnen 10 s nach einem Anstoß und schießt 111; das allein sind −0,88 von −1,25
+  Toren/Spiel.
+* **`save_boost` ist ein Teil der Ursache, aber nicht allein.** Mit 0,1 steigt der Boost-Verbrauch beim
+  Anstoß (25,7 → 30,3 im Lauf, Referenz ~23), das Abwarten geht zurück. Ohne den Anstoß-Reward bleibt der
+  Anstoß im argmax-Selbstspiel aber passiv (4 von 5 unberührt), und der Lauf verliert Anstoß-Tore (169:423).
+* **Beides zusammen wirkt am besten:** kein unberührter Anstoß mehr, im argmax-Selbstspiel alle fünf
+  Positionen berührt (3,1–3,7 s), 58 % erste Berührungen gegen den 2 Mrd. älteren Stand (Start 17 %),
+  Anstoß-Tore 354:126 gegen den Start, Gesamtstärke nicht schlechter (+0,14 gegen den Start, +0,22 gegen
+  das Referenz-Ende).
+* **Grenzen:** Der Anstoß ist nicht schnell. In den Fünfteln 3–4 lag er bei 3,1 s mit 34–35 Boost und
+  1500–1535 uu/s, im letzten Fünftel wieder bei 3,9 s mit 24 Boost und 1182 uu/s; argmax fährt weiter fast
+  ohne Boost. Ein Speedflip (1,9–2,5 s) bleibt weit weg. Nebenwirkungen von `save_boost` 0,1: der
+  Boost-Vorrat im Spiel sinkt von 0,43 auf ~0,36, die Entropie steigt auf 3,04–3,08 (Beobachtungsmarke
+  3,0, §10.10). Ein Lauf je Variante; das Trainingsrauschen ist nur über die Referenz bekannt.
+* Luftspiel: von keinem der Anstoß-Hebel berührt (0,68–0,75 Aerials je Minute).
+
+**Vorschlag (nicht gestartet):** `train/configs/lucy_1v1_zero_sum_drill_fast_kickoff.json` = laufende
+Hauptlauf-Config plus `save_boost` 0,1 und `kickoff_first_touch` 2,0 (Test
+`test_kickoff_main_run_proposal_adds_only_the_two_kickoff_values`). Nach einem Wechsel beobachten: Anstoß
+(unberührt, Zeit, Boost), `boost_held`, Entropie, und nach ~1 Mrd. Steps der Regressions-Check; die 200
+Checkpoints erlauben den Rückweg. Der Hauptlauf läuft seit 02.10. 08:00 mit unveränderter Config ab
+17.395.505.920 weiter.
