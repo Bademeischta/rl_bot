@@ -258,3 +258,15 @@ def test_spieltest2_experiment_changes_only_the_named_values_against_the_referen
     assert load(name)["metrics.run"] == name
     assert load(name)["env.max_players"] == 3 and load(name)["env.action_stack_size"] == 5
     assert load(name)["learner.policy_layer_sizes"] == [512, 512, 512]
+
+
+def test_kickoff_main_run_proposal_adds_only_the_two_kickoff_values():
+    """Vorschlag nach Spieltest 2 (AUDIT.md §11.5): laufende Hauptlauf-Config plus genau das Bündel aus
+    sp2_save_boost_01_kickoff; gleicher Checkpoint-Ordner, Obs/Aktionen/Netze/PPO unverändert."""
+    fast = flatten(json.loads((ROOT / "train" / "configs" / "lucy_1v1_zero_sum_drill_fast.json").read_text(encoding="utf-8")))
+    kick = flatten(json.loads((ROOT / "train" / "configs" / "lucy_1v1_zero_sum_drill_fast_kickoff.json").read_text(encoding="utf-8")))
+    assert diff(fast, kick) == SPIELTEST2_EXPECTED["sp2_save_boost_01_kickoff"]
+    assert kick["learner.checkpoint_folder"] == "runs/lucy_1v1/checkpoints"
+    assert kick["env.max_players"] == 3 and kick["env.action_stack_size"] == 5
+    assert kick["learner.policy_layer_sizes"] == [512, 512, 512]
+    assert "NICHT gestartet ohne OK" in kick["_comment"]
