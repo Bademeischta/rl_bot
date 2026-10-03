@@ -2701,3 +2701,48 @@ Checkpoints schwanken weiter um mehrere Zehntel Tore/Spiel (§11.3). Zusammen: k
 Umstellung, über 2 Mrd. Steps ein Fortschritt in der Größe der letzten Checks vor dem Wechsel (+0,69 für
 17,10 gegen 15,10 Mrd.), bei jetzt stabilem, schnellerem Anstoß. Offen: der langsame Rückgang der Aerials
 (vermutlich der kleinere Boost-Vorrat) und weiterhin das Luftspiel insgesamt (§11.4, Punkt 3).
+
+### 11.7 Höhepunkt bei ~28,9 Mrd., danach Rückgang; Neustart mit halbierter Lernrate (03.10.2026)
+
+Der Hauptlauf lief auf der Anstoß-Config ohne Unterbrechung von 18,53 bis 39,56 Mrd. Steps (02.10. 09:35 bis
+03.10. ~16:15), alle Grenzwerte eingehalten, ~195.000 SPS. Trainingsmetriken je 2 Mrd. Steps: Anstoß
+durchgehend 2,45–2,51 s, nie unberührt; `boost_held` 0,34; Entropie 3,01–3,04; Aerials 0,71–0,75 je Minute;
+Skill-Rating (gegen die letzten ~5 Mrd.) ab 18 Mrd. flach bei 3060–3100. Einziger Trend: KL 0,0046 (bis
+22 Mrd.) → 0,0053 (26–28) → 0,0060 (32–34) → 0,0065–0,0068 (36–40), bei gleicher Lernrate und gleichem
+Clip-Anteil (~3,7 %).
+
+Regressions-Checks am 03.10.: 38,45 gegen 37,45 Mrd. **gleich** (+0,03 [−0,12; +0,19]); 38,45 gegen 28,49 Mrd.
+**schlechter** (−0,44 [−0,61; −0,28], Siege 357:512, Anstoß zuerst 0,6 %, Schüsse/min 1,09 gegen 2,04).
+
+Panel gegen einen festen Gegner (18.527.085.056 = Stand beim Wechsel, je 1000 Spiele, `duel.exe`,
+`results/panel_vs_18527085056`, 38,45 in `results/duel_38446869376_vs_18527085056`):
+
+| Stand | Tordifferenz/Spiel [95-%-KI] | Siege |
+|---|---|---|
+| 20.529.058.304 | −0,10 [−0,27; +0,06] | 405 |
+| 28.487.006.720 | +0,75 [+0,58; +0,92] | 532 |
+| 28.887.394.048 | **+0,92** [+0,76; +1,08] | 532 |
+| 29.938.404.736 | +0,67 [+0,51; +0,83] | 515 |
+| 31.189.640.704 | +0,58 [+0,42; +0,74] | 506 |
+| 33.692.126.080 | +0,56 [+0,39; +0,73] | 512 |
+| 36.194.602.112 | +0,36 [+0,19; +0,52] | 475 |
+| 38.446.869.376 | −0,05 [−0,21; +0,12] | 402 |
+
+Lesart: Nach dem Wechsel wurde der Lauf ~10 Mrd. Steps lang deutlich stärker (Höhepunkt um 28,9 Mrd.) und
+fiel danach über 10 Mrd. Steps gleichmäßig auf das Niveau vom Wechsel zurück. Der Anstoß bleibt dabei gut;
+der Verlust liegt im übrigen Spiel. Die 1-Mrd.-Checks und das Skill-Rating sehen das nicht, weil sie nur
+gegen nahe Vorgänger messen, die gleich mitgefallen sind. Die steigende KL bei konstanter Lernrate passt zu
+einem Lauf, der spät mit zu großen Schritten hin- und herpendelt, statt sich zu verfeinern; bewiesen ist die
+Ursache nicht (reines Selbstspiel kann auch zyklisch vergessen).
+
+Sicherung: Die vollständigen Checkpoints 28.887.394.048, 29.938.404.736, 31.189.640.704 und 33.692.126.080
+wurden vor der Rotation nach `runs/backup_lucy_1v1/` kopiert (Hash geprüft); 28.487.006.720 war schon
+rotiert (nur `PPO_POLICY.lt` in `results/regression/` erhalten).
+
+**Neustart (vom Nutzer freigegeben):** Hauptlauf am 03.10. sauber gestoppt (End-Checkpoint 39.558.949.632 in
+`runs/lucy_1v1`, dort nichts verändert) und um 16:32 mit `train/configs/lucy_1v1_kickoff_lr1e4.json`
+gestartet: Anstoß-Config mit `policy_lr` und `critic_lr` 2e-4 → 1e-4, eigener Ordner
+`runs/lucy_1v1_lr1e4/checkpoints` ab einer geprüften Kopie von 28.887.394.048 (stärkster gemessener Stand).
+Der Trainer setzt die Lernrate nach dem Laden aus der Config (`PPOLearner::LoadFrom`, Log „Updated learning
+rate to [1e-04, 1e-04]“). Erste Iterationen: ~193.000 SPS, KL 0,0034, Clip 2,4 %, Grenzwerte eingehalten.
+Ab jetzt gelten Status und Regressions-Check mit `--run runs\lucy_1v1_lr1e4`.

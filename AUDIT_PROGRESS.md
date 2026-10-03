@@ -42,6 +42,10 @@ Details und Zahlen: AUDIT.md §11.
   Anstoß zuerst 86 %, Anstoß-Tore 474:258, außerhalb der Anstöße ~0,2 Tore/Spiel zurück. Nach 2 Mrd. Steps:
   20,53 gegen 19,53 Mrd. **gleich** (−0,14 [−0,31; +0,03]), 20,73 gegen 18,73 Mrd. **besser** (+0,70 [+0,54; +0,87]);
   Anstoß stabil bei 2,47 s, Grenzwerte eingehalten. Offen: Aerials sinken langsam (0,77 → 0,68 je Minute).
+* Rückgang und Neustart (§11.7, freigegeben): gegen einen festen Gegner (18,53 Mrd.) Höhepunkt bei 28,89 Mrd.
+  (+0,92 Tore/Spiel), danach stetig bis 38,45 Mrd. auf −0,05; KL 0,0046 → 0,0068. Checkpoints 28,89–33,69 Mrd.
+  nach `runs/backup_lucy_1v1` gesichert. Seit 03.10. 16:32 läuft der Hauptlauf mit `lucy_1v1_kickoff_lr1e4.json`
+  (Lernrate 1e-4) in `runs/lucy_1v1_lr1e4` ab 28.887.394.048; `runs/lucy_1v1` unverändert (endet bei 39.558.949.632).
 * Dabei behoben: B5 (Export als Skript), B6 (zweiter Bot-Eintrag), B7 (Neustart nach sauberem Stopp).
 
 ## Hauptlauf-Betrieb (Branch `claude/hauptlauf-betrieb`, 30.09.2026)

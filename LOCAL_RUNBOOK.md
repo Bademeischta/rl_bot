@@ -344,6 +344,22 @@ Anstoß-Fahrweg eines Standes (argmax wie im Spiel), auch gegen einen anderen St
 .\.venv\Scripts\python eval\kickoff_eval.py --trajectory "policy:<ckpt>@argmax" [--opponent "policy:<anderer ckpt>@argmax"]
 ```
 
+**Seit 03.10.2026 16:32 (AUDIT.md §11.7):** Der Hauptlauf schreibt nach `runs\lucy_1v1_lr1e4` (halbierte
+Lernrate, Start ab 28.887.394.048). Status und Regressions-Check brauchen deshalb `--run`:
+
+```powershell
+.\.venv\Scripts\python tools\local\main_run_status.py --run runs\lucy_1v1_lr1e4
+.\.venv\Scripts\python tools\regression_check.py --run runs\lucy_1v1_lr1e4
+powershell -ExecutionPolicy Bypass -File tools\local\start_main_run.ps1 -Config train\configs\lucy_1v1_kickoff_lr1e4.json
+```
+
+Stoppen wie bisher mit `tools\local\stop_main_run.ps1` (gleiche Stop-Datei). Fester Vergleichsgegner für die
+Spielstärke über viele Milliarden Steps: `results\panel_vs_18527085056\ref.lt` (Stand 18.527.085.056):
+
+```powershell
+.\build\cpp_cu128\duel.exe --a <ckpt>\PPO_POLICY.lt --b results\panel_vs_18527085056\ref.lt --games 1000 --threads 2 --seed 123 --meshes collision_meshes --out <datei>.json
+```
+
 ## 6. Optional: Stufe 4, Gradientenschritte 6 / 3 / 2 (~1 Stunde)
 
 Erst wenn Stufe 3 entschieden ist:
