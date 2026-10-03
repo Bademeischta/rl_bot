@@ -2746,3 +2746,17 @@ gestartet: Anstoß-Config mit `policy_lr` und `critic_lr` 2e-4 → 1e-4, eigener
 Der Trainer setzt die Lernrate nach dem Laden aus der Config (`PPOLearner::LoadFrom`, Log „Updated learning
 rate to [1e-04, 1e-04]“). Erste Iterationen: ~193.000 SPS, KL 0,0034, Clip 2,4 %, Grenzwerte eingehalten.
 Ab jetzt gelten Status und Regressions-Check mit `--run runs\lucy_1v1_lr1e4`.
+
+**Ergebnis nach 2 Mrd. Steps mit Lernrate 1e-4 (03.10.2026, 19:20–19:36).** 30.889.387.904 (je 1000 Spiele,
+`results/lr1e4_check_30889387904`):
+
+| neu gegen | Tordifferenz/Spiel [95-%-KI] | Anstoß zuerst | Schüsse/min | Aerials/min |
+|---|---|---|---|---|
+| festen Gegner 18,53 Mrd. | **+1,55** [+1,38; +1,71] (Start 28,89: +0,92; alter Lauf bei 29,94/31,19: +0,67/+0,58) | 91 % | 1,83 : 0,86 | 0,86 : 0,65 |
+| den Start 28,89 Mrd. | **+0,72** [+0,55; +0,89] | 70 % | 1,52 : 1,12 | 0,86 : 0,73 |
+
+Vom selben Checkpoint aus fiel der Lauf mit 2e-4 in den folgenden 2,3 Mrd. Steps auf +0,58 gegen den festen
+Gegner, mit 1e-4 stieg er auf +1,55. Trainingsmetriken je 500 Mio. Steps: KL 0,0036 → 0,0041, Clip 2,4–2,6 %,
+Entropie 2,98–3,00, Anstoß 2,43–2,51 s und nie unberührt, `boost_held` 0,34; Aerials je Minute 0,77 → 0,85
+(alter Lauf zuletzt 0,71–0,75); Skill-Rating 3049 → 3107. Ein Lauf, aber ein großer Effekt; KL steigt
+langsam wieder und bleibt im Blick.
