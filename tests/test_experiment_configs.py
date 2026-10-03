@@ -270,3 +270,17 @@ def test_kickoff_main_run_proposal_adds_only_the_two_kickoff_values():
     assert kick["env.max_players"] == 3 and kick["env.action_stack_size"] == 5
     assert kick["learner.policy_layer_sizes"] == [512, 512, 512]
     assert "NICHT gestartet ohne OK" in kick["_comment"]
+
+
+def test_lr1e4_main_run_halves_the_learning_rates_in_its_own_folder():
+    """Hauptlauf ab 03.10.2026 (AUDIT.md §11.7): Anstoß-Config mit halbierter Lernrate, eigener Ordner, damit
+    runs/lucy_1v1 unverändert bleibt; Obs/Aktionen/Netze/Rewards/übrige PPO-Werte gleich."""
+    kick = flatten(json.loads((ROOT / "train" / "configs" / "lucy_1v1_zero_sum_drill_fast_kickoff.json").read_text(encoding="utf-8")))
+    lr = flatten(json.loads((ROOT / "train" / "configs" / "lucy_1v1_kickoff_lr1e4.json").read_text(encoding="utf-8")))
+    assert diff(kick, lr) == {
+        "learner.policy_lr": (0.0002, 0.0001),
+        "learner.critic_lr": (0.0002, 0.0001),
+        "learner.checkpoint_folder": ("runs/lucy_1v1/checkpoints", "runs/lucy_1v1_lr1e4/checkpoints"),
+    }
+    assert lr["env.max_players"] == 3 and lr["env.action_stack_size"] == 5
+    assert lr["learner.policy_layer_sizes"] == [512, 512, 512]
