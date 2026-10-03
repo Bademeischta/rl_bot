@@ -11,6 +11,39 @@ als PR #1 in `main` gemergt) und `claude/review-fixes` (Review-Befunde R1-R19, v
 gemergt. Aktuell: `claude/hauptlauf-betrieb` (30.09.2026). Regel: ein Commit pro Punkt, ID in der
 Commit-Message.
 
+## Spieltest 2 (Branch `claude/hauptlauf-beobachtung`, 01.10.2026)
+
+Details und Zahlen: AUDIT.md §11.
+
+* Nutzer-Test 16,95 Mrd. gegen 6,04 Mrd. in Rocket League: Luftspiel und Anstoß (ohne Skript) nicht
+  wirklich besser, der Rest schon. Duell im Simulator: +8,43 Tore/Spiel, 1000:0.
+* Befund Anstoß: im Selbstspiel seit ~15,25 Mrd. Steps ohne Boost und abwartend (erste Berührung 3,5 → ~5 s,
+  26–36 % unberührt); gegen einen schnell anfahrenden Gegner fährt der Bot selbst schnell. Vermutete
+  Ursache: `save_boost` im Zero-Sum (ungeprüft). Regressions-Checks: 16,95 gegen 15,95 Mrd. +0,19;
+  17,10 gegen 15,10 Mrd. +0,69, Anstoß zuerst 17 %.
+* Befund Luftspiel: 0,4–0,7 Kontakte über 450 uu je Spielerminute.
+* Experimente (freigegeben, je 300 Mio. Steps ab 17.097.466.368): `sp2_kickoff_first_touch` +0,67 gegen
+  das Referenz-Ende, ±0 gegen den Start, unberührt 16,6 % → 4,3 %, aber weiter ohne Boost;
+  `sp2_aerial_share` +0,53 / +0,30, kein Aerial-Lerneffekt; Referenz selbst −1,25 gegen ihren Start
+  (Trainingsrauschen ~±1 Tor/Spiel, hängt am Anstoß).
+* Hauptlauf seit 15:25 wieder mit unveränderter Config; Config-Entscheidung beim Nutzer (Vorschläge §11.4).
+* Zweite Runde (§11.5, freigegeben): `sp2_save_boost_01` −0,30 gegen das Referenz-Ende, −0,60 gegen den Start,
+  mehr Boost beim Anstoß, aber argmax weiter passiv; `sp2_save_boost_01_kickoff` (Bündel) +0,22 / +0,14,
+  kein unberührter Anstoß mehr, 58 % erste Berührungen gegen 15,10 Mrd. (Start 17 %), Anstoß-Tore 354:126
+  gegen den Start. Die Schwankung der Gesamtstärke ist der Anstoß (Referenz-Ende 111:988 Anstoß-Tore gegen
+  ihren Start). Nebenwirkung: `boost_held` 0,43 → 0,36, Entropie 3,04. Erster Lauf nach versehentlichem
+  Abbruch von Hand zu Ende ausgewertet; Hauptlauf stand 01.10. 15:52 bis 02.10. 08:00.
+* Vorschlag `train/configs/lucy_1v1_zero_sum_drill_fast_kickoff.json` (beide Anstoß-Werte), nicht gestartet;
+  Hauptlauf läuft seit 02.10. 08:00 unverändert ab 17.395.505.920.
+* Umstellung (§11.6, freigegeben): seit 02.10. 09:35 läuft der Hauptlauf ab 18.527.085.056 mit
+  `lucy_1v1_zero_sum_drill_fast_kickoff.json`. Beobachtung über 1 Mrd. Steps: alle Grenzwerte eingehalten;
+  Anstoß 3,0 → 2,5 s, 1514 → ~1830 uu/s, Boost 21 → 30, nie unberührt; `boost_held` 0,43 → 0,35, Entropie
+  2,97 → 3,05, beides stabil. Regressions-Check 19,53 gegen 18,53 Mrd.: **gleich** (+0,00 [−0,16; +0,16]),
+  Anstoß zuerst 86 %, Anstoß-Tore 474:258, außerhalb der Anstöße ~0,2 Tore/Spiel zurück. Nach 2 Mrd. Steps:
+  20,53 gegen 19,53 Mrd. **gleich** (−0,14 [−0,31; +0,03]), 20,73 gegen 18,73 Mrd. **besser** (+0,70 [+0,54; +0,87]);
+  Anstoß stabil bei 2,47 s, Grenzwerte eingehalten. Offen: Aerials sinken langsam (0,77 → 0,68 je Minute).
+* Dabei behoben: B5 (Export als Skript), B6 (zweiter Bot-Eintrag), B7 (Neustart nach sauberem Stopp).
+
 ## Hauptlauf-Betrieb (Branch `claude/hauptlauf-betrieb`, 30.09.2026)
 
 Abgezweigt von `main` @ `3308fed` (PR #5 Geschwindigkeit gemergt). Auftrag: Checkpoint-Historie und
@@ -24,6 +57,9 @@ Hauptlauf nicht (12:43:09 gestartet, 12:44:25 ohne Checkpoint beendet); neu gest
 | B1 | Hauptlauf-Config: `timesteps_per_save` 50 Mio., `checkpoints_to_keep` 200, `skill_timesteps_per_version` 250 Mio.; `bench_speed.py --history/--drop-checkpoints` | `test_main_run_keeps_billions_of_steps_history_within_the_disk_budget`, angepasste Config-Diff-Prüfung (beide mit alten Werten rot) |
 | B2 | `tools/regression_check.py` | `tests/test_regression_check.py` (echte Checkpoint-Kopien, echtes duel.exe, halb geschriebener Checkpoint, Quelle per Hash unverändert) |
 | B4 | `tools/local/start_main_run.ps1`, `run_main.ps1`, `stop_main_run.ps1`, `main_run_status.py`; Nachtrag: Status-Skript stürzte in der cp1252-Konsole ab | `tests/test_main_run_ops.py` (Status mit echter C++-CSV und cp1252-Konsole, Stopp gegen echten Prozess, Start als DryRun) |
+| B5 | `tools/export_policy.py` lief als Skript (README-Befehl) nicht: „No module named 'deploy'“; Projektordner jetzt im Suchpfad (01.10.2026, vor dem Spieltest mit 16.946.547.712) | `test_export_tool_runs_as_a_script_like_in_the_readme` in `tests/test_policy_parity.py` (ohne Fix rot) |
+| B6 | Alt gegen neu in Rocket League: `bot.py --policy <datei>` und zweiter Eintrag `deploy/rlbot_alt/bot.toml` („Lucy alt (RLbot)“, `policy_alt.pt`; Nachtrag: zuerst als `bot_alt.toml`, der Launcher nimmt aber nur Dateien namens `bot.toml`); Start-Log nennt Datei und Steps (01.10.2026, 16.946.547.712 gegen 6.037.692.544) | drei Tests in `tests/test_bot_logic.py` (Kommandozeile, beide toml-Einträge, `initialize()` lädt die genannte Datei; ohne Änderung rot) |
+| B7 | `start_main_run.ps1` startete nach einem sauberen Stopp nicht („train_bot ist nach 90 s nicht gestartet“, 01.10.2026 15:23): das alte `-NoExit`-Fenster hält die Aufgabe im Zustand „Running“, `IgnoreNew` verwirft den neuen Start. Die alte Instanz wird jetzt vorher beendet; neuer Parameter `-Runner` für den Test | `test_start_script_restarts_after_a_clean_stop_left_the_task_window_open` (echte Aufgabenplanung, eigener Aufgabenname, Ersatz-Trainer; ohne Fix rot mit derselben Meldung) |
 
 Verifikation: `run_all_checks.ps1` vor dem Neustart (`5b18265`, sauber): alle 6 Schritte OK in 5,9 min,
 C++ 119/119 und Python 207/207 je zweimal, Golden-Fixtures unverändert, Smoke und Deployment-Smoke OK;
@@ -33,7 +69,7 @@ Neustart 13:15:16 über `start_main_run.ps1` (Aufgabenplanung, eigenes Fenster),
 alle ~15 min: alle Grenzwerte eingehalten, ~179.000 SPS (159.000 während des Regressions-Checks),
 Entropie 2,77 -> 2,87. Regressions-Check nach 1 Mrd. Steps (7.038.624.000 gegen 6.037.692.544): **besser**,
 +1,69 [+1,58; +1,80] Tore/Spiel, Siege 757:96, Anstoß zuerst 94,8 %. Tabelle: AUDIT.md §10.7/10.8.
-Der Hauptlauf läuft weiter (Stopp: `tools\local\stop_main_run.ps1`).
+Der Hauptlauf läuft weiter (Stopp: `tools\local\stop_main_run.ps1`). Nachtrag 01.10.2026: zweimal per Fenster geschlossen (15:28, 20:19; ~8 und ~47 Mio. Steps ohne Checkpoint verloren), Neustart 23:42 ab 9.690.605.696; zweiter Regressions-Check 9,69 gegen 8,69 Mrd. **besser** (+1,48 Tore/Spiel); Entropie ~2,97 (AUDIT.md §10.10).
 
 ## Geschwindigkeit (Branch `claude/speed`, ab 29.09.2026)
 

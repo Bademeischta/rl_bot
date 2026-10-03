@@ -2446,3 +2446,258 @@ wäre es etwa die Hälfte bei doppelter Dauer.
 * Das Trainer-Log wächst ~140 MB am Tag; alte Logs in `runs\hauptlauf\` gelegentlich löschen.
 * `metrics.csv` enthält die zwei Kurzläufe vom Mittag (88 und 92 Iterationen ab 6,0378 Mrd.) vor dem
   Neustart; Auswertungen über Steps sehen den Bereich 6,038–6,047 Mrd. dreifach.
+
+### 10.10 Weiterer Verlauf bis 10 Mrd. Steps (30.09./01.10.2026)
+
+* Der Lauf von 13:15 wurde um 15:28 durch Schließen des Fensters beendet, ein neuer lief ab 15:31 (ab
+  7.438.952.192) und endete um 20:19 ebenfalls durch Schließen des Fensters bei 9.737.629.440 Steps
+  („forrtl: error (200): program aborting due to window-CLOSE event“). Das Schließen beendet den Trainer
+  sofort, ohne End-Checkpoint: verloren waren ~8 und ~47 Mio. Steps (höchstens ein Speicherabstand,
+  50 Mio.). Sauber und ohne Verlust stoppt nur die Stop-Datei (`tools\local\stop_main_run.ps1`).
+* Verlauf 6,0–9,74 Mrd. (Mittel je 250 Mio.): Entropie 2,77 → 2,97, ab 8,5 Mrd. flach bei ~2,97; KL
+  0,0041–0,0043 und Clip 3,9–4,3 % konstant; Value Loss 0,211 → 0,158; Tor-Anteil ohne Drill 1,000;
+  Anstoß-Zeit im Training 3,2 → 2,6 s (bis 7,0 Mrd.), danach wieder ~3,0–3,2 s (Spitze 4,1 s bei
+  8,5–8,75 Mrd.). Ab ~8,25 Mrd. lag die SPS bei 107.000–123.000 (vermutlich Spiele nebenher).
+* Neustart am 30.09. um 23:42 mit `start_main_run.ps1` ab 9.690.605.696: der Skill-Tracker findet jetzt
+  alle 20 Versionen, ~200.000 SPS, keine Warnungen. Beobachtung bis 00:42 (Tabelle unten): alle
+  Grenzwerte eingehalten.
+* Zweiter Regressions-Check (23:44): 9.690.605.696 gegen 8.690.024.064 **besser**, +1,48 [+1,33; +1,64]
+  Tore/Spiel, Siege 655:211 (134 remis), Anstoß zuerst 71,8 % [67,7; 75,6], erste Berührung 2,82 s gegen
+  2,80 s. Der Lauf wird also trotz steigender Entropie und wieder längerer Anstoß-Zeit im Selbstspiel
+  weiter deutlich stärker; die Anstoß-Überlegenheit gegen den 1 Mrd. älteren Stand ist kleiner als beim
+  ersten Check (94,8 %).
+
+| Zeit | Steps | SPS | Entropie | KL | Clip | Value Loss | Tor-Anteil ohne Drill | Hinweis |
+|---|---|---|---|---|---|---|---|---|
+| 09-30 23:58 | 9.842.517.376 | 172.330 | 2,975 | 0,0043 | 0,042 | 0,162 | 1,000 | Regressions-Check läuft |
+| 10-01 00:11 | 9.981.309.440 | 172.041 | 2,979 | 0,0042 | 0,041 | 0,159 | 1,000 | Fenster enthält noch Iterationen während des Checks |
+| 10-01 00:27 | 10.154.514.944 | 191.782 | 2,952 | 0,0042 | 0,040 | 0,158 | 1,000 |  |
+| 10-01 00:42 | 10.327.127.168 | 190.321 | 2,967 | 0,0042 | 0,040 | 0,156 | 1,000 |  |
+
+Offen (zusätzlich zu §10.9): Die Entropie liegt knapp unter 3,0; steigt sie weiter, wäre das der Punkt, an
+dem der Entropie-Bonus relativ zu stark wird (Muster K3/E1). Solange die Regressions-Checks „besser“
+melden, ist das kein Handlungsbedarf. Optional: train_bot.exe könnte das Schließen des Fensters abfangen
+(CTRL_CLOSE_EVENT, ~5 s Zeit) und noch speichern; nicht umgesetzt.
+
+## 11. Spieltest 2 (01.10.2026, lokal)
+
+### 11.1 Anlass und Urteil des Nutzers
+
+Der Hauptlauf stand am 01.10. um 12:30 bei 16,97 Mrd. Steps (hart beendet, neuester Checkpoint
+16.946.547.712). Der Nutzer hat diesen Stand in Rocket League gegen den Stand des ersten Spieltests
+(6.037.692.544) spielen lassen (zweiter Bot-Eintrag `deploy/rlbot_alt/bot.toml`, B6). Urteil: Luftspiel
+und Anstoß (ohne Skript) sind „nicht wirklich besser geworden“, der Rest schon.
+
+### 11.2 Messungen dazu
+
+**Gesamtstärke.** Duell 16.946.547.712 gegen 6.037.692.544 (1000 Spiele, beide ziehen wie im Training):
++8,43 [+8,28; +8,58] Tore/Spiel, 1000:0 Siege. Ein argmax-gegen-argmax-Duell hat nur 10 verschiedene
+Spiele (5 Anstoßpositionen × 2 Seiten) und wurde nicht gewertet.
+
+**Fortschritt je Milliarde Steps wird klein** (Regressions-Checks, `results/regression/lucy_1v1_history.md`):
+
+| neu gegen alt | Tordifferenz/Spiel | Siege | Anstoß: neu zuerst | erste Berührung neu / alt |
+|---|---|---|---|---|
+| 7,04 gegen 6,04 Mrd. | +1,69 [+1,58; +1,80] | 757:96 | 94,8 % | 2,56 s / 3,17 s |
+| 9,69 gegen 8,69 Mrd. | +1,48 [+1,33; +1,64] | 655:211 | 71,8 % | 2,82 s / 2,80 s |
+| 16,95 gegen 15,95 Mrd. | +0,19 [+0,03; +0,34] | 441:406 | 61,4 % | 4,52 s / 3,26 s |
+| 17,10 gegen 15,10 Mrd. | +0,69 [+0,53; +0,85] | 551:324 | 17,2 % | 3,47 s / 3,50 s |
+
+**Anstoß im Selbstspiel** (Trainingsmetriken des Hauptlaufs, Mittel je Milliarde Steps):
+
+| Mrd. Steps | 6–7 | 9–10 | 12–13 | 14–15 | 15–16 | 16–17 |
+|---|---|---|---|---|---|---|
+| erste Berührung (s) | 2,80 | 3,18 | 3,03 | 3,52 | 4,51 | 4,96 |
+| Tempo bei der Berührung (uu/s) | 1445 | 1433 | 1473 | 1283 | 1091 | 1139 |
+| Boost verbraucht | 37,6 | 29,5 | 32,4 | 25,0 | 20,3 | 17,7 |
+| Anstöße ohne Berührung | 0,0 % | 0,0 % | 0,0 % | 0,1 % | 10,4 % | 28,6 % |
+
+Der Umschlag liegt bei ~15,25 Mrd. Steps (Mittel je 250 Mio.: unberührt 0,1 % → 5,8 % → 20 %, zuletzt
+26–36 %). Der Anstoß-Drill endet nach 6 s; „unberührt“ heißt, dass in dieser Zeit keiner am Ball war.
+
+Was der Bot tut (`eval/kickoff_eval.py --trajectory`, argmax wie im Spiel, 16.946.547.712):
+
+* gegen sich selbst: Boost 0–3, Spitze 1320–1410 uu/s, erste Berührung 3,0–3,6 s; beim Mittel-Anstoß
+  berührt keiner den Ball;
+* gegen 6.037.692.544 (fährt mit bis zu 45 Boost an): derselbe Bot fährt auf vier von fünf Positionen
+  mit 40–47 Boost bis 2300 uu/s und ist in 2,4–3,0 s zuerst am Ball (500 Anstöße argmax: 100 % zuerst, das sind 10 verschiedene Abläufe;
+  gezogen 55,4 % [51,0; 59,7], Tore in 10 s 28:10).
+
+Der Bot kann also schnell anfahren, tut es aber nur, wenn der Gegner Druck macht. Ein Speedflip
+(1,9–2,5 s, §8.4) bleibt schneller. Gegen den 2 Mrd. älteren Stand (15,10 Mrd., fährt noch normal an)
+verliert der aktuelle Stand 83 % der ersten Berührungen.
+
+**Wahrscheinliche Ursache (nicht per Experiment geprüft):** `save_boost` zahlt 0,3·√Boost je Step, mit
+Zero-Sum also die Differenz zum Gegner. Wer beim Anstoß seine 33 Boost verbraucht und der Gegner
+nicht, verliert bis zum nächsten Pad 0,17 je Step, das sind 2,6 je Sekunde; ein Tor ist 10 wert.
+Alle anderen Shaping-Terme sind beim Anstoß symmetrisch und heben sich im Zero-Sum auf,
+`velocity_player_to_ball` bringt dem Schnelleren höchstens ~0,04 je Step. Der Verlauf passt dazu:
+Der Boost-Verbrauch beim Anstoß sinkt seit 6 Mrd. Steps fast stetig (37,6 → 17,7).
+
+**Luftspiel.** Ballkontakte mit Ball über 450 uu je Spielerminute: im Duell 0,40 (16,95 Mrd.) gegen 0,012
+(6,04 Mrd.), im Training 0,02 (6–7 Mrd.) → 0,34 (9–10 Mrd.) → 0,69 (16–17 Mrd.); mittlere Ballhöhe bei
+Luftkontakten 160 → 200 uu. Das ist ein Kontakt alle 1,5–2,5 Minuten und im Spiel kaum zu sehen.
+Aerial-Startzustände haben mit dem Drill nur noch 0,5 von 11,5 Gewichtsanteilen (~4 % der Episoden).
+
+### 11.3 Experimente (vom Nutzer freigegeben)
+
+Je 300 Mio. Steps ab 17.097.466.368 (sauberer Stopp des Hauptlaufs 13:13), Seed 123, Build `d857d26`,
+nacheinander als Aufgabe „RLbot Experimente“; Referenz ist die laufende Hauptlauf-Config als Experiment
+(`sp2_reference.json`). Während des Referenzlaufs liefen die beiden letzten Regressions-Checks mit
+(SPS 177.000 statt 190.000–198.000, gleiche Step-Zahl). `results/compare_sp2.md`.
+
+| | Referenz | `kickoff_first_touch` 2,0 | `state_setters.aerial` 0,5 → 2,0 |
+|---|---|---|---|
+| Duell Ende gegen Referenz-Ende | – | **+0,67** [+0,51; +0,83] | **+0,53** [+0,37; +0,69] |
+| Duell Ende gegen den eigenen Start | **−1,25** [−1,42; −1,08] | +0,03 [−0,13; +0,19] | +0,30 [+0,14; +0,46] |
+| TrueSkill gemeinsame Ladder (mu; Start 25,67) | 25,14 | 25,45 | 25,93 |
+| Training: Anstöße ohne Berührung | 16,6 % | 4,3 % (Fünftel 2–4: unter 1 %) | 8,6 % |
+| Training: erste Berührung / Tempo / Boost | 4,41 s / 1214 / 23,0 | 4,06 s / 1302 / 23,4 | 4,45 s / 1156 / 19,3 |
+| Anstoß gegen 15,10 Mrd. zuerst (500, gezogen; Start: 17,2 %) | 3,6 % | 16,4 % | 32,4 % |
+| Anstoß argmax gegen sich selbst: unberührt (von 5), Boost | 4, 0 | 3, 0 | 0, 0 |
+| Training: Aerials je Minute (Fünftel 1 → 5) | 0,72 → 0,72 | 0,77 → 0,75 | 0,80 → 0,78 |
+| Duell gegen Referenz-Ende: Aerials je Minute | – | 0,65 : 0,70 | 0,68 : 0,72 |
+
+Lesart:
+
+* **Das Trainingsrauschen ist groß.** Der unveränderte Referenzlauf ist nach 300 Mio. Steps 1,25
+  Tore/Spiel schwächer als sein eigener Start; sein Anstoß ist fast ganz passiv geworden (zuerst am Ball
+  4 % gegen den Start, argmax 4 von 5 Positionen unberührt). Die Vorsprünge der beiden Experimente auf
+  das Referenz-Ende kommen zum großen Teil daher. Einzelne Checkpoints des Hauptlaufs schwanken also um
+  etwa ±1 Tor/Spiel, je nachdem, wo der Anstoß gerade steht; das erklärt auch die kleinen und
+  uneinheitlichen Regressions-Checks seit 15 Mrd.
+* **Anstoß-Reward:** nimmt das gemeinsame Abwarten weitgehend weg (unberührt 16,6 % → 4,3 %) und hält
+  die Stärke (±0 gegen den Start, wo die Referenz 1,25 verliert). Schneller wird der Anstoß in 300 Mio.
+  Steps nicht: weiter ohne Boost, argmax bleiben 3 von 5 Positionen unberührt. +2 für die erste
+  Berührung ist klein gegen den `save_boost`-Nachteil des Boostens.
+* **Mehr Aerial-Starts:** kein Lerneffekt sichtbar. Die höhere Rate im Training (0,78 gegen 0,72) ist von
+  Beginn an da (mehr Aerial-Szenen in der Mischung) und steigt im Lauf nicht; im Duell hat das Experiment
+  nicht mehr Aerials als die Referenz. Nicht schädlich (+0,30 gegen den Start).
+* Beide Hebel schaden nicht, lösen das jeweilige Problem aber in 300 Mio. Steps auch nicht.
+
+### 11.4 Stand und offene Entscheidung
+
+Der Hauptlauf läuft seit 15:25 wieder mit unveränderter Config ab 17.097.466.368 (~182.000 SPS, alle
+Grenzwerte eingehalten). An der Config wurde nichts geändert; die Entscheidung liegt beim Nutzer.
+Vorschläge:
+
+1. `kickoff_first_touch` 2,0 in die Hauptlauf-Config übernehmen: stabilisiert den Anstoß gegen das
+   Abwarten, kein Nachteil gemessen.
+2. Die `save_boost`-Vermutung prüfen (ein Lauf, ~45 min): Referenz plus `save_boost` 0,3 → 0,1, oder der
+   Anstoß-Reward mit deutlich höherem Wert. Erwartung: Boost-Verbrauch und Tempo beim Anstoß steigen.
+3. Luftspiel: `sp_air_touch` (Reward für Luftkontakte, skaliert mit der Ballhöhe) als nächstes Experiment
+   statt mehr Aerial-Starts; dazu ein längerer Lauf, 300 Mio. Steps sind für Aerials zu kurz.
+4. Wegen des Rauschens: Entscheidungen an den gezielten Kennzahlen festmachen (Boost/Tempo/Zeit beim
+   Anstoß, Aerials je Minute) und beim Duell eine Wiederholung der Referenz mitlaufen lassen.
+
+Betrieb: `start_main_run.ps1` scheiterte nach dem sauberen Stopp („nach 90 s nicht gestartet“), weil das
+alte Fenster die Aufgabe im Zustand „Running“ hielt; behoben (B7). `tools/export_policy.py` lief als
+Skript nicht (B5). Für Spiele gegen Menschen bleibt `RLBOT_SCRIPTED_KICKOFF=speedflip` der schnellste Weg.
+
+### 11.5 Zweite Runde: `save_boost` als Ursache (01./02.10.2026, vom Nutzer freigegeben)
+
+Zwei weitere Läufe ab demselben Start (17.097.466.368, 300 Mio. Steps, Seed 123, Build `8508dfa`) gegen die
+Referenz aus §11.3: `sp2_save_boost_01` (`save_boost` 0,3 → 0,1) und `sp2_save_boost_01_kickoff` (dazu
+`kickoff_first_touch` 2,0). Der erste Lauf wurde am 01.10. bei der Anstoß-Auswertung versehentlich
+abgebrochen (Training und beide Duelle waren fertig, Anstoß-Auswertung und Zusammenfassung von Hand mit
+denselben Aufrufen nachgeholt, ohne Lauf-Ladder), der zweite lief am 02.10. ab 07:07. Der Hauptlauf stand
+dadurch von 01.10. 15:52 bis 02.10. 08:00. `results/compare_sp2b.md`.
+
+| | Referenz | nur `kickoff_first_touch` 2,0 | nur `save_boost` 0,1 | beides |
+|---|---|---|---|---|
+| Duell Ende gegen Referenz-Ende | – | +0,67 [+0,51; +0,83] | −0,30 [−0,47; −0,13] | **+0,22** [+0,06; +0,38] |
+| Duell Ende gegen den eigenen Start | −1,25 [−1,42; −1,08] | +0,03 [−0,13; +0,19] | −0,60 [−0,75; −0,44] | **+0,14** [−0,03; +0,30] |
+| davon Tore in 10 s nach Anstoß (Ende : Start, 1000 Spiele) | 111 : 988 | 93 : 113 | 169 : 423 | **354 : 126** |
+| TrueSkill gemeinsame Ladder (mu; Start 25,66) | 25,21 | 25,56 | 25,07 | 25,64 |
+| Training: Anstöße ohne Berührung (letztes Fünftel) | 16,6 % | 4,3 % | 6,0 % | **0,0 %** (ab Fünftel 3) |
+| Training: erste Berührung / Tempo / Boost (letztes Fünftel) | 4,41 s / 1214 / 23,0 | 4,06 s / 1302 / 23,4 | 4,03 s / 1238 / 30,3 | 3,89 s / 1182 / 24,0 |
+| Anstoß gegen 15,10 Mrd. zuerst (500, gezogen; Start 17,2 %) | 3,6 % | 16,4 % | 24,8 % | **58,0 %** |
+| Anstoß argmax gegen sich selbst: unberührt (von 5) | 4 | 3 | 4 | **0** |
+| Boost-Vorrat im Spiel (`boost_held`) | 0,43 | 0,43 | 0,35 | 0,36 |
+| Entropie (letztes Fünftel) | 2,97 | 2,99 | 3,08 | 3,04 |
+| Aerials je Minute im Training | 0,72 | 0,75 | 0,68 | 0,69 |
+
+Lesart:
+
+* **Die Schwankung der Gesamtstärke ist der Anstoß.** Das Referenz-Ende kassiert gegen seinen Start in
+  1000 Spielen 988 Tore binnen 10 s nach einem Anstoß und schießt 111; das allein sind −0,88 von −1,25
+  Toren/Spiel.
+* **`save_boost` ist ein Teil der Ursache, aber nicht allein.** Mit 0,1 steigt der Boost-Verbrauch beim
+  Anstoß (25,7 → 30,3 im Lauf, Referenz ~23), das Abwarten geht zurück. Ohne den Anstoß-Reward bleibt der
+  Anstoß im argmax-Selbstspiel aber passiv (4 von 5 unberührt), und der Lauf verliert Anstoß-Tore (169:423).
+* **Beides zusammen wirkt am besten:** kein unberührter Anstoß mehr, im argmax-Selbstspiel alle fünf
+  Positionen berührt (3,1–3,7 s), 58 % erste Berührungen gegen den 2 Mrd. älteren Stand (Start 17 %),
+  Anstoß-Tore 354:126 gegen den Start, Gesamtstärke nicht schlechter (+0,14 gegen den Start, +0,22 gegen
+  das Referenz-Ende).
+* **Grenzen:** Der Anstoß ist nicht schnell. In den Fünfteln 3–4 lag er bei 3,1 s mit 34–35 Boost und
+  1500–1535 uu/s, im letzten Fünftel wieder bei 3,9 s mit 24 Boost und 1182 uu/s; argmax fährt weiter fast
+  ohne Boost. Ein Speedflip (1,9–2,5 s) bleibt weit weg. Nebenwirkungen von `save_boost` 0,1: der
+  Boost-Vorrat im Spiel sinkt von 0,43 auf ~0,36, die Entropie steigt auf 3,04–3,08 (Beobachtungsmarke
+  3,0, §10.10). Ein Lauf je Variante; das Trainingsrauschen ist nur über die Referenz bekannt.
+* Luftspiel: von keinem der Anstoß-Hebel berührt (0,68–0,75 Aerials je Minute).
+
+**Vorschlag (nicht gestartet):** `train/configs/lucy_1v1_zero_sum_drill_fast_kickoff.json` = laufende
+Hauptlauf-Config plus `save_boost` 0,1 und `kickoff_first_touch` 2,0 (Test
+`test_kickoff_main_run_proposal_adds_only_the_two_kickoff_values`). Nach einem Wechsel beobachten: Anstoß
+(unberührt, Zeit, Boost), `boost_held`, Entropie, und nach ~1 Mrd. Steps der Regressions-Check; die 200
+Checkpoints erlauben den Rückweg. Der Hauptlauf läuft seit 02.10. 08:00 mit unveränderter Config ab
+17.395.505.920 weiter.
+
+### 11.6 Umstellung des Hauptlaufs und Beobachtung (02.10.2026, vom Nutzer freigegeben)
+
+Am 02.10. um 09:35 sauber gestoppt (End-Checkpoint 18.527.085.056) und mit
+`train/configs/lucy_1v1_zero_sum_drill_fast_kickoff.json` neu gestartet (`save_boost` 0,1,
+`kickoff_first_touch` 2,0; beide Werte stehen so im Trainer-Log). Vorher lief der Hauptlauf von 08:00 bis
+09:35 mit der alten Config von 17.395.505.920 bis 18.527.085.056.
+
+Vorbemerkung: In der letzten Milliarde Steps vor dem Wechsel war der Anstoß unter der alten Config von
+selbst wieder aktiv (unberührt 0,3 %, erste Berührung 3,0 s). Er pendelt dort zwischen aktiv und passiv
+(§11.2: 26–36 % unberührt bei 16–17 Mrd.).
+
+Verlauf (Trainingsmetriken, Mittel je 100 Mio. Steps seit dem Wechsel; Kontrollen alle ~15 min, alle
+Grenzwerte aus §10 bei jeder Kontrolle eingehalten, SPS 188.000–197.000, keine Warnungen):
+
+| Steps seit Wechsel | unberührt | erste Berührung | Tempo | Boost | `boost_held` | Entropie | Aerials/min | Tore/min | Value Loss | KL | Clip |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 Mrd. davor | 0,3 % | 3,01 s | 1514 | 20,7 | 0,432 | 2,967 | 0,77 | 1,39 | 0,166 | 0,0047 | 0,038 |
+| 0–100 Mio. | 0,0 % | 2,80 s | 1618 | 26,6 | 0,378 | 3,031 | 0,77 | 1,41 | 0,156 | 0,0046 | 0,037 |
+| 200–300 Mio. | 0,0 % | 2,57 s | 1773 | 29,1 | 0,354 | 3,063 | 0,71 | 1,41 | 0,158 | 0,0046 | 0,036 |
+| 500–600 Mio. | 0,0 % | 2,49 s | 1832 | 30,1 | 0,346 | 3,054 | 0,71 | 1,44 | 0,153 | 0,0046 | 0,036 |
+| 800–900 Mio. | 0,0 % | 2,46 s | 1853 | 30,4 | 0,346 | 3,052 | 0,74 | 1,44 | 0,151 | 0,0046 | 0,036 |
+| 900–1000 Mio. | 0,0 % | 2,48 s | 1829 | 29,6 | 0,346 | 3,053 | 0,71 | 1,43 | 0,153 | 0,0045 | 0,036 |
+
+* Der Anstoß wird in den ersten ~500 Mio. Steps stetig schneller und bleibt dann bei ~2,5 s, ~1830 uu/s
+  und ~30 Boost; kein Anstoß bleibt unberührt. Das ist schneller als der bisherige Bestwert (~2,6 s bei 7 Mrd., §10.10).
+* `boost_held` fällt in den ersten 200 Mio. Steps von 0,43 auf ~0,35 und bleibt dort; die Entropie steigt
+  von 2,97 auf ~3,05 und bleibt dort. KL, Clip und Value Loss ruhig; kein Sprung beim Wechsel.
+* Aerials je Minute schwanken zwischen 0,68 und 0,75 (vorher 0,77), ohne Trend.
+
+Regressions-Check nach 1 Mrd. Steps (11:03, 1000 Spiele): 19.528.093.568 gegen 18.527.085.056 (Stand beim
+Wechsel) **gleich**, +0,00 [−0,16; +0,16] Tore/Spiel, Siege 401:437 (162 remis). Im Duell: Anstoß zuerst
+84,9 % (Anstoß-Auswertung 86,0 % [82,7; 88,8]), Tempo bei der Berührung 2002 gegen 1730 uu/s, Boost 37,5
+gegen 27,5, Tore binnen 10 s nach Anstoß 474:258. Außerhalb der Anstöße liegt der neue Stand also um etwa
+0,2 Tore/Spiel zurück (Schüsse/min 1,30 gegen 0,99, aber Konversion im Angriffsdrittel 0,236 gegen 0,257,
+Aerials 0,70 gegen 0,75).
+
+Einordnung: Das Ziel der Umstellung ist erreicht, der Anstoß ist aktiv, stabil und klar besser als vor dem
+Wechsel. Die Gesamtstärke hat in dieser Milliarde nicht zugelegt (davor +0,19 und +0,69 je 1–2 Mrd.); ob das
+die Umgewöhnung an den kleineren Boost-Vorrat ist oder ein dauerhafter Preis von `save_boost` 0,1, zeigt
+erst der nächste Check. Rückweg bei Bedarf: stoppen und `start_main_run.ps1` ohne `-Config`.
+
+**Nachtrag nach 2 Mrd. Steps (02.10.2026, 12:30–13:15).** Alle Grenzwerte weiter eingehalten (20,53 Mrd.
+Steps um 12:30, ~195.000 SPS). Trainingsmetriken je 250 Mio. Steps seit dem Wechsel: Anstoß ab 500 Mio.
+unverändert bei 2,47 s, 1820–1864 uu/s, ~30 Boost, nie unberührt; `boost_held` 0,34–0,35; Entropie
+3,02–3,05; Tore/min 1,39 → 1,46–1,50. Aerials je Minute sinken langsam: 0,77 (davor) → 0,70–0,73 (bis
+1,25 Mrd.) → 0,68 (1,25–2 Mrd.).
+
+| neu gegen alt | Urteil | Tordifferenz/Spiel | Siege | Anstoß: neu zuerst | Anstoß-Tore 10 s |
+|---|---|---|---|---|---|
+| 19.528.093.568 gegen 18.527.085.056 (Wechsel) | gleich | +0,00 [−0,16; +0,16] | 401:437 | 86,0 % | 474:258 |
+| 20.529.058.304 gegen 19.528.093.568 | gleich | −0,14 [−0,31; +0,03] | 399:446 | 31,8 % | 231:173 |
+| 20.729.243.520 gegen 18.727.286.656 (200 Mio. nach dem Wechsel) | **besser** | +0,70 [+0,54; +0,87] | 518:325 | 74,2 % | 353:215 |
+
+Die drei Checks passen nicht transitiv zusammen (0,00 und −0,14 je Milliarde, aber +0,70 über zwei); einzelne
+Checkpoints schwanken weiter um mehrere Zehntel Tore/Spiel (§11.3). Zusammen: kein Rückschritt durch die
+Umstellung, über 2 Mrd. Steps ein Fortschritt in der Größe der letzten Checks vor dem Wechsel (+0,69 für
+17,10 gegen 15,10 Mrd.), bei jetzt stabilem, schnellerem Anstoß. Offen: der langsame Rückgang der Aerials
+(vermutlich der kleinere Boost-Vorrat) und weiterhin das Luftspiel insgesamt (§11.4, Punkt 3).

@@ -7,9 +7,13 @@ Ohne Checkpoint-Angabe wird der neueste Unterordner (höchste Step-Zahl) genomme
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
-from deploy.policy import export_policy, load_policy
+# Als Skript gestartet (README: python tools\export_policy.py ...) steht nur tools/ im Suchpfad
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from deploy.policy import export_policy, load_policy  # noqa: E402
 
 
 def latest_checkpoint(folder: Path) -> Path:

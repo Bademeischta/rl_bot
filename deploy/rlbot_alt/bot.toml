@@ -1,0 +1,15 @@
+[settings]
+# Zweiter Eintrag für Vergleichsspiele alt gegen neu (B6): derselbe Bot-Code (deploy/rlbot/bot.py),
+# andere Policy-Datei. Eigener Ordner, weil der RLBot-Launcher nur Dateien namens bot.toml annimmt.
+#   python tools\export_policy.py <älterer Checkpoint> --out deploy\rlbot\policy_alt.pt
+name = "Lucy alt (RLbot)"
+agent_id = "rlbot/lucy_alt"
+run_command = "..\\..\\.venv\\Scripts\\python.exe ..\\rlbot\\bot.py --policy policy_alt.pt"
+run_command_linux = "../../.venv/bin/python ../rlbot/bot.py --policy policy_alt.pt"
+hivemind = false
+
+[details]
+developer = "silas"
+description = "Älterer Stand von Lucy (policy_alt.pt) als Gegner für den aktuellen Bot"
+language = "python"
+tags = ["ml", "1v1", "2v2", "3v3"]

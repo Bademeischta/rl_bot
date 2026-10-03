@@ -226,3 +226,47 @@ def test_main_run_keeps_billions_of_steps_history_within_the_disk_budget():
     assert per_version % save == 0                                 # ... und fallen auf gespeicherte Checkpoints
     # Regressions-Check (tools/regression_check.py): Gegner ~1 Mrd. Steps älter muss vorhanden sein
     assert history >= 2 * 1_000_000_000
+
+
+# --- Spieltest 2 (01.10.2026, AUDIT.md §11): je genau eine Änderung gegenüber der aktuellen Hauptlauf-Config ---
+
+SPIELTEST2_EXPECTED = {
+    "sp2_kickoff_first_touch": {"rewards.kickoff_first_touch": (None, 2.0)},
+    "sp2_aerial_share": {"state_setters.aerial": (0.5, 2.0)},
+    # zweite Runde (§11.5): save_boost als vermutete Ursache des Anstoßes ohne Boost
+    "sp2_save_boost_01": {"rewards.save_boost": (0.3, 0.1)},
+    # Bündel: beide Anstoß-Hebel zusammen
+    "sp2_save_boost_01_kickoff": {"rewards.save_boost": (0.3, 0.1), "rewards.kickoff_first_touch": (None, 2.0)},
+}
+
+
+def test_spieltest2_reference_is_the_running_main_config_as_an_experiment():
+    """Nur Experiment-Buchhaltung weicht ab: Seeds, Ordner, Checkpoint-Abstand, Skill-Tracker-Abstand."""
+    fast = flatten(json.loads((ROOT / "train" / "configs" / "lucy_1v1_zero_sum_drill_fast.json").read_text(encoding="utf-8")))
+    assert diff(fast, load("sp2_reference")) == {
+        "env.seed_envs": (None, True),
+        "learner.checkpoint_folder": ("runs/lucy_1v1/checkpoints", "runs/EXPERIMENT/checkpoints"),
+        "learner.checkpoints_to_keep": (200, 10), "learner.timesteps_per_save": (50_000_000, 25_000_000),
+        "metrics.group": ("phase3", "experiments"), "metrics.skill_timesteps_per_version": (250_000_000, 500_000_000),
+    }
+    assert load("sp2_reference")["metrics.run"] == "sp2_reference"
+
+
+@pytest.mark.parametrize("name,expected", list(SPIELTEST2_EXPECTED.items()))
+def test_spieltest2_experiment_changes_only_the_named_values_against_the_reference(name, expected):
+    assert diff(load("sp2_reference"), load(name)) == expected
+    assert load(name)["metrics.run"] == name
+    assert load(name)["env.max_players"] == 3 and load(name)["env.action_stack_size"] == 5
+    assert load(name)["learner.policy_layer_sizes"] == [512, 512, 512]
+
+
+def test_kickoff_main_run_proposal_adds_only_the_two_kickoff_values():
+    """Vorschlag nach Spieltest 2 (AUDIT.md §11.5): laufende Hauptlauf-Config plus genau das Bündel aus
+    sp2_save_boost_01_kickoff; gleicher Checkpoint-Ordner, Obs/Aktionen/Netze/PPO unverändert."""
+    fast = flatten(json.loads((ROOT / "train" / "configs" / "lucy_1v1_zero_sum_drill_fast.json").read_text(encoding="utf-8")))
+    kick = flatten(json.loads((ROOT / "train" / "configs" / "lucy_1v1_zero_sum_drill_fast_kickoff.json").read_text(encoding="utf-8")))
+    assert diff(fast, kick) == SPIELTEST2_EXPECTED["sp2_save_boost_01_kickoff"]
+    assert kick["learner.checkpoint_folder"] == "runs/lucy_1v1/checkpoints"
+    assert kick["env.max_players"] == 3 and kick["env.action_stack_size"] == 5
+    assert kick["learner.policy_layer_sizes"] == [512, 512, 512]
+    assert "NICHT gestartet ohne OK" in kick["_comment"]
