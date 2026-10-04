@@ -7,6 +7,7 @@ die Stop-Datei reagiert; Start als DryRun, weil ein echter Start den Hauptlauf s
 from __future__ import annotations
 
 import csv
+import json
 import os
 import shutil
 import subprocess
@@ -176,3 +177,29 @@ def test_start_script_restarts_after_a_clean_stop_left_the_task_window_open(tmp_
         _ps("-Command", f"Stop-ScheduledTask -TaskName '{task}' -ErrorAction SilentlyContinue; "
                         f"Unregister-ScheduledTask -TaskName '{task}' -Confirm:$false -ErrorAction SilentlyContinue")
     assert _task_state(task) == "fehlt"
+
+
+@needs_ps51
+def test_stop_script_names_the_newest_checkpoint_of_the_folder_from_the_trainer_config(tmp_path):
+    """B8: Der Hauptlauf lief mit runs/lucy_1v1_lr1e4, das Skript nannte trotzdem den neuesten Checkpoint aus
+    runs/lucy_1v1 (03./04.10.2026). Der Ordner kommt jetzt aus der Config auf der Kommandozeile des Trainers."""
+    stop = tmp_path / "STOP"
+    folder = tmp_path / "anderer lauf" / "checkpoints"
+    for steps in ("100", "12345"):
+        (folder / steps).mkdir(parents=True)
+    config = tmp_path / "lauf_config.json"
+    config.write_text(json.dumps({"learner": {"checkpoint_folder": str(folder)}}), encoding="utf-8")
+    code = ("import sys, time, pathlib\n"
+            "p = pathlib.Path(sys.argv[1])\n"
+            "while not p.exists(): time.sleep(0.2)\n"
+            "time.sleep(1.0)\n")
+    # wie train_bot.exe: <config> --stop-file <datei>
+    proc = subprocess.Popen([sys.executable, "-c", code, str(stop), str(config), "--stop-file", str(stop)])
+    try:
+        r = _ps("-File", str(ROOT / "tools" / "local" / "stop_main_run.ps1"), "-StopFile", str(stop),
+                "-ProcessId", str(proc.pid), "-TimeoutSeconds", "60")
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert "Neuester Checkpoint: 12345" in r.stdout, r.stdout
+    finally:
+        if proc.poll() is None:
+            proc.kill()
