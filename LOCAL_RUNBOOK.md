@@ -360,6 +360,15 @@ Spielstärke über viele Milliarden Steps: `results\panel_vs_18527085056\ref.lt`
 .\build\cpp_cu128\duel.exe --a <ckpt>\PPO_POLICY.lt --b results\panel_vs_18527085056\ref.lt --games 1000 --threads 2 --seed 123 --meshes collision_meshes --out <datei>.json
 ```
 
+**Luftspiel-Serie (04.10.2026, AUDIT.md §11.8):** Configs `train\configs\experiments\sp3_*.json`, Kette
+`results\sp3_chain.ps1` (drei Läufe à 1 Mrd., Panel `results\sp3_panel.py`, `compare.py`, Neustart des Hauptlaufs).
+Vorschlag mit beiden Luft-Änderungen, nicht gestartet ohne OK:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\local\stop_main_run.ps1
+powershell -ExecutionPolicy Bypass -File tools\local\start_main_run.ps1 -Config train\configs\lucy_1v1_kickoff_lr1e4_air.json
+```
+
 ## 6. Optional: Stufe 4, Gradientenschritte 6 / 3 / 2 (~1 Stunde)
 
 Erst wenn Stufe 3 entschieden ist:

@@ -50,6 +50,11 @@ Details und Zahlen: AUDIT.md §11.
   **+0,72** [+0,55; +0,89]; Aerials 0,77 → 0,85 je Minute, KL 0,0036 → 0,0041.
   Panel 04.10. (43,15 Mrd.): gegen den festen Gegner +1,55 (30,89) → +2,41 (37,20) → **+2,51** (41,20) → +2,38
   (43,15), also Anstieg und Plateau statt Rückgang; 37,20 und 41,20 Mrd. in `runs/backup_lucy_1v1_lr1e4` gesichert.
+* Luftspiel (§11.8, freigegeben): je 1 Mrd. Steps ab 41,20 Mrd.; gegen den festen Gegner (Mittel aus 600/800/1000
+  Mio.) Referenz +2,11, `air_touch` 3,0 +1,82, Bündel mit `aerial` 2,0 +2,46; Aerials je Minute 0,95 / 0,99 / 1,01;
+  direkte Duelle widersprechen (+0,26 / −0,27 gegen das Referenz-Ende). Kein klarer Gewinner. Vorschlag
+  `lucy_1v1_kickoff_lr1e4_air.json` (Bündel), nicht gestartet; Hauptlauf seit 04.10. 19:26 unverändert ab
+  43.706.476.800 (von der Kette selbst neu gestartet).
 * Dabei behoben: B5 (Export als Skript), B6 (zweiter Bot-Eintrag), B7 (Neustart nach sauberem Stopp).
 
 ## Hauptlauf-Betrieb (Branch `claude/hauptlauf-betrieb`, 30.09.2026)

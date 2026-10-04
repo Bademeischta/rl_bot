@@ -2780,3 +2780,50 @@ dem Neustart) → 3146; Aerials 0,80 → 0,93 → 0,88; KL 0,0038 → 0,0049, Cl
 `runs/backup_lucy_1v1_lr1e4/`: 37.195.705.088 und 41.199.756.928 (Hash geprüft). Vorschlag: diesen Vergleich
 etwa alle 5 Mrd. Steps wiederholen und den besten Stand sichern; steigt die KL weiter Richtung 0,006, eine
 weitere Lernraten-Stufe prüfen.
+
+### 11.8 Luftspiel: Reward für Luftkontakte und mehr Aerial-Startlagen (04.10.2026, vom Nutzer freigegeben)
+
+Drei Läufe zu je 1 Mrd. Steps ab 41.199.756.928 (Kopie in `runs/backup_lucy_1v1_lr1e4`), Seed 123, Build `1cd931b`,
+nacheinander als Aufgabe „RLbot Experimente“ (`results/sp3_chain.ps1`, Hauptlauf dafür von 13:40 bis 19:26
+gestoppt, die Kette hat ihn am Ende selbst mit unveränderter Config wieder gestartet). Referenz = laufende
+Hauptlauf-Config (`sp3_reference`); `sp3_air_touch`: `air_touch` 3,0 (Luftkontakt, skaliert mit der Ballhöhe);
+`sp3_air_touch_aerial`: dazu `state_setters.aerial` 0,5 → 2,0. Checkpoints alle 100 Mio.; die Stände bei
+600/800/1000 Mio. spielten je 1000 Spiele gegen den festen Gegner 18.527.085.056 (`results/sp3_panel.md`),
+dazu `compare.py` (`results/compare_sp3.md`). Vorab: `air_touch` macht beim aktuellen Bot ~0,4 % des
+Reward-Flusses aus (`reward_budget.exe`, 60 Spiele), weil hohe Kontakte selten sind.
+
+| | Referenz | `air_touch` 3,0 | `air_touch` 3,0 + Startlagen |
+|---|---|---|---|
+| Panel gegen festen Gegner, 600 / 800 / 1000 Mio. | +1,95 / +2,21 / +2,17 | +1,96 / +1,82 / +1,70 | +2,38 / **+2,70** / +2,29 |
+| Panel, Mittel | +2,11 | +1,82 | **+2,46** |
+| Panel, Aerials je Minute (Mittel) | 0,95 | 0,99 | 1,01 |
+| Panel, mittlere Höhe der Luftkontakte | 218 uu | 220 uu | 221 uu |
+| Duell Ende gegen Referenz-Ende | – | +0,26 [+0,09; +0,42] | −0,27 [−0,44; −0,10] |
+| Duell Ende gegen den eigenen Start | +0,03 [−0,14; +0,19] | +0,19 [+0,02; +0,37] | −0,17 [−0,33; +0,00] |
+| TrueSkill gemeinsame Ladder (mu; Start 25,12) | 24,98 | 25,08 | 24,87 |
+| Training: Aerials je Minute, erstes → letztes Fünftel | 0,96 → 0,89 | 0,96 → 0,96 | 0,98 → 1,05 |
+| Training: mittlere Höhe der Luftkontakte (letztes Fünftel) | 192 uu | 195 uu | 204 uu |
+
+Lesart:
+
+* **Kein großer Effekt in 1 Mrd. Steps.** Gegen den festen Gegner haben alle drei Läufe ~0,95–1,01 Aerials je
+  Minute bei ~220 uu Höhe; der Unterschied zur Referenz ist +4 bis +6 %. Im Training steigt die Aerial-Rate nur
+  mit beiden Änderungen (0,98 → 1,05, Referenz 0,96 → 0,89); ein Teil davon ist die andere Szenen-Mischung.
+* **Die Stärke-Vergleiche widersprechen sich.** `air_touch` allein schlägt das Referenz-Ende direkt (+0,26), liegt
+  gegen den festen Gegner aber an zwei von drei Zeitpunkten unter der Referenz. Das Bündel ist gegen den festen
+  Gegner an allen drei Zeitpunkten vorn (Mittel +2,46 gegen +2,11), verliert aber das direkte Duell gegen das
+  Referenz-Ende (−0,27). Die Ladder sieht alle vier Stände im Rauschen (mu 24,87–25,12, σ 0,79). Das passt zur
+  bekannten Nicht-Transitivität einzelner Checkpoints (§11.3, §11.7); dazu passt auch, dass beide Experimente
+  gegen das Referenz-Ende nur 25 % der Anstöße zuerst berühren.
+* Nebenwirkungen: keine (Anstoß 2,43–2,45 s, `boost_held` 0,35, KL ~0,005, Entropie ~2,95, ~199.000 SPS).
+
+Einordnung: Mehr Luftspiel kam in diesem Projekt bisher vor allem aus langem Training mit kleinerer Lernrate
+(0,77 → ~0,95 Aerials je Minute über 14 Mrd. Steps, §11.7). Die beiden Hebel ändern das in 1 Mrd. Steps nur
+wenig. Größere Hebel (Ballvorhersage in der Beobachtung, größeres Netz, schnellerer Entscheidungstakt) brechen
+die Checkpoint-Kompatibilität.
+
+**Vorschlag (nicht gestartet):** `train/configs/lucy_1v1_kickoff_lr1e4_air.json` = laufende Hauptlauf-Config plus
+das Bündel (`air_touch` 3,0, `aerial` 2,0); bester Wert gegen den festen Gegner und einziger steigender
+Aerial-Trend, Nachteil im direkten Duell im Rahmen des Checkpoint-Rauschens. Nach einem Wechsel: Panel gegen
+den festen Gegner alle ~5 Mrd. Steps; fällt der Lauf darin unter die Linie der Referenz, zurück zur bisherigen
+Config. Der Hauptlauf läuft seit 04.10. 19:26 unverändert ab 43.706.476.800.
