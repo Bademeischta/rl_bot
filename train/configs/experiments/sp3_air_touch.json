@@ -1,0 +1,87 @@
+{
+  "_comment": "Luftspiel (04.10.2026, AUDIT.md §11.8), vom Nutzer freigegeben: sp3_reference.json plus genau eine Änderung: Reward für Ballkontakte in der Luft, skaliert mit der Ballhöhe (AirTouchReward, ~0,05 für einen Sprung an den rollenden Ball, ~0,5 bei 1000 uu, je Auto höchstens alle 0,5 s), Gewicht 3,0.",
+  "env": {
+    "tick_skip": 8,
+    "max_players": 3,
+    "action_stack_size": 5,
+    "no_touch_timeout_secs": 30.0,
+    "game_timeout_secs": 900.0,
+    "mode_mix": [
+      1.0,
+      0.0,
+      0.0
+    ],
+    "seed_envs": true
+  },
+  "rewards": {
+    "goal": 5.0,
+    "concede": 5.0,
+    "demo": 0.0,
+    "demoed": 0.0,
+    "touch_ball_to_goal_accel": 1.0,
+    "offensive_potential_krc": 1.0,
+    "dist_weighted_align_krc": 0.5,
+    "velocity_player_to_ball": 0.1,
+    "save_boost": 0.1,
+    "in_air": 0.02,
+    "team_spirit": 0.1,
+    "kickoff_first_touch": 2.0,
+    "air_touch": 3.0
+  },
+  "state_setters": {
+    "kickoff": 2.0,
+    "random": 2.0,
+    "aerial": 0.5,
+    "dribble": 0.5,
+    "wall_play": 0.5,
+    "recovery": 0.5,
+    "defense": 1.0,
+    "kickoff_drill": 4.0
+  },
+  "learner": {
+    "num_threads": 16,
+    "num_games_per_thread": 64,
+    "collection_during_learn": true,
+    "device": "cuda",
+    "timestep_limit": 0,
+    "timesteps_per_iteration": 100000,
+    "timesteps_per_save": 100000000,
+    "checkpoints_to_keep": 12,
+    "checkpoint_folder": "runs/EXPERIMENT/checkpoints",
+    "policy_layer_sizes": [
+      512,
+      512,
+      512
+    ],
+    "critic_layer_sizes": [
+      512,
+      512,
+      512
+    ],
+    "ppo_epochs": 2,
+    "ppo_batch_size": 100000,
+    "ppo_mini_batch_size": 50000,
+    "ent_coef": 0.01,
+    "clip_range": 0.2,
+    "policy_lr": 0.0001,
+    "critic_lr": 0.0001,
+    "gae_lambda": 0.95,
+    "gae_gamma": 0.9954,
+    "random_seed": 123,
+    "exp_buffer_on_device": true,
+    "infer_during_learn": true,
+    "collect_limit_factor": 1.0,
+    "autocast_learn": true,
+    "learner_high_priority_stream": true
+  },
+  "metrics": {
+    "send_metrics": false,
+    "project": "rlbot",
+    "group": "experiments",
+    "run": "sp3_air_touch",
+    "skill_tracker": true,
+    "skill_timesteps_per_version": 500000000,
+    "skill_max_versions": 20,
+    "skill_update_interval": 32
+  }
+}

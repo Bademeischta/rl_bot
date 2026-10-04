@@ -284,3 +284,36 @@ def test_lr1e4_main_run_halves_the_learning_rates_in_its_own_folder():
     }
     assert lr["env.max_players"] == 3 and lr["env.action_stack_size"] == 5
     assert lr["learner.policy_layer_sizes"] == [512, 512, 512]
+
+
+# --- Luftspiel (04.10.2026, AUDIT.md §11.8): gegenüber der laufenden Hauptlauf-Config lucy_1v1_kickoff_lr1e4 ---
+
+SP3_EXPECTED = {
+    "sp3_air_touch": {"rewards.air_touch": (None, 3.0)},
+    # Bündel: Reward plus mehr Gelegenheiten
+    "sp3_air_touch_aerial": {"rewards.air_touch": (None, 3.0), "state_setters.aerial": (0.5, 2.0)},
+}
+
+
+def test_sp3_reference_is_the_running_main_config_as_a_1g_experiment():
+    main = flatten(json.loads((ROOT / "train" / "configs" / "lucy_1v1_kickoff_lr1e4.json").read_text(encoding="utf-8")))
+    assert diff(main, load("sp3_reference")) == {
+        "env.seed_envs": (None, True),
+        "learner.checkpoint_folder": ("runs/lucy_1v1_lr1e4/checkpoints", "runs/EXPERIMENT/checkpoints"),
+        "learner.timesteps_per_save": (50_000_000, 100_000_000),
+        "learner.checkpoints_to_keep": (200, 12),
+        "metrics.group": ("phase3", "experiments"),
+        "metrics.skill_timesteps_per_version": (250_000_000, 500_000_000),
+    }
+    ref = load("sp3_reference")
+    # 1 Mrd. Steps: alle Zwischenstände im Abstand von 100 Mio. bleiben erhalten
+    assert ref["learner.timesteps_per_save"] * (ref["learner.checkpoints_to_keep"] - 2) >= 1_000_000_000
+    assert ref["learner.policy_lr"] == ref["learner.critic_lr"] == 0.0001
+
+
+@pytest.mark.parametrize("name,expected", list(SP3_EXPECTED.items()))
+def test_sp3_experiment_changes_only_the_named_values_against_the_reference(name, expected):
+    assert diff(load("sp3_reference"), load(name)) == expected
+    assert load(name)["metrics.run"] == name
+    assert load(name)["env.max_players"] == 3 and load(name)["env.action_stack_size"] == 5
+    assert load(name)["learner.policy_layer_sizes"] == [512, 512, 512]
