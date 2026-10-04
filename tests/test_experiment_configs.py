@@ -317,3 +317,13 @@ def test_sp3_experiment_changes_only_the_named_values_against_the_reference(name
     assert load(name)["metrics.run"] == name
     assert load(name)["env.max_players"] == 3 and load(name)["env.action_stack_size"] == 5
     assert load(name)["learner.policy_layer_sizes"] == [512, 512, 512]
+
+
+def test_air_main_run_proposal_adds_only_the_sp3_bundle():
+    """Vorschlag Luftspiel (AUDIT.md §11.8): laufende Hauptlauf-Config plus genau das Bündel aus
+    sp3_air_touch_aerial; gleicher Checkpoint-Ordner, sonst unverändert."""
+    lr = flatten(json.loads((ROOT / "train" / "configs" / "lucy_1v1_kickoff_lr1e4.json").read_text(encoding="utf-8")))
+    air = flatten(json.loads((ROOT / "train" / "configs" / "lucy_1v1_kickoff_lr1e4_air.json").read_text(encoding="utf-8")))
+    assert diff(lr, air) == SP3_EXPECTED["sp3_air_touch_aerial"]
+    assert air["learner.checkpoint_folder"] == "runs/lucy_1v1_lr1e4/checkpoints"
+    assert "NICHT gestartet ohne OK" in air["_comment"]
