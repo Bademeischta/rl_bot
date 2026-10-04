@@ -2760,3 +2760,23 @@ Gegner, mit 1e-4 stieg er auf +1,55. Trainingsmetriken je 500 Mio. Steps: KL 0,0
 Entropie 2,98–3,00, Anstoß 2,43–2,51 s und nie unberührt, `boost_held` 0,34; Aerials je Minute 0,77 → 0,85
 (alter Lauf zuletzt 0,71–0,75); Skill-Rating 3049 → 3107. Ein Lauf, aber ein großer Effekt; KL steigt
 langsam wieder und bleibt im Blick.
+
+**Panel nach 14,3 Mrd. Steps mit Lernrate 1e-4 (04.10.2026, 12:25–13:04).** Je 1000 Spiele gegen den festen
+Gegner 18,53 Mrd. (`results/panel2_vs_18527085056`):
+
+| Stand | Tordifferenz/Spiel [95-%-KI] | Anstoß zuerst | Aerials/min (Stand : Gegner) |
+|---|---|---|---|
+| 30.889.387.904 | +1,55 [+1,38; +1,71] | 91 % | 0,86 : 0,65 |
+| 33.191.647.744 | +2,00 [+1,84; +2,17] | 88 % | 0,93 : 0,67 |
+| 35.193.669.632 | +1,90 [+1,72; +2,07] | 80 % | 0,89 : 0,68 |
+| 37.195.705.088 | +2,41 [+2,23; +2,58] | 84 % | 0,92 : 0,66 |
+| 39.197.720.448 | +2,30 [+2,13; +2,46] | 84 % | 0,94 : 0,68 |
+| 41.199.756.928 | **+2,51** [+2,34; +2,68] | 89 % | 0,97 : 0,64 |
+| 43.151.733.632 | +2,38 [+2,22; +2,55] | 90 % | 0,90 : 0,64 |
+
+Kein Rückgang wie mit 2e-4: Anstieg bis ~37 Mrd., seitdem ein Plateau bei +2,3 bis +2,5 (die letzten drei
+Werte liegen im Rauschen beieinander). Trainingsmetriken je 2 Mrd.: Skill-Rating 3060 → 3168 (10–12 Mrd. nach
+dem Neustart) → 3146; Aerials 0,80 → 0,93 → 0,88; KL 0,0038 → 0,0049, Clip 2,4 → 2,8 %. Gesichert in
+`runs/backup_lucy_1v1_lr1e4/`: 37.195.705.088 und 41.199.756.928 (Hash geprüft). Vorschlag: diesen Vergleich
+etwa alle 5 Mrd. Steps wiederholen und den besten Stand sichern; steigt die KL weiter Richtung 0,006, eine
+weitere Lernraten-Stufe prüfen.

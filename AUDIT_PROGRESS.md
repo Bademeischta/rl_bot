@@ -48,6 +48,8 @@ Details und Zahlen: AUDIT.md §11.
   (Lernrate 1e-4) in `runs/lucy_1v1_lr1e4` ab 28.887.394.048; `runs/lucy_1v1` unverändert (endet bei 39.558.949.632).
   Nach 2 Mrd. Steps (30,89 Mrd.): gegen den festen Gegner **+1,55** [+1,38; +1,71] (Start +0,92), gegen den Start
   **+0,72** [+0,55; +0,89]; Aerials 0,77 → 0,85 je Minute, KL 0,0036 → 0,0041.
+  Panel 04.10. (43,15 Mrd.): gegen den festen Gegner +1,55 (30,89) → +2,41 (37,20) → **+2,51** (41,20) → +2,38
+  (43,15), also Anstieg und Plateau statt Rückgang; 37,20 und 41,20 Mrd. in `runs/backup_lucy_1v1_lr1e4` gesichert.
 * Dabei behoben: B5 (Export als Skript), B6 (zweiter Bot-Eintrag), B7 (Neustart nach sauberem Stopp).
 
 ## Hauptlauf-Betrieb (Branch `claude/hauptlauf-betrieb`, 30.09.2026)
